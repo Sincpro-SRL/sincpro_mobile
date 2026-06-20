@@ -1,0 +1,38 @@
+name: "Prepare Environment"
+description: "Prepares the environment based on the matrix environment value"
+inputs:
+  environment:
+    description: 'The Node.js version to use (e.g., "22", "20", "18")'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.environment }}
+        registry-url: "https://registry.npmjs.org"
+
+    - name: Cache node modules
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: Setup ktlint
+      shell: bash
+      run: |
+        curl -sSLO https://github.com/pinterest/ktlint/releases/download/1.8.0/ktlint
+        chmod +x ktlint
+        sudo mv ktlint /usr/local/bin/
+
+    - name: Log environment
+      shell: bash
+      run: |
+        echo "Environment: ${{ inputs.environment }}"
+        echo "Node version: $(node --version)"
+        echo "NPM version: $(npm --version)"
+        echo "ktlint version: $(ktlint --version 2>&1 || echo 'not installed')"

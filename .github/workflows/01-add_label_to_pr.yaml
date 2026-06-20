@@ -1,0 +1,11 @@
+name: Add labels to PRs
+
+on:
+  pull_request:
+    # Only following types are handled by the action, but one can default to all as well
+    types: [opened, reopened, synchronize]
+
+jobs:
+  validate:
+    uses: Sincpro-SRL/.github/.github/workflows/01-add_label_to_pr.yaml@main
+    secrets: inherit

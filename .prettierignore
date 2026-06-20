@@ -1,0 +1,7 @@
+node_modules/
+dist/
+build/
+lib/
+.expo/
+*.log
+.DS_Store

@@ -1,0 +1,15 @@
+name: Publish release to NPM
+
+on:
+  release:
+    types: [published]
+
+env:
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+jobs:
+  validate:
+    uses: Sincpro-SRL/.github/.github/workflows/04-publish_release.yaml@main
+    secrets: inherit
+    with:
+      environments: '["22"]'
