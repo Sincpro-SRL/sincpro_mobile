@@ -1,12 +1,12 @@
+import { createApp } from "@sincpro/mobile/entrypoints/app/createApp";
+import type { DomainModule } from "@sincpro/mobile/entrypoints/app/domain_module";
+import { ToastHost } from "@sincpro/mobile/infrastructure/ui/ToastHost";
 import { type ComponentType, type ReactNode, useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context";
 import { NativeRouter } from "react-router-native";
 
-import { ToastHost } from "../../infrastructure/ui/ToastHost";
-import { createApp } from "../app/createApp";
-import type { DomainModule } from "../app/domain_module";
 import { CommonProvider } from "./common_provider";
 import { ActiveDomainApp, type DomainApp, DomainSwitcherProvider } from "./domain_switcher";
 

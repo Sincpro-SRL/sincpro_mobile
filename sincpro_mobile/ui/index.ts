@@ -1,4 +1,4 @@
-export * from "./components/atoms";
-export * from "./components/molecules";
-export * from "./components/organisms";
 export * from "./screens";
+export * from "@sincpro/mobile/ui/components/atoms";
+export * from "@sincpro/mobile/ui/components/molecules";
+export * from "@sincpro/mobile/ui/components/organisms";

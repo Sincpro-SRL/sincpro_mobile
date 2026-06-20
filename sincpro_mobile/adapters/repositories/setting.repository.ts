@@ -1,6 +1,6 @@
-import { ECommonRepository } from "../../domain/repository";
-import { DATABASE_TABLES } from "../../entrypoints/db/migrations";
-import { DBCursor } from "../../infrastructure/database";
+import { ECommonRepository } from "@sincpro/mobile/domain/repository";
+import { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
+import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 
 class SettingsRepositoryImpl {
   public readonly name = ECommonRepository.SETTINGS;

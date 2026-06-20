@@ -1,8 +1,8 @@
-import { DomainEvent } from "../../domain/event";
-import { ECommonRepository } from "../../domain/repository";
-import { DATABASE_TABLES } from "../../entrypoints/db/migrations";
-import { DBCursor } from "../../infrastructure/database";
-import { loggerRepositories } from "../../infrastructure/logger";
+import { DomainEvent } from "@sincpro/mobile/domain/event";
+import { ECommonRepository } from "@sincpro/mobile/domain/repository";
+import { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
+import { DBCursor } from "@sincpro/mobile/infrastructure/database";
+import { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
 
 class DomainEventDeadLetterRepositoryImpl {
   public readonly name = ECommonRepository.DOMAIN_EVENT_DEAD_LETTER;

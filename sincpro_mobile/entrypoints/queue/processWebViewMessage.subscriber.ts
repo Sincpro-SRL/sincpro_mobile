@@ -1,9 +1,9 @@
-import { PrintImageRequestedEvent } from "../../domain/print";
-import { Subscriber } from "../../domain/subscriber";
-import { WebViewMessageReceivedEvent } from "../../domain/webview";
-import { DomainValidationError } from "../../exceptions";
-import { EventBus } from "../../infrastructure/workers";
-import { webViewService } from "../../services/webview.service";
+import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/print";
+import { Subscriber } from "@sincpro/mobile/domain/subscriber";
+import { WebViewMessageReceivedEvent } from "@sincpro/mobile/domain/webview";
+import { DomainValidationError } from "@sincpro/mobile/exceptions";
+import { EventBus } from "@sincpro/mobile/infrastructure/workers";
+import { webViewService } from "@sincpro/mobile/services/webview.service";
 
 export class ProcessWebViewMessageSubscriber extends Subscriber {
   public readonly requiresAuth = false;

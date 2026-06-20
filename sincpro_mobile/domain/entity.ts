@@ -1,8 +1,9 @@
-import { DomainValidationError } from "../exceptions";
-import { mapped, resolveEntity } from "../infrastructure/database";
-import { generateUUID } from "../infrastructure/database/utils";
-import { loggerQueueProcessor } from "../infrastructure/logger";
-import { EventBus } from "../infrastructure/workers";
+import { DomainValidationError } from "@sincpro/mobile/exceptions";
+import { mapped, resolveEntity } from "@sincpro/mobile/infrastructure/database";
+import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
+import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
+import { EventBus } from "@sincpro/mobile/infrastructure/workers";
+
 import { type DomainEvent, type DomainEventClass, type EventData } from "./event";
 import { ECommonRepository } from "./repository";
 import { IValueObject, ValueObject } from "./value_object";

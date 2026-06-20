@@ -1,5 +1,5 @@
-import { DomainEventRepository } from "../../adapters/repositories/domain_event.repository";
-import { DomainEventDeadLetterRepository } from "../../adapters/repositories/domain_event_dead_letter.repository";
+import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
+import { DomainEventDeadLetterRepository } from "@sincpro/mobile/adapters/repositories/domain_event_dead_letter.repository";
 import {
   DomainEvent,
   EventName,
@@ -7,11 +7,11 @@ import {
   InternetIsUpEvent,
   QueueEndEvent,
   QueueStartEvent,
-} from "../../domain/event";
-import { Subscriber } from "../../domain/subscriber";
-import { DomainNetworkError } from "../../exceptions";
-import { loggerQueueProcessor } from "../logger";
-import { UIEventBus } from "../ui/UIEventBus";
+} from "@sincpro/mobile/domain/event";
+import { Subscriber } from "@sincpro/mobile/domain/subscriber";
+import { DomainNetworkError } from "@sincpro/mobile/exceptions";
+import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
+import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 
 export const PROCESS_WORKER_MAX_ATTEMPTS = 1;
 export { EventName };

@@ -1,8 +1,9 @@
-import { generateUUID } from "../infrastructure/database/utils";
-import { loggerQueueProcessor } from "../infrastructure/logger";
-import { EventBus } from "../infrastructure/workers";
-import { convertToArray } from "../tools/utils/collections";
-import { safeJsonStringify } from "../tools/utils/serializer";
+import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
+import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
+import { EventBus } from "@sincpro/mobile/infrastructure/workers";
+import { convertToArray } from "@sincpro/mobile/tools/utils/collections";
+import { safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
+
 import { type Entity, type RemoteEntity } from "./entity";
 import { DomainEvent, type DomainEventClass } from "./event";
 import { ValueObject } from "./value_object";

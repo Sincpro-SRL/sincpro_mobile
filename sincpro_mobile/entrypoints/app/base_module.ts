@@ -1,17 +1,18 @@
-import { DatabaseTableRepository } from "../../adapters/repositories/database_table.repository";
-import { DomainEventRepository } from "../../adapters/repositories/domain_event.repository";
-import { DomainEventDeadLetterRepository } from "../../adapters/repositories/domain_event_dead_letter.repository";
-import { SettingsRepository } from "../../adapters/repositories/setting.repository";
-import type { IMigration } from "../../domain/database";
-import { ECommonRepository } from "../../domain/repository";
-import type { Subscriber } from "../../domain/subscriber";
-import type { CronWorker } from "../../infrastructure/workers";
-import cronCheckNetworkStatus from "../cron/checkNetworkStatus.cron";
-import MIGRATIONS from "../db/migrations";
-import { ActivateDomainSubscriber } from "../queue/activateDomain.subscriber";
-import { NewAppSettingsSubscriber } from "../queue/newAppSettings.handler";
-import { PrintImageSubscriber } from "../queue/printImage.subscriber";
-import { ProcessWebViewMessageSubscriber } from "../queue/processWebViewMessage.subscriber";
+import { DatabaseTableRepository } from "@sincpro/mobile/adapters/repositories/database_table.repository";
+import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
+import { DomainEventDeadLetterRepository } from "@sincpro/mobile/adapters/repositories/domain_event_dead_letter.repository";
+import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
+import type { IMigration } from "@sincpro/mobile/domain/database";
+import { ECommonRepository } from "@sincpro/mobile/domain/repository";
+import type { Subscriber } from "@sincpro/mobile/domain/subscriber";
+import cronCheckNetworkStatus from "@sincpro/mobile/entrypoints/cron/checkNetworkStatus.cron";
+import MIGRATIONS from "@sincpro/mobile/entrypoints/db/migrations";
+import { ActivateDomainSubscriber } from "@sincpro/mobile/entrypoints/queue/activateDomain.subscriber";
+import { NewAppSettingsSubscriber } from "@sincpro/mobile/entrypoints/queue/newAppSettings.handler";
+import { PrintImageSubscriber } from "@sincpro/mobile/entrypoints/queue/printImage.subscriber";
+import { ProcessWebViewMessageSubscriber } from "@sincpro/mobile/entrypoints/queue/processWebViewMessage.subscriber";
+import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
+
 import { DomainModule } from "./domain_module";
 
 export class BaseModule extends DomainModule {

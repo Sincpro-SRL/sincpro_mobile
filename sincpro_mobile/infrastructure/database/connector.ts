@@ -1,3 +1,4 @@
+import logger, { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
 import { Mutex } from "async-mutex";
 import {
   openDatabaseAsync,
@@ -6,8 +7,6 @@ import {
   SQLiteRunResult,
   SQLiteVariadicBindParams,
 } from "expo-sqlite";
-
-import logger, { loggerRepositories } from "../logger";
 
 export const DB_NAME = "distribution.db";
 let dbInstance: SQLiteDatabase | null = null;

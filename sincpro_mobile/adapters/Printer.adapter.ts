@@ -1,3 +1,4 @@
+import { loggerAdapter } from "@sincpro/mobile/infrastructure/logger";
 import type {
   BluetoothDevice,
   MediaConfig,
@@ -12,8 +13,6 @@ import type {
   Receipt,
 } from "@sincpro/printer-expo";
 import { bluetooth, config, connection, print } from "@sincpro/printer-expo";
-
-import { loggerAdapter } from "../infrastructure/logger";
 
 export type { BluetoothDevice, PairedPrinter, PrinterInfo, PrinterStatus };
 

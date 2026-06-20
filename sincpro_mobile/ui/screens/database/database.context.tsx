@@ -1,4 +1,5 @@
-import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile-ui/lib/serializer";
+import { databaseTablesUseCase } from "@sincpro/mobile/services/database_table.service";
+import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 import React, {
   createContext,
   ReactNode,
@@ -7,8 +8,6 @@ import React, {
   useEffect,
   useState,
 } from "react";
-
-import { databaseTablesUseCase } from "../../../services/database_table.service";
 
 export enum EDatabaseView {
   TABLES_LIST = "TABLES_LIST",

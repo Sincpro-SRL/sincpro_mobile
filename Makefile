@@ -6,11 +6,12 @@ VERSION := $(shell node -p "require('./package.json').version")
 help:
 	@echo "$(PACKAGE) — comandos:"
 	@echo "  init                       prepare-environment + yarn install"
-	@echo "  format / format-check      Formatea / verifica formato (prettier)"
+	@echo "  format                     Ordena imports + auto-fix (eslint) y formatea (prettier)"
+	@echo "  format-check               Verifica formato (prettier, no escribe)"
 	@echo "  lint / typecheck / check   ESLint / tsc / ambos"
-	@echo "  verify-format              Falla si el formateo cambia archivos (pre-commit/CI)"
+	@echo "  verify-format              Falla si format cambia archivos (pre-commit/CI)"
 	@echo "  test                       Ejecuta los tests"
-	@echo "  build                      Compila ESM + tipos (builder-bob) a ./lib"
+	@echo "  build                      Compila JS + tipos (tsc + tsc-alias) a ./lib"
 	@echo "  update-version VERSION=x.y.z   Actualiza la versión"
 	@echo "  publish                    build + npm publish (usa NPM_TOKEN si está presente)"
 	@echo "  clean                      Borra lib/ y node_modules/"
@@ -25,23 +26,28 @@ init: prepare-environment
 	@yarn install
 
 format:
+	@echo "🔤 Ordenando imports + auto-fix (eslint)..."
+	@npx eslint . --fix
+	@echo "🎨 Formateando (prettier)..."
 	@npx prettier --write "**/*.{ts,tsx,js,jsx,json,yml,yaml,md}" --ignore-path .prettierignore --ignore-unknown
 
 format-check:
 	@npx prettier --check "**/*.{ts,tsx,js,jsx,json,yml,yaml,md}" --ignore-path .prettierignore --ignore-unknown
 
 lint:
-	@yarn lint
+	@npx eslint .
 
 typecheck:
-	@yarn typecheck
+	@npx tsc --noEmit
 
 check: lint typecheck
 
 build:
-	@echo "🏗️  Building $(PACKAGE) (ESM + types)..."
-	@yarn bob build
-	@echo "✓ Build artifacts ready in ./lib"
+	@echo "🏗️  Compilando $(PACKAGE) -> lib (tsc + tsc-alias)..."
+	@rm -rf lib
+	@npx tsc -p tsconfig.build.json
+	@npx tsc-alias -p tsconfig.build.json
+	@echo "✓ Build listo en ./lib (JS + .d.ts, alias @ resuelto a relativo)"
 
 test:
 	@echo "Running tests..."

@@ -1,6 +1,6 @@
-import { loggerCronJobs } from "../../infrastructure/logger";
-import { CronWorker } from "../../infrastructure/workers";
-import { networkUseCases } from "../../services/network.service";
+import { loggerCronJobs } from "@sincpro/mobile/infrastructure/logger";
+import { CronWorker } from "@sincpro/mobile/infrastructure/workers";
+import { networkUseCases } from "@sincpro/mobile/services/network.service";
 
 async function checkNetworkStatus(): Promise<void> {
   loggerCronJobs.info("Checking network status");

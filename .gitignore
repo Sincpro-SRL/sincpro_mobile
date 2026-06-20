@@ -2,6 +2,6 @@ node_modules/
 .expo/
 dist/
 build/
-lib/
+/lib/
 *.log
 .DS_Store

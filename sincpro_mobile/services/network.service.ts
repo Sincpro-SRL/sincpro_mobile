@@ -1,9 +1,9 @@
-import { NetworkAdapter } from "../adapters/Network.adapter";
-import { InternetIsDownEvent, InternetIsUpEvent } from "../domain/event";
-import { NetworkStatus } from "../domain/network";
-import { loggerUseCases } from "../infrastructure/logger";
-import { UI_NOTIFICATION_EVENT } from "../infrastructure/ui/events";
-import { UIEventBus } from "../infrastructure/ui/UIEventBus";
+import { NetworkAdapter } from "@sincpro/mobile/adapters/Network.adapter";
+import { InternetIsDownEvent, InternetIsUpEvent } from "@sincpro/mobile/domain/event";
+import { NetworkStatus } from "@sincpro/mobile/domain/network";
+import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { UI_NOTIFICATION_EVENT } from "@sincpro/mobile/infrastructure/ui/events";
+import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 
 export class NetworkUseCases {
   private networkStatus: NetworkStatus | null = null;

@@ -1,13 +1,11 @@
+import { DomainEvent, EEventStatus } from "@sincpro/mobile/domain/event";
 import { Display } from "@sincpro/mobile-ui/Display";
 import { Form } from "@sincpro/mobile-ui/Form";
-import { formatDateWithDefaultTimezone } from "@sincpro/mobile-ui/lib/date";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import JsonPreview from "@sincpro/mobile-ui/widgets/JSONViewer";
 import * as Clipboard from "expo-clipboard";
 import { useState } from "react";
 import { View } from "react-native";
-
-import { DomainEvent, EEventStatus } from "../../../domain/event";
 
 interface EventRowProps {
   item: DomainEvent;
@@ -22,7 +20,6 @@ function EventRow({ item, onRetry }: EventRowProps) {
 
   const payloadString = item.asJSON(true);
   const friendlyName = item.label || item.name;
-  const formattedDate = formatDateWithDefaultTimezone(item.createdAt, { showTime: true });
 
   const statusBadge = (() => {
     if (item.status === EEventStatus.FAILED) {
@@ -66,9 +63,12 @@ function EventRow({ item, onRetry }: EventRowProps) {
   function renderMeta() {
     return (
       <View className="flex-row items-center justify-between mb-3">
-        <Typography.Text className="text-gray-800" variant="bodySmall">
-          {formattedDate}
-        </Typography.Text>
+        <Display.Date
+          className="text-gray-800"
+          showTime
+          textVariant="bodySmall"
+          value={item.createdAt}
+        />
         <Display.CopyableText label="Copiar UUID" value={item.uuid} />
       </View>
     );

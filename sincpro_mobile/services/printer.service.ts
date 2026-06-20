@@ -1,16 +1,20 @@
+import {
+  BluetoothDevice,
+  PairedPrinter,
+  PrinterAdapter,
+} from "@sincpro/mobile/adapters/Printer.adapter";
+import { ReceiptExporterAdapter } from "@sincpro/mobile/adapters/ReceiptExporter.adapter";
+import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
+import { ISelectedPrinter } from "@sincpro/mobile/domain/print";
+import { ECommonSetting } from "@sincpro/mobile/domain/settings";
+import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { UI_NOTIFICATION_EVENT } from "@sincpro/mobile/infrastructure/ui/events";
+import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 import { File } from "expo-file-system";
 import * as Print from "expo-print";
 import type { RefObject } from "react";
 import type { View } from "react-native";
 
-import { BluetoothDevice, PairedPrinter, PrinterAdapter } from "../adapters/Printer.adapter";
-import { ReceiptExporterAdapter } from "../adapters/ReceiptExporter.adapter";
-import { SettingsRepository } from "../adapters/repositories/setting.repository";
-import { ISelectedPrinter } from "../domain/print";
-import { ECommonSetting } from "../domain/settings";
-import { loggerUseCases } from "../infrastructure/logger";
-import { UI_NOTIFICATION_EVENT } from "../infrastructure/ui/events";
-import { UIEventBus } from "../infrastructure/ui/UIEventBus";
 import { bluetoothService } from "./bluetooth.service";
 
 class PrinterService {

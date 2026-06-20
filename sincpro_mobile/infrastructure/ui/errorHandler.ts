@@ -1,6 +1,5 @@
+import { DomainException } from "@sincpro/mobile/exceptions";
 import { Alert } from "react-native";
-
-import { DomainException } from "../../exceptions";
 
 export function installGlobalErrorHandler(): void {
   const errorUtils = ErrorUtils as any;

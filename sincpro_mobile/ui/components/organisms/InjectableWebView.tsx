@@ -1,3 +1,6 @@
+import { IInjectedScript } from "@sincpro/mobile/domain/webview";
+import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { webViewService } from "@sincpro/mobile/services/webview.service";
 import Spinner from "@sincpro/mobile-ui/Feedback/Feedback.Spinner";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, NativeSyntheticEvent, StyleSheet, View } from "react-native";
@@ -8,10 +11,6 @@ import WebView, {
   type WebViewNavigation,
 } from "react-native-webview";
 import type { WebViewError } from "react-native-webview/lib/WebViewTypes";
-
-import { IInjectedScript } from "../../../domain/webview";
-import { loggerUseCases } from "../../../infrastructure/logger";
-import { webViewService } from "../../../services/webview.service";
 
 export type WebViewErrorEvent = NativeSyntheticEvent<WebViewError>;
 

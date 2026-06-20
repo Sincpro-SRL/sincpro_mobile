@@ -1,8 +1,8 @@
+import { cron } from "@sincpro/mobile/entrypoints/cron/Cron";
+import { QueueProcessor } from "@sincpro/mobile/entrypoints/queue/QueueProcessor";
+import logger from "@sincpro/mobile/infrastructure/logger";
 import { AppState, AppStateStatus } from "react-native";
 
-import logger from "../../infrastructure/logger";
-import { cron } from "../cron/Cron";
-import { QueueProcessor } from "../queue/QueueProcessor";
 import type { Kernel } from "./kernel";
 
 type AppStateCallback = (state: AppStateStatus) => void;

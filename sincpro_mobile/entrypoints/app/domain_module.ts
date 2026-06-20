@@ -1,6 +1,6 @@
-import type { IMigration } from "../../domain/database";
-import type { Subscriber } from "../../domain/subscriber";
-import type { CronWorker } from "../../infrastructure/workers";
+import type { IMigration } from "@sincpro/mobile/domain/database";
+import type { Subscriber } from "@sincpro/mobile/domain/subscriber";
+import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 
 export abstract class DomainModule {
   abstract readonly key: string;

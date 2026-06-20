@@ -1,10 +1,10 @@
+import { DomainEvent } from "@sincpro/mobile/domain/event";
+import EventRow from "@sincpro/mobile/ui/components/organisms/EventRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import { EVariantScreenHeader } from "@sincpro/mobile-ui/widgets/ScreenHeader";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-native";
 
-import { DomainEvent } from "../../../domain/event";
-import EventRow from "../../components/organisms/EventRow";
 import { EventsProvider, useEvents } from "./events.context";
 
 type FilterValue = "ALL" | "FAILED" | "ACKNOWLEDGED" | "PENDING";

@@ -1,3 +1,4 @@
+import { useCommon } from "@sincpro/mobile/entrypoints/ui/common_provider";
 import { Display } from "@sincpro/mobile-ui/Display";
 import { Feedback } from "@sincpro/mobile-ui/Feedback";
 import { theme } from "@sincpro/mobile-ui/theme";
@@ -5,8 +6,6 @@ import { cn } from "@sincpro/mobile-ui/theme/tw";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useEffect, useState } from "react";
 import { Animated, Platform, TouchableOpacity, View } from "react-native";
-
-import { useCommon } from "../../../entrypoints/ui/common_provider";
 
 const Icon = Display.Icon;
 const Spinner = Feedback.Spinner;

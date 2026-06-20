@@ -1,4 +1,8 @@
-import type { TimezoneLocale } from "@sincpro/mobile-ui/lib/timezone";
+import { GeoAdapter } from "@sincpro/mobile/adapters/Geo.adapter";
+import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
+import { QueueEndEvent, QueueStartEvent } from "@sincpro/mobile/domain/event";
+import logger, { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 import {
   createContext,
   ReactNode,
@@ -10,13 +14,10 @@ import {
   useState,
 } from "react";
 
-import { GeoAdapter } from "../../adapters/Geo.adapter";
-import { SettingsRepository } from "../../adapters/repositories/setting.repository";
-import { QueueEndEvent, QueueStartEvent } from "../../domain/event";
-import logger, { loggerUseCases } from "../../infrastructure/logger";
-import { UIEventBus } from "../../infrastructure/ui/UIEventBus";
-
-export type { TimezoneLocale };
+export interface TimezoneLocale {
+  timezone: string;
+  locale: string;
+}
 
 const DEBUG_MODE_SETTING_KEY = "app.debug_mode";
 const TIMEZONE_SETTING_KEY = "app.timezone";

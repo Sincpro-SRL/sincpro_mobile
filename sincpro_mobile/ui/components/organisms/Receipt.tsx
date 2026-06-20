@@ -1,7 +1,6 @@
+import { FormatterMap, LabelMap } from "@sincpro/mobile/domain/receipt";
 import React, { useMemo } from "react";
 import { Platform, ScrollView, Text, View } from "react-native";
-
-import { FormatterMap, LabelMap } from "../../../domain/receipt";
 
 const isPrimitive = (value: any): value is string | number | boolean | null | undefined =>
   value == null || ["string", "number", "boolean"].includes(typeof value);

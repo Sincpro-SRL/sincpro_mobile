@@ -1,6 +1,5 @@
+import { NetworkStatus, NetworkType } from "@sincpro/mobile/domain/network";
 import * as Network from "expo-network";
-
-import { NetworkStatus, NetworkType } from "../domain/network";
 
 export const NetworkAdapter = {
   async getStatus(): Promise<NetworkStatus> {

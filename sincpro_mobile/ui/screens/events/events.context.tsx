@@ -1,3 +1,5 @@
+import { DomainEvent } from "@sincpro/mobile/domain/event";
+import { eventService } from "@sincpro/mobile/services/event.service";
 import React, {
   createContext,
   ReactNode,
@@ -7,9 +9,6 @@ import React, {
   useMemo,
   useState,
 } from "react";
-
-import { DomainEvent } from "../../../domain/event";
-import { eventService } from "../../../services/event.service";
 
 type EventFilter = "ALL" | "FAILED" | "ACKNOWLEDGED" | "PENDING";
 

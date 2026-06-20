@@ -1,6 +1,5 @@
+import { Coordinates } from "@sincpro/mobile/domain/geo";
 import * as Location from "expo-location";
-
-import { Coordinates } from "../domain/geo";
 
 export const GeoAdapter = {
   async requestPermission(): Promise<boolean> {

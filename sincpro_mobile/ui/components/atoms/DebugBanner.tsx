@@ -1,7 +1,6 @@
+import { useCommon } from "@sincpro/mobile/entrypoints/ui/common_provider";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { View } from "react-native";
-
-import { useCommon } from "../../../entrypoints/ui/common_provider";
 
 function DebugBanner() {
   const { debugMode } = useCommon();

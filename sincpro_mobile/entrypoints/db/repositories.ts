@@ -1,6 +1,9 @@
-import { EntityCollection, RemoteEntityCollection } from "../../domain/entity_collection";
-import { DomainAppError } from "../../exceptions";
-import { loggerRepositories } from "../../infrastructure/logger";
+import {
+  EntityCollection,
+  RemoteEntityCollection,
+} from "@sincpro/mobile/domain/entity_collection";
+import { DomainAppError } from "@sincpro/mobile/exceptions";
+import { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
 
 export class RepositoriesContainer {
   private registry: Record<string, any> = {};

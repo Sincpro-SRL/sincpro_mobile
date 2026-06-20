@@ -1,5 +1,6 @@
-import { generateUUID } from "../infrastructure/database/utils";
-import { safeJsonParse, safeJsonStringify } from "../tools/utils/serializer";
+import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
+import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
+
 import { ValueObject } from "./value_object";
 
 export type HandlerFn<T> = (payload: T) => Promise<void>;

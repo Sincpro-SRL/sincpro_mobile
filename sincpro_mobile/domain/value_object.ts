@@ -1,4 +1,4 @@
-import { safeJsonParse, safeJsonStringify } from "../tools/utils/serializer";
+import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 
 export interface IValueObject {
   asJSON(): string;
