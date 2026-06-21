@@ -1,7 +1,4 @@
-import {
-  EntityCollection,
-  RemoteEntityCollection,
-} from "@sincpro/mobile/domain/entity_collection";
+import { EntityCollection, RemoteEntityCollection } from "@sincpro/mobile/domain/entity";
 import { DomainAppError } from "@sincpro/mobile/exceptions";
 import { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
 

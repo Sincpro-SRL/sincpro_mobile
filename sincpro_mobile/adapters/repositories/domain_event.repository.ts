@@ -1,5 +1,5 @@
-import { DomainEvent, EEventStatus } from "@sincpro/mobile/domain/event";
-import { ECommonRepository } from "@sincpro/mobile/domain/repository";
+import { DomainEvent, EEventStatus } from "@sincpro/mobile/domain/event_sourcing";
+import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
 import { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 import { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";

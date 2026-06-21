@@ -3,8 +3,8 @@ import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/dom
 import { DomainEventDeadLetterRepository } from "@sincpro/mobile/adapters/repositories/domain_event_dead_letter.repository";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
 import type { IMigration } from "@sincpro/mobile/domain/database";
-import { ECommonRepository } from "@sincpro/mobile/domain/repository";
-import type { Subscriber } from "@sincpro/mobile/domain/subscriber";
+import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
+import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
 import cronCheckNetworkStatus from "@sincpro/mobile/entrypoints/cron/checkNetworkStatus.cron";
 import MIGRATIONS from "@sincpro/mobile/entrypoints/db/migrations";
 import { ActivateDomainSubscriber } from "@sincpro/mobile/entrypoints/queue/activateDomain.subscriber";

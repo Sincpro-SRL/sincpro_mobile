@@ -1,4 +1,4 @@
-import { BluetoothDevice } from "@sincpro/mobile/adapters/Printer.adapter";
+import { BluetoothDevice } from "@sincpro/mobile/domain/print";
 import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
 import { printerService } from "@sincpro/mobile/services/printer.service";
 import { Display, Form } from "@sincpro/mobile-ui";

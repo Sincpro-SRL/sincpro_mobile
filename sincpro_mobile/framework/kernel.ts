@@ -1,5 +1,5 @@
 import type { IMigration } from "@sincpro/mobile/domain/database";
-import type { Subscriber } from "@sincpro/mobile/domain/subscriber";
+import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
 import { repos } from "@sincpro/mobile/entrypoints/db/repositories";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 import { initializeRepositoryFacade } from "@sincpro/mobile/infrastructure/database/mapped";

@@ -1,4 +1,4 @@
-import { ECommonRepository } from "@sincpro/mobile/domain/repository";
+import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
 import { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 

@@ -1,4 +1,4 @@
-import { NetworkStatus, NetworkType } from "@sincpro/mobile/domain/network";
+import { NetworkStatus, NetworkType } from "@sincpro/mobile/domain/connectivity";
 import * as Network from "expo-network";
 
 export const NetworkAdapter = {

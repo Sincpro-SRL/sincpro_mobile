@@ -1,4 +1,4 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event";
+import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
 import { deadLetterQueueUseCases } from "@sincpro/mobile/services/dead_letter_queue.service";
 import React, {
   createContext,

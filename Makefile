@@ -11,10 +11,10 @@ help:
 	@echo "  lint / typecheck / check   ESLint / tsc / ambos"
 	@echo "  verify-format              Falla si format cambia archivos (pre-commit/CI)"
 	@echo "  test                       Ejecuta los tests"
-	@echo "  build                      Compila JS + tipos (tsc + tsc-alias) a ./lib"
+	@echo "  build                      Compila JS + tipos (tsc + tsc-alias) a ./dist"
 	@echo "  update-version VERSION=x.y.z   Actualiza la versión"
 	@echo "  publish                    build + npm publish (usa NPM_TOKEN si está presente)"
-	@echo "  clean                      Borra lib/ y node_modules/"
+	@echo "  clean                      Borra dist/ y node_modules/"
 
 prepare-environment:
 	@pipx install pre-commit
@@ -43,11 +43,11 @@ typecheck:
 check: lint typecheck
 
 build:
-	@echo "🏗️  Compilando $(PACKAGE) -> lib (tsc + tsc-alias)..."
-	@rm -rf lib
+	@echo "🏗️  Compilando $(PACKAGE) -> dist (tsc + tsc-alias)..."
+	@rm -rf dist
 	@npx tsc -p tsconfig.build.json
 	@npx tsc-alias -p tsconfig.build.json
-	@echo "✓ Build listo en ./lib (JS + .d.ts, alias @ resuelto a relativo)"
+	@echo "✓ Build listo en ./dist (JS + .d.ts, alias @ resuelto a relativo)"
 
 test:
 	@echo "Running tests..."
@@ -89,7 +89,7 @@ deploy:
 	@echo "Deploy not applicable for library modules"
 
 clean:
-	@rm -rf lib node_modules
+	@rm -rf dist node_modules
 	@echo "✓ Cleaned"
 
 .PHONY: help prepare-environment init format format-check lint typecheck check build test verify-format update-version publish deploy clean

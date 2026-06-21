@@ -1,4 +1,4 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event";
+import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
 import { ECommonRepository, repos } from "@sincpro/mobile/entrypoints/db";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers/EventBus";

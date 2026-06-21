@@ -2,13 +2,13 @@
   "name": "@sincpro/mobile",
   "version": "0.1.0",
   "description": "Sincpro Mobile framework core: offline-first infra (DB, queue/events, cron), DDD patterns, adapters, AppShell and module-driven composition for React Native",
-  "main": "./lib/index.js",
-  "types": "./lib/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "publishConfig": {
     "access": "public"
   },
   "files": [
-    "lib",
+    "dist",
     "README.md"
   ],
   "sideEffects": false,
@@ -27,7 +27,6 @@
   "author": "Gutierrez, Andres <andres.gutierrez@sincpro.com.bo>",
   "license": "MIT",
   "dependencies": {
-    "@sincpro/mobile-ui": "file:../sincpro_mobile_ui/lib",
     "async-mutex": "^0.5.0",
     "big.js": "^7.0.1",
     "dayjs": "^1.11.18",
@@ -37,7 +36,6 @@
     "uuid": "^13.0.0"
   },
   "peerDependencies": {
-    "@sincpro/printer-expo": ">=1",
     "expo-background-task": "*",
     "expo-clipboard": "*",
     "expo-crypto": "*",
@@ -48,6 +46,7 @@
     "expo-network": "*",
     "expo-print": "*",
     "expo-sharing": "*",
+    "expo-splash-screen": "*",
     "expo-sqlite": "*",
     "expo-task-manager": "*",
     "nativewind": ">=4",
@@ -59,15 +58,10 @@
     "react-native-toast-message": "*",
     "react-native-view-shot": "*",
     "react-native-webview": "*",
-    "react-router-native": ">=6"
-  },
-  "peerDependenciesMeta": {
-    "@sincpro/printer-expo": {
-      "optional": true
-    }
+    "react-router-native": ">=6",
+    "@sincpro/mobile-ui": "^0.2.0"
   },
   "devDependencies": {
-    "@sincpro/printer-expo": "^1.0.6",
     "@types/big.js": "^6.2.2",
     "@types/react": "~19.1.10",
     "@types/uuid": "^10.0.0",
@@ -87,6 +81,7 @@
     "expo-network": "~8.0.8",
     "expo-print": "~15.0.8",
     "expo-sharing": "~14.0.8",
+    "expo-splash-screen": "~31.0.13",
     "expo-sqlite": "~16.0.10",
     "expo-task-manager": "~14.0.9",
     "nativewind": "^4.0.1",
@@ -103,6 +98,28 @@
     "react-native-webview": "13.15.0",
     "react-router-native": "^6.30.0",
     "tsc-alias": "^1.8.17",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "@sincpro/mobile-ui": "^0.2.0"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./domain": "./dist/domain/index.js",
+    "./domain/entity": "./dist/domain/entity/index.js",
+    "./domain/event_sourcing": "./dist/domain/event_sourcing/index.js",
+    "./domain/database": "./dist/domain/database/index.js",
+    "./domain/connectivity": "./dist/domain/connectivity/index.js",
+    "./domain/print": "./dist/domain/print/index.js",
+    "./domain/webview": "./dist/domain/webview/index.js",
+    "./entrypoints/db": "./dist/entrypoints/db/index.js",
+    "./infrastructure/database": "./dist/infrastructure/database/index.js",
+    "./infrastructure/workers": "./dist/infrastructure/workers/index.js",
+    "./ui": "./dist/ui/index.js",
+    "./ui/components/atoms": "./dist/ui/components/atoms/index.js",
+    "./ui/components/molecules": "./dist/ui/components/molecules/index.js",
+    "./ui/components/organisms": "./dist/ui/components/organisms/index.js",
+    "./ui/screens": "./dist/ui/screens/index.js",
+    "./ui/screens/events": "./dist/ui/screens/events/index.js",
+    "./*": "./dist/*.js",
+    "./package.json": "./package.json"
   }
 }

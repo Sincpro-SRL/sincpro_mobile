@@ -1,5 +1,9 @@
-import { Entity, ERemoteState, RemoteEntity } from "./entity";
-import { EntityCollection, ICriteria, RemoteEntityCollection } from "./entity_collection";
+import { Entity, ERemoteState, RemoteEntity } from "@sincpro/mobile/domain/entity/entity";
+import {
+  EntityCollection,
+  ICriteria,
+  RemoteEntityCollection,
+} from "@sincpro/mobile/domain/entity/entity_collection";
 
 export interface IRepository<T extends Entity, C extends EntityCollection<T>> {
   save(entity: T | T[] | C): Promise<void>;
@@ -32,11 +36,4 @@ export interface IRemoteRepository<T extends RemoteEntity> extends IRepository<
   findByRemoteIdSync?(remoteId: number): T | null;
 
   findByRemoteIdsSync?(remoteIds: number[]): RemoteEntityCollection<T>;
-}
-
-export enum ECommonRepository {
-  DATABASE_TABLE = "common.databaseTable",
-  DOMAIN_EVENT = "common.domainEvent",
-  DOMAIN_EVENT_DEAD_LETTER = "common.domainEventDeadLetter",
-  SETTINGS = "common.settings",
 }

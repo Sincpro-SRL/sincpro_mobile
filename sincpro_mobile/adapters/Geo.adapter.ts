@@ -1,4 +1,4 @@
-import { Coordinates } from "@sincpro/mobile/domain/geo";
+import { Coordinates } from "@sincpro/mobile/domain/connectivity";
 import * as Location from "expo-location";
 
 export const GeoAdapter = {

@@ -1,4 +1,4 @@
-import { DomainEvent } from "./event";
+import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing/domain_event";
 
 export abstract class Subscriber {
   public abstract listen: (typeof DomainEvent)[];

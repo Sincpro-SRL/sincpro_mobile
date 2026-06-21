@@ -1,5 +1,5 @@
 import type { IMigration } from "@sincpro/mobile/domain/database";
-import type { Subscriber } from "@sincpro/mobile/domain/subscriber";
+import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 
 export abstract class DomainModule {

@@ -1,4 +1,4 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event";
+import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
 import EventRow from "@sincpro/mobile/ui/components/organisms/EventRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import { EVariantScreenHeader } from "@sincpro/mobile-ui/widgets/ScreenHeader";

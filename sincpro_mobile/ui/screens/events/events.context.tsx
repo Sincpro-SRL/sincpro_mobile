@@ -1,4 +1,4 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event";
+import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
 import { eventService } from "@sincpro/mobile/services/event.service";
 import React, {
   createContext,

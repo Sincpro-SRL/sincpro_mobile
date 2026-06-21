@@ -1,5 +1,4 @@
-import { BluetoothDevice } from "@sincpro/mobile/adapters/Printer.adapter";
-import { ISelectedPrinter } from "@sincpro/mobile/domain/print";
+import { BluetoothDevice, ISelectedPrinter } from "@sincpro/mobile/domain/print";
 import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
 import { printerService } from "@sincpro/mobile/services/printer.service";
 import { BluetoothDeviceSelectorModal } from "@sincpro/mobile/ui/components/molecules/BluetoothDeviceSelectorModal";

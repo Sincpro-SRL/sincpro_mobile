@@ -1,4 +1,4 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event";
+import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
 
 export class PrintImageRequestedEvent extends DomainEvent {
   static readonly name = "common.print.v1.image_requested";

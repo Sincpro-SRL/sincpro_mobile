@@ -1,6 +1,6 @@
 import { NetworkAdapter } from "@sincpro/mobile/adapters/Network.adapter";
-import { InternetIsDownEvent, InternetIsUpEvent } from "@sincpro/mobile/domain/event";
-import { NetworkStatus } from "@sincpro/mobile/domain/network";
+import { NetworkStatus } from "@sincpro/mobile/domain/connectivity";
+import { InternetIsDownEvent, InternetIsUpEvent } from "@sincpro/mobile/domain/events";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { UI_NOTIFICATION_EVENT } from "@sincpro/mobile/infrastructure/ui/events";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";

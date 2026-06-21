@@ -1,5 +1,8 @@
 import { BluetoothAdapter } from "@sincpro/mobile/adapters/Bluetooth.adapter";
-import { BluetoothPermissionStatus, BluetoothStatus } from "@sincpro/mobile/domain/bluetooth";
+import {
+  BluetoothPermissionStatus,
+  BluetoothStatus,
+} from "@sincpro/mobile/domain/connectivity";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { UI_NOTIFICATION_EVENT } from "@sincpro/mobile/infrastructure/ui/events";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";

@@ -1,6 +1,6 @@
 import { IDatabaseTable } from "@sincpro/mobile/domain/database";
-import { EntityCollection, ICriteria } from "@sincpro/mobile/domain/entity_collection";
-import { ECommonRepository } from "@sincpro/mobile/domain/repository";
+import { EntityCollection, ICriteria } from "@sincpro/mobile/domain/entity";
+import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 import logger from "@sincpro/mobile/infrastructure/logger";
 

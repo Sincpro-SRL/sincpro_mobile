@@ -1,14 +1,12 @@
 import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
 import { DomainEventDeadLetterRepository } from "@sincpro/mobile/adapters/repositories/domain_event_dead_letter.repository";
+import { DomainEvent, EventName, Subscriber } from "@sincpro/mobile/domain/event_sourcing";
 import {
-  DomainEvent,
-  EventName,
   InternetIsDownEvent,
   InternetIsUpEvent,
   QueueEndEvent,
   QueueStartEvent,
-} from "@sincpro/mobile/domain/event";
-import { Subscriber } from "@sincpro/mobile/domain/subscriber";
+} from "@sincpro/mobile/domain/events";
 import { DomainNetworkError } from "@sincpro/mobile/exceptions";
 import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
