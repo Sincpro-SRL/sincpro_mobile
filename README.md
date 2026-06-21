@@ -1,6 +1,27 @@
 # @sincpro/mobile
 
-Core del framework móvil Sincpro (React Native / Expo): infraestructura offline-first (DB, cola/eventos, cron), patrones DDD, adapters base, composición module-driven y el `AppShell`. Consume el design system `@sincpro/mobile-ui`.
+Core del **framework móvil Sincpro** (React Native / Expo): infraestructura offline-first (DB, cola/eventos, cron), patrones DDD, adapters base, composición **module-driven** y el `AppShell`. Consume el design system `@sincpro/mobile-ui`.
+
+> 🤖 **¿Sos un agente de IA?** Leé primero [`AGENTS.md`](AGENTS.md) — orientación rápida del ecosistema, patrones y trampas. Si algo se comporta raro, [`docs/GOTCHAS.md`](docs/GOTCHAS.md).
+
+## Filosofía
+
+El objetivo es **generar apps móviles de negocio muy rápido** componiendo piezas estables, no escribir cada app desde cero. Principios:
+
+- **Framework, no monolito.** Un ecosistema de paquetes publicables; cada app es delgada y declara solo sus dominios.
+- **Module-driven + inversión de dependencia.** El core no conoce los negocios. Cada dominio es un `DomainModule` que la app registra; el `orchestrator` alimenta cola, repos, migraciones, cron y temas desde los módulos registrados. Agregar/mover un dominio no toca el core.
+- **Offline-first.** SQLite + cola de eventos persistente (con DLQ y reintentos) + sincronización; la app funciona sin red y reconcilia al volver.
+- **Hexagonal.** El dominio define puertos (`IPrinterDriver`, `IRepository`, `IRemoteClient`); los adapters concretos viven afuera y se inyectan. El core es agnóstico de hardware y de backend.
+- **Frontera real verificable.** Capas con dirección estricta `apps → mobile-odoo → mobile → mobile-ui`; el design system no sabe de negocio; los enums/eventos tienen un punto único de export.
+
+## Ecosistema
+
+| Paquete                | Rol                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `@sincpro/mobile`      | Core: infra, patrones DDD, `framework/` (DomainModule, createApp, orchestrator), `AppShell` |
+| `@sincpro/mobile-ui`   | Design system standalone (sin router, sin dominios)                                         |
+| `@sincpro/mobile-odoo` | Integración Odoo **opcional** (OdooClient, auth, server, partner)                           |
+| `sincpro-mobile-<app>` | Apps de negocio (tickets, distribution) que componen lo anterior                            |
 
 ## Instalación
 
@@ -15,8 +36,9 @@ npx expo install @sincpro/mobile @sincpro/mobile-ui
 Una app define sus dominios como **clases que extienden `DomainModule`** y las compone con `createAppShell`:
 
 ```tsx
-import { createAppShell, createTheme, DomainModule } from "@sincpro/mobile";
-import type { Subscriber } from "@sincpro/mobile/domain/subscriber";
+import { createAppShell, createTheme } from "@sincpro/mobile";
+import { DomainModule } from "@sincpro/mobile/framework/domain_module";
+import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
 
 class VentasModule extends DomainModule {
   readonly key = "VENTAS";
@@ -55,20 +77,15 @@ export default createAppShell({
 Las primitivas y capas se importan por subpath, p. ej.:
 
 ```ts
-import { DomainModule } from "@sincpro/mobile/entrypoints/app/domain_module";
-import type { Subscriber } from "@sincpro/mobile/domain/subscriber";
+import { DomainModule } from "@sincpro/mobile/framework/domain_module";
+import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
 import { setPrinterDriver } from "@sincpro/mobile/domain/print";
 ```
 
 ## Impresora (opcional)
 
-El core es agnóstico del hardware: define el puerto `IPrinterDriver` (`@sincpro/mobile/domain/print`). La app registra un driver concreto al bootstrap:
-
-```ts
-import { setPrinterDriver } from "@sincpro/mobile/domain/print";
-setPrinterDriver(miDriver);
-```
+El core es agnóstico del hardware: define el puerto `IPrinterDriver` (`@sincpro/mobile/domain/print`). La app registra un driver concreto al bootstrap (vía `printerService.setDriver(...)`); si no registra ninguno, el driver Noop degrada con un warning.
 
 ## Desarrollo
 
-Todo vía Makefile: `make build` (tsc → `lib/`), `make check` (lint + typecheck), `make format`, `make publish`.
+Todo vía Makefile. Dos comandos de calidad: `make format` (auto-fix: eslint --fix + prettier + typecheck) y `make verify-format` (gate de CI: corre `format` y falla si quedó algo sin formatear/commitear — cubre lint + formato + tipos). Además `make build` (tsc + tsc-alias → `dist/`) y `make publish`. Detalle del workflow y guardrails en [`AGENTS.md`](AGENTS.md).

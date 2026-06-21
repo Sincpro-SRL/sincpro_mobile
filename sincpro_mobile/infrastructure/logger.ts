@@ -28,14 +28,14 @@ const Colors = {
   White: "\x1b[37m",
 };
 
-const enum ELogLevel {
+enum ELogLevel {
   DEBUG = "DEBUG",
   INFO = "INFO",
   WARN = "WARN",
   ERROR = "ERROR",
 }
 
-const enum EApplicationLogger {
+enum EApplicationLogger {
   GLOBAL = "GLOBAL",
   ODOO_CLIENT = "ODOO_CLIENT",
   ADAPTER = "ADAPTER",
