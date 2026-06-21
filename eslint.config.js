@@ -17,6 +17,9 @@ module.exports = defineConfig([
     },
     settings: {
       react: { version: "detect" },
+      "import/resolver": {
+        typescript: { project: "./tsconfig.json" },
+      },
     },
     rules: {
       "simple-import-sort/imports": "error",

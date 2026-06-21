@@ -3,19 +3,6 @@
 PACKAGE := @sincpro/mobile
 VERSION := $(shell node -p "require('./package.json').version")
 
-help:
-	@echo "$(PACKAGE) — comandos:"
-	@echo "  init                       prepare-environment + yarn install"
-	@echo "  format                     Ordena imports + auto-fix (eslint) y formatea (prettier)"
-	@echo "  format-check               Verifica formato (prettier, no escribe)"
-	@echo "  lint / typecheck / check   ESLint / tsc / ambos"
-	@echo "  verify-format              Falla si format cambia archivos (pre-commit/CI)"
-	@echo "  test                       Ejecuta los tests"
-	@echo "  build                      Compila JS + tipos (tsc + tsc-alias) a ./dist"
-	@echo "  update-version VERSION=x.y.z   Actualiza la versión"
-	@echo "  publish                    build + npm publish (usa NPM_TOKEN si está presente)"
-	@echo "  clean                      Borra dist/ y node_modules/"
-
 prepare-environment:
 	@pipx install pre-commit
 	@pipx ensurepath
@@ -25,22 +12,17 @@ init: prepare-environment
 	@echo "Installing Node.js dependencies..."
 	@yarn install
 
-format:
-	@echo "🔤 Ordenando imports + auto-fix (eslint)..."
-	@npx eslint . --fix
-	@echo "🎨 Formateando (prettier)..."
-	@npx prettier --write "**/*.{ts,tsx,js,jsx,json,yml,yaml,md}" --ignore-path .prettierignore --ignore-unknown
-
-format-check:
-	@npx prettier --check "**/*.{ts,tsx,js,jsx,json,yml,yaml,md}" --ignore-path .prettierignore --ignore-unknown
-
-lint:
-	@npx eslint .
 
 typecheck:
 	@npx tsc --noEmit
 
-check: lint typecheck
+format:
+	@echo "🔤 Ordenando imports + auto-fix (eslint)..."
+	@npx eslint . --fix
+	@echo "🎨 Formateando (prettier)..."
+	@npx prettier --experimental-cli --write "**/*.{ts,tsx,js,jsx,json,yml,yaml,md}" --ignore-path .prettierignore --ignore-unknown
+	@echo "Check types after formatting..."
+	@make typecheck
 
 build:
 	@echo "🏗️  Compilando $(PACKAGE) -> dist (tsc + tsc-alias)..."
@@ -92,4 +74,4 @@ clean:
 	@rm -rf dist node_modules
 	@echo "✓ Cleaned"
 
-.PHONY: help prepare-environment init format format-check lint typecheck check build test verify-format update-version publish deploy clean
+.PHONY: prepare-environment init format typecheck build test verify-format update-version publish deploy clean
