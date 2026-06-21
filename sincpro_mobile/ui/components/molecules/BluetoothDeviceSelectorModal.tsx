@@ -1,3 +1,6 @@
+import { BluetoothDevice } from "@sincpro/mobile/domain/print";
+import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
+import { printerService } from "@sincpro/mobile/services/printer.service";
 import { Display, Form } from "@sincpro/mobile-ui";
 import { BottomSheet } from "@sincpro/mobile-ui/Dialog/BottomSheet";
 import PrinterIcon from "@sincpro/mobile-ui/icons/PrinterIcon";
@@ -5,10 +8,6 @@ import { theme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useCallback, useEffect, useState } from "react";
 import { FlatList, RefreshControl, TouchableOpacity, View } from "react-native";
-
-import { BluetoothDevice } from "../../../adapters/Printer.adapter";
-import { bluetoothService } from "../../../services/bluetooth.service";
-import { printerService } from "../../../services/printer.service";
 
 interface BluetoothDeviceSelectorModalProps {
   visible: boolean;

@@ -1,12 +1,17 @@
+import { createApp } from "@sincpro/mobile/framework/createApp";
+import type { DomainModule } from "@sincpro/mobile/framework/domain_module";
+import { ToastHost } from "@sincpro/mobile/infrastructure/ui/ToastHost";
+import { setActiveTheme, type ThemeTokens, themeToVars } from "@sincpro/mobile-ui/theme";
+import { useAppFonts } from "@sincpro/mobile-ui/theme/typography";
+import * as SplashScreen from "expo-splash-screen";
+import { vars } from "nativewind";
 import { type ComponentType, type ReactNode, useEffect, useState } from "react";
+import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context";
 import { NativeRouter } from "react-router-native";
 
-import { ToastHost } from "../../infrastructure/ui/ToastHost";
-import { createApp } from "../app/createApp";
-import type { DomainModule } from "../app/domain_module";
 import { CommonProvider } from "./common_provider";
 import { ActiveDomainApp, type DomainApp, DomainSwitcherProvider } from "./domain_switcher";
 
@@ -17,6 +22,7 @@ export interface AppShellConfig {
   ui: Record<string, ComponentType>;
   activeDomain: string;
   providers?: ProviderComponent[];
+  theme?: ThemeTokens;
 }
 
 function withProviders(providers: ProviderComponent[], children: ReactNode): ReactNode {
@@ -36,8 +42,14 @@ export function createAppShell(config: AppShellConfig): ComponentType {
     }));
   const providers = config.providers ?? [];
 
+  if (config.theme) {
+    setActiveTheme(config.theme);
+  }
+  const themeStyle = config.theme ? vars(themeToVars(config.theme)) : undefined;
+
   return function AppShell() {
     const [isReady, setIsReady] = useState(false);
+    const fontsLoaded = useAppFonts();
 
     useEffect(() => {
       let active = true;
@@ -49,27 +61,39 @@ export function createAppShell(config: AppShellConfig): ComponentType {
       };
     }, []);
 
-    if (!isReady) {
+    useEffect(() => {
+      SplashScreen.preventAutoHideAsync().catch(() => {});
+    }, []);
+
+    useEffect(() => {
+      if (fontsLoaded && isReady) {
+        SplashScreen.hideAsync().catch(() => {});
+      }
+    }, [fontsLoaded, isReady]);
+
+    if (!isReady || !fontsLoaded) {
       return null;
     }
 
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-          <KeyboardProvider>
-            <CommonProvider>
-              {withProviders(
-                providers,
-                <DomainSwitcherProvider apps={apps} initialDomain={config.activeDomain}>
-                  <NativeRouter>
-                    <ActiveDomainApp />
-                  </NativeRouter>
-                </DomainSwitcherProvider>,
-              )}
-              <ToastHost />
-            </CommonProvider>
-          </KeyboardProvider>
-        </SafeAreaProvider>
+        <View className="flex-1" style={themeStyle}>
+          <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+            <KeyboardProvider>
+              <CommonProvider>
+                {withProviders(
+                  providers,
+                  <DomainSwitcherProvider apps={apps} initialDomain={config.activeDomain}>
+                    <NativeRouter>
+                      <ActiveDomainApp />
+                    </NativeRouter>
+                  </DomainSwitcherProvider>,
+                )}
+                <ToastHost />
+              </CommonProvider>
+            </KeyboardProvider>
+          </SafeAreaProvider>
+        </View>
       </GestureHandlerRootView>
     );
   };

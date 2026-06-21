@@ -1,8 +1,8 @@
-import { IDatabaseTable } from "../../domain/database";
-import { EntityCollection, ICriteria } from "../../domain/entity_collection";
-import { ECommonRepository } from "../../domain/repository";
-import { DBCursor } from "../../infrastructure/database";
-import logger from "../../infrastructure/logger";
+import { IDatabaseTable } from "@sincpro/mobile/domain/database";
+import { EntityCollection, ICriteria } from "@sincpro/mobile/domain/entity";
+import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
+import { DBCursor } from "@sincpro/mobile/infrastructure/database";
+import logger from "@sincpro/mobile/infrastructure/logger";
 
 class DatabaseTableRepositoryImpl {
   public readonly name = ECommonRepository.DATABASE_TABLE;

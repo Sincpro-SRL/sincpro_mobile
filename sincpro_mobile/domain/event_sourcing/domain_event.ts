@@ -1,6 +1,6 @@
-import { generateUUID } from "../infrastructure/database/utils";
-import { safeJsonParse, safeJsonStringify } from "../tools/utils/serializer";
-import { ValueObject } from "./value_object";
+import { ValueObject } from "@sincpro/mobile/domain/entity/value_object";
+import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
+import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 
 export type HandlerFn<T> = (payload: T) => Promise<void>;
 export type EventName = string;
@@ -225,78 +225,4 @@ export class DomainEvent extends ValueObject {
   get isPartOfTransaction(): boolean {
     return this.correlationId !== null;
   }
-}
-
-export class QueueStartEvent extends DomainEvent {
-  static readonly name = "common.queue_event.v2.start";
-  static readonly label = "Iniciando procesamiento de cola";
-  static readonly requiresNetwork = false;
-
-  readonly name = QueueStartEvent.name;
-  readonly label = QueueStartEvent.label;
-  readonly requiresNetwork = QueueStartEvent.requiresNetwork;
-}
-
-export class QueueEndEvent extends DomainEvent {
-  static readonly name = "common.queue_event.v2.end";
-  static readonly label = "Finalizando procesamiento de cola";
-  static readonly requiresNetwork = false;
-
-  readonly name = QueueEndEvent.name;
-  readonly label = QueueEndEvent.label;
-  readonly requiresNetwork = QueueEndEvent.requiresNetwork;
-}
-
-export class QueueAttemptEndEvent extends DomainEvent {
-  static readonly name = "common.queue_event.v2.attempt_end";
-  static readonly label = "Intento de procesamiento finalizado";
-  static readonly requiresNetwork = false;
-
-  readonly name = QueueAttemptEndEvent.name;
-  readonly label = QueueAttemptEndEvent.label;
-  readonly requiresNetwork = QueueAttemptEndEvent.requiresNetwork;
-}
-
-export class InternetIsDownEvent extends DomainEvent {
-  static readonly name = "common.network.v2.internet_is_down";
-  static readonly label = "Internet desconectado";
-  static readonly requiresNetwork = false;
-
-  readonly name = InternetIsDownEvent.name;
-  readonly label = InternetIsDownEvent.label;
-  readonly requiresNetwork = InternetIsDownEvent.requiresNetwork;
-}
-
-export class InternetIsUpEvent extends DomainEvent {
-  static readonly name = "common.network.v2.internet_is_up";
-  static readonly label = "Internet conectado";
-  static readonly requiresNetwork = true;
-
-  readonly name = InternetIsUpEvent.name;
-  readonly label = InternetIsUpEvent.label;
-  readonly requiresNetwork = InternetIsUpEvent.requiresNetwork;
-}
-
-export class ActivateDomainEvent extends DomainEvent {
-  static readonly name = "common.domain.v2.activate";
-  static readonly label = "Activar dominio";
-  static readonly requiresNetwork = false;
-
-  readonly name = ActivateDomainEvent.name;
-  readonly label = ActivateDomainEvent.label;
-  readonly requiresNetwork = ActivateDomainEvent.requiresNetwork;
-
-  domain: string = "";
-}
-
-export class DeactivateDomainEvent extends DomainEvent {
-  static readonly name = "common.domain.v2.deactivate";
-  static readonly label = "Desactivar dominio";
-  static readonly requiresNetwork = false;
-
-  readonly name = DeactivateDomainEvent.name;
-  readonly label = DeactivateDomainEvent.label;
-  readonly requiresNetwork = DeactivateDomainEvent.requiresNetwork;
-
-  domain: string = "";
 }

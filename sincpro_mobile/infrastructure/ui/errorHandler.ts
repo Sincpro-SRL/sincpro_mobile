@@ -1,9 +1,12 @@
+import { DomainException } from "@sincpro/mobile/exceptions";
 import { Alert } from "react-native";
 
-import { DomainException } from "../../exceptions";
-
 export function installGlobalErrorHandler(): void {
-  const errorUtils = ErrorUtils as any;
+  const errorUtils = (globalThis as any).ErrorUtils;
+  if (!errorUtils?.setGlobalHandler) {
+    return;
+  }
+
   const defaultHandler = errorUtils.getGlobalHandler
     ? errorUtils.getGlobalHandler()
     : errorUtils._globalHandler;
@@ -11,7 +14,9 @@ export function installGlobalErrorHandler(): void {
   errorUtils.setGlobalHandler((error: any, isFatal?: boolean) => {
     if (error instanceof DomainException) {
       Alert.alert("Error", error.message, [{ text: "OK" }], { cancelable: true });
-    } else {
+      return;
+    }
+    if (typeof defaultHandler === "function") {
       defaultHandler(error, isFatal);
     }
   });

@@ -1,7 +1,7 @@
-import { DomainEvent } from "../domain/event";
-import { ECommonRepository, repos } from "../entrypoints/db";
-import { loggerUseCases } from "../infrastructure/logger";
-import { EventBus } from "../infrastructure/workers/EventBus";
+import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { ECommonRepository, repos } from "@sincpro/mobile/entrypoints/db";
+import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { EventBus } from "@sincpro/mobile/infrastructure/workers/EventBus";
 
 class DeadLetterQueueUseCases {
   private get repository() {

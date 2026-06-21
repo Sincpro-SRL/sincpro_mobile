@@ -7,8 +7,8 @@ import {
   type IPrintImageMessage,
   type IPrintRequestMessage,
   type TWebViewMessage,
-} from "../domain/webview";
-import { safeJsonParse } from "../tools/utils/serializer";
+} from "@sincpro/mobile/domain/webview";
+import { safeJsonParse } from "@sincpro/mobile/tools/utils/serializer";
 
 class WebViewService {
   private interceptors: Map<string, IInjectedScript> = new Map();

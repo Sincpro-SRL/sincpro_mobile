@@ -1,5 +1,5 @@
-import { loggerCronJobs } from "../../infrastructure/logger";
-import type { CronWorker } from "../../infrastructure/workers";
+import { loggerCronJobs } from "@sincpro/mobile/infrastructure/logger";
+import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 
 interface SyncState {
   domains: Set<string>;

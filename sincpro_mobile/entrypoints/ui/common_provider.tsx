@@ -1,4 +1,8 @@
-import type { TimezoneLocale } from "@sincpro/mobile-ui/lib/timezone";
+import { GeoAdapter } from "@sincpro/mobile/adapters/Geo.adapter";
+import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
+import { QueueEndEvent, QueueStartEvent } from "@sincpro/mobile/domain/events";
+import logger, { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 import {
   createContext,
   ReactNode,
@@ -10,17 +14,16 @@ import {
   useState,
 } from "react";
 
-import { GeoAdapter } from "../../adapters/Geo.adapter";
-import { SettingsRepository } from "../../adapters/repositories/setting.repository";
-import { QueueEndEvent, QueueStartEvent } from "../../domain/event";
-import logger, { loggerUseCases } from "../../infrastructure/logger";
-import { UIEventBus } from "../../infrastructure/ui/UIEventBus";
-
-export type { TimezoneLocale };
+export interface TimezoneLocale {
+  timezone: string;
+  locale: string;
+}
 
 const DEBUG_MODE_SETTING_KEY = "app.debug_mode";
 const TIMEZONE_SETTING_KEY = "app.timezone";
 const LOCALE_SETTING_KEY = "app.locale";
+
+const QUEUE_MIN_VISIBLE_MS = 1200;
 
 interface QueueEventPayload {
   event: string;
@@ -81,6 +84,7 @@ export function CommonProvider({ children }: CommonProviderProps) {
   const [timezone, setTimezone] = useState<string | null>(null);
 
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const queueClearTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     async function loadDebugMode() {
@@ -182,20 +186,32 @@ export function CommonProvider({ children }: CommonProviderProps) {
       const { event, success = true, error } = payload as QueueEventPayload;
 
       setCurrentActivity((current) => {
-        if (current?.id === event) {
-          if (!success) {
-            const failedActivity: Activity = { ...current, status: "failed", error };
-            setLastError(failedActivity);
+        if (current?.id !== event) return current;
 
-            if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
-            errorTimeoutRef.current = setTimeout(() => {
-              setLastError(undefined);
-              errorTimeoutRef.current = null;
-            }, 10000);
-          }
+        if (!success) {
+          const failedActivity: Activity = { ...current, status: "failed", error };
+          setLastError(failedActivity);
+
+          if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
+          errorTimeoutRef.current = setTimeout(() => {
+            setLastError(undefined);
+            errorTimeoutRef.current = null;
+          }, 10000);
           return undefined;
         }
-        return current;
+
+        // Éxito: mantener visible un mínimo para que la cola sea perceptible
+        // aunque el evento se procese al instante.
+        const remaining = QUEUE_MIN_VISIBLE_MS - (Date.now() - current.startedAt);
+        if (remaining > 0) {
+          if (queueClearTimeoutRef.current) clearTimeout(queueClearTimeoutRef.current);
+          queueClearTimeoutRef.current = setTimeout(() => {
+            setCurrentActivity((c) => (c?.id === event ? undefined : c));
+            queueClearTimeoutRef.current = null;
+          }, remaining);
+          return current;
+        }
+        return undefined;
       });
     }
 
@@ -238,6 +254,7 @@ export function CommonProvider({ children }: CommonProviderProps) {
       loggerUseCases.debug("[CommonProvider] Cleaning up UIEventBus listeners");
       unsubscribers.forEach((unsub) => unsub());
       if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
+      if (queueClearTimeoutRef.current) clearTimeout(queueClearTimeoutRef.current);
     };
   }, []);
 

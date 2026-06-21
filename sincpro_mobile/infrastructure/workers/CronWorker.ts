@@ -1,8 +1,7 @@
+import { loggerCronJobs } from "@sincpro/mobile/infrastructure/logger";
+import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 import * as BackgroundTask from "expo-background-task";
 import * as TaskManager from "expo-task-manager";
-
-import { loggerCronJobs } from "../logger";
-import { UIEventBus } from "../ui/UIEventBus";
 
 export type CronJob = () => Promise<void>;
 

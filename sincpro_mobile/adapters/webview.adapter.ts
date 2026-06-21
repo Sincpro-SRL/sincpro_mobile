@@ -1,4 +1,4 @@
-import { EWebViewMessageType, type IInjectedScript } from "../domain/webview";
+import { EWebViewMessageType, type IInjectedScript } from "@sincpro/mobile/domain/webview";
 
 const HTML2CANVAS_CDN =
   "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";

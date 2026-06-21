@@ -6,7 +6,7 @@ const reactPlugin = require("eslint-plugin-react");
 
 module.exports = defineConfig([
   {
-    ignores: ["lib/**", "dist/**", "node_modules/**"],
+    ignores: ["dist/**", "node_modules/**"],
   },
   expoConfig,
   eslintPluginPrettierRecommended,
@@ -17,6 +17,9 @@ module.exports = defineConfig([
     },
     settings: {
       react: { version: "detect" },
+      "import/resolver": {
+        typescript: { project: "./tsconfig.json" },
+      },
     },
     rules: {
       "simple-import-sort/imports": "error",

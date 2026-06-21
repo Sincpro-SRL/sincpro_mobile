@@ -2,308 +2,16 @@
   "name": "@sincpro/mobile",
   "version": "0.1.0",
   "description": "Sincpro Mobile framework core: offline-first infra (DB, queue/events, cron), DDD patterns, adapters, AppShell and module-driven composition for React Native",
-  "source": "./sincpro_mobile/index.ts",
-  "main": "./lib/module/index.js",
-  "module": "./lib/module/index.js",
-  "react-native": "./sincpro_mobile/index.ts",
-  "types": "./lib/typescript/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "publishConfig": {
     "access": "public"
   },
-  "exports": {
-    ".": {
-      "source": "./sincpro_mobile/index.ts",
-      "types": "./lib/typescript/index.d.ts",
-      "react-native": "./sincpro_mobile/index.ts",
-      "default": "./lib/module/index.js"
-    },
-    "./domain": {
-      "source": "./sincpro_mobile/domain/index.ts",
-      "types": "./lib/typescript/domain/index.d.ts",
-      "react-native": "./sincpro_mobile/domain/index.ts",
-      "default": "./lib/module/domain/index.js"
-    },
-    "./domain/event": {
-      "source": "./sincpro_mobile/domain/event.ts",
-      "types": "./lib/typescript/domain/event.d.ts",
-      "react-native": "./sincpro_mobile/domain/event.ts",
-      "default": "./lib/module/domain/event.js"
-    },
-    "./domain/entity": {
-      "source": "./sincpro_mobile/domain/entity.ts",
-      "types": "./lib/typescript/domain/entity.d.ts",
-      "react-native": "./sincpro_mobile/domain/entity.ts",
-      "default": "./lib/module/domain/entity.js"
-    },
-    "./domain/entity_collection": {
-      "source": "./sincpro_mobile/domain/entity_collection.ts",
-      "types": "./lib/typescript/domain/entity_collection.d.ts",
-      "react-native": "./sincpro_mobile/domain/entity_collection.ts",
-      "default": "./lib/module/domain/entity_collection.js"
-    },
-    "./domain/subscriber": {
-      "source": "./sincpro_mobile/domain/subscriber.ts",
-      "types": "./lib/typescript/domain/subscriber.d.ts",
-      "react-native": "./sincpro_mobile/domain/subscriber.ts",
-      "default": "./lib/module/domain/subscriber.js"
-    },
-    "./domain/repository": {
-      "source": "./sincpro_mobile/domain/repository.ts",
-      "types": "./lib/typescript/domain/repository.d.ts",
-      "react-native": "./sincpro_mobile/domain/repository.ts",
-      "default": "./lib/module/domain/repository.js"
-    },
-    "./domain/icon": {
-      "source": "./sincpro_mobile/domain/icon.ts",
-      "types": "./lib/typescript/domain/icon.d.ts",
-      "react-native": "./sincpro_mobile/domain/icon.ts",
-      "default": "./lib/module/domain/icon.js"
-    },
-    "./domain/receipt": {
-      "source": "./sincpro_mobile/domain/receipt.ts",
-      "types": "./lib/typescript/domain/receipt.d.ts",
-      "react-native": "./sincpro_mobile/domain/receipt.ts",
-      "default": "./lib/module/domain/receipt.js"
-    },
-    "./domain/database": {
-      "source": "./sincpro_mobile/domain/database.ts",
-      "types": "./lib/typescript/domain/database.d.ts",
-      "react-native": "./sincpro_mobile/domain/database.ts",
-      "default": "./lib/module/domain/database.js"
-    },
-    "./domain/settings": {
-      "source": "./sincpro_mobile/domain/settings.ts",
-      "types": "./lib/typescript/domain/settings.d.ts",
-      "react-native": "./sincpro_mobile/domain/settings.ts",
-      "default": "./lib/module/domain/settings.js"
-    },
-    "./domain/print": {
-      "source": "./sincpro_mobile/domain/print/index.ts",
-      "types": "./lib/typescript/domain/print/index.d.ts",
-      "react-native": "./sincpro_mobile/domain/print/index.ts",
-      "default": "./lib/module/domain/print/index.js"
-    },
-    "./domain/geo": {
-      "source": "./sincpro_mobile/domain/geo.ts",
-      "types": "./lib/typescript/domain/geo.d.ts",
-      "react-native": "./sincpro_mobile/domain/geo.ts",
-      "default": "./lib/module/domain/geo.js"
-    },
-    "./domain/webview/events": {
-      "source": "./sincpro_mobile/domain/webview/events.ts",
-      "types": "./lib/typescript/domain/webview/events.d.ts",
-      "react-native": "./sincpro_mobile/domain/webview/events.ts",
-      "default": "./lib/module/domain/webview/events.js"
-    },
-    "./infrastructure/logger": {
-      "source": "./sincpro_mobile/infrastructure/logger.ts",
-      "types": "./lib/typescript/infrastructure/logger.d.ts",
-      "react-native": "./sincpro_mobile/infrastructure/logger.ts",
-      "default": "./lib/module/infrastructure/logger.js"
-    },
-    "./infrastructure/database": {
-      "source": "./sincpro_mobile/infrastructure/database/index.ts",
-      "types": "./lib/typescript/infrastructure/database/index.d.ts",
-      "react-native": "./sincpro_mobile/infrastructure/database/index.ts",
-      "default": "./lib/module/infrastructure/database/index.js"
-    },
-    "./infrastructure/database/utils": {
-      "source": "./sincpro_mobile/infrastructure/database/utils.ts",
-      "types": "./lib/typescript/infrastructure/database/utils.d.ts",
-      "react-native": "./sincpro_mobile/infrastructure/database/utils.ts",
-      "default": "./lib/module/infrastructure/database/utils.js"
-    },
-    "./infrastructure/ui/UIEventBus": {
-      "source": "./sincpro_mobile/infrastructure/ui/UIEventBus.ts",
-      "types": "./lib/typescript/infrastructure/ui/UIEventBus.d.ts",
-      "react-native": "./sincpro_mobile/infrastructure/ui/UIEventBus.ts",
-      "default": "./lib/module/infrastructure/ui/UIEventBus.js"
-    },
-    "./infrastructure/ui/events": {
-      "source": "./sincpro_mobile/infrastructure/ui/events.ts",
-      "types": "./lib/typescript/infrastructure/ui/events.d.ts",
-      "react-native": "./sincpro_mobile/infrastructure/ui/events.ts",
-      "default": "./lib/module/infrastructure/ui/events.js"
-    },
-    "./infrastructure/workers": {
-      "source": "./sincpro_mobile/infrastructure/workers/index.ts",
-      "types": "./lib/typescript/infrastructure/workers/index.d.ts",
-      "react-native": "./sincpro_mobile/infrastructure/workers/index.ts",
-      "default": "./lib/module/infrastructure/workers/index.js"
-    },
-    "./infrastructure/workers/EventBus": {
-      "source": "./sincpro_mobile/infrastructure/workers/EventBus.ts",
-      "types": "./lib/typescript/infrastructure/workers/EventBus.d.ts",
-      "react-native": "./sincpro_mobile/infrastructure/workers/EventBus.ts",
-      "default": "./lib/module/infrastructure/workers/EventBus.js"
-    },
-    "./tools/utils/collections": {
-      "source": "./sincpro_mobile/tools/utils/collections.ts",
-      "types": "./lib/typescript/tools/utils/collections.d.ts",
-      "react-native": "./sincpro_mobile/tools/utils/collections.ts",
-      "default": "./lib/module/tools/utils/collections.js"
-    },
-    "./tools/utils/monetary": {
-      "source": "./sincpro_mobile/tools/utils/monetary.ts",
-      "types": "./lib/typescript/tools/utils/monetary.d.ts",
-      "react-native": "./sincpro_mobile/tools/utils/monetary.ts",
-      "default": "./lib/module/tools/utils/monetary.js"
-    },
-    "./tools/utils/date": {
-      "source": "./sincpro_mobile/tools/utils/date.ts",
-      "types": "./lib/typescript/tools/utils/date.d.ts",
-      "react-native": "./sincpro_mobile/tools/utils/date.ts",
-      "default": "./lib/module/tools/utils/date.js"
-    },
-    "./tools/utils/searchTools": {
-      "source": "./sincpro_mobile/tools/utils/searchTools.ts",
-      "types": "./lib/typescript/tools/utils/searchTools.d.ts",
-      "react-native": "./sincpro_mobile/tools/utils/searchTools.ts",
-      "default": "./lib/module/tools/utils/searchTools.js"
-    },
-    "./tools/utils/Initials": {
-      "source": "./sincpro_mobile/tools/utils/Initials.ts",
-      "types": "./lib/typescript/tools/utils/Initials.d.ts",
-      "react-native": "./sincpro_mobile/tools/utils/Initials.ts",
-      "default": "./lib/module/tools/utils/Initials.js"
-    },
-    "./tools/utils/serializer": {
-      "source": "./sincpro_mobile/tools/utils/serializer.ts",
-      "types": "./lib/typescript/tools/utils/serializer.d.ts",
-      "react-native": "./sincpro_mobile/tools/utils/serializer.ts",
-      "default": "./lib/module/tools/utils/serializer.js"
-    },
-    "./tools/utils/maps": {
-      "source": "./sincpro_mobile/tools/utils/maps.ts",
-      "types": "./lib/typescript/tools/utils/maps.d.ts",
-      "react-native": "./sincpro_mobile/tools/utils/maps.ts",
-      "default": "./lib/module/tools/utils/maps.js"
-    },
-    "./adapters/ReceiptExporter.adapter": {
-      "source": "./sincpro_mobile/adapters/ReceiptExporter.adapter.ts",
-      "types": "./lib/typescript/adapters/ReceiptExporter.adapter.d.ts",
-      "react-native": "./sincpro_mobile/adapters/ReceiptExporter.adapter.ts",
-      "default": "./lib/module/adapters/ReceiptExporter.adapter.js"
-    },
-    "./adapters/webview.adapter": {
-      "source": "./sincpro_mobile/adapters/webview.adapter.ts",
-      "types": "./lib/typescript/adapters/webview.adapter.d.ts",
-      "react-native": "./sincpro_mobile/adapters/webview.adapter.ts",
-      "default": "./lib/module/adapters/webview.adapter.js"
-    },
-    "./adapters/Network.adapter": {
-      "source": "./sincpro_mobile/adapters/Network.adapter.ts",
-      "types": "./lib/typescript/adapters/Network.adapter.d.ts",
-      "react-native": "./sincpro_mobile/adapters/Network.adapter.ts",
-      "default": "./lib/module/adapters/Network.adapter.js"
-    },
-    "./adapters/JsonSerializer.adapter": {
-      "source": "./sincpro_mobile/adapters/JsonSerializer.adapter.ts",
-      "types": "./lib/typescript/adapters/JsonSerializer.adapter.d.ts",
-      "react-native": "./sincpro_mobile/adapters/JsonSerializer.adapter.ts",
-      "default": "./lib/module/adapters/JsonSerializer.adapter.js"
-    },
-    "./adapters/Geo.adapter": {
-      "source": "./sincpro_mobile/adapters/Geo.adapter.ts",
-      "types": "./lib/typescript/adapters/Geo.adapter.d.ts",
-      "react-native": "./sincpro_mobile/adapters/Geo.adapter.ts",
-      "default": "./lib/module/adapters/Geo.adapter.js"
-    },
-    "./services/printer.service": {
-      "source": "./sincpro_mobile/services/printer.service.ts",
-      "types": "./lib/typescript/services/printer.service.d.ts",
-      "react-native": "./sincpro_mobile/services/printer.service.ts",
-      "default": "./lib/module/services/printer.service.js"
-    },
-    "./entrypoints/db": {
-      "source": "./sincpro_mobile/entrypoints/db/index.ts",
-      "types": "./lib/typescript/entrypoints/db/index.d.ts",
-      "react-native": "./sincpro_mobile/entrypoints/db/index.ts",
-      "default": "./lib/module/entrypoints/db/index.js"
-    },
-    "./entrypoints/app/domain_module": {
-      "source": "./sincpro_mobile/entrypoints/app/domain_module.ts",
-      "types": "./lib/typescript/entrypoints/app/domain_module.d.ts",
-      "react-native": "./sincpro_mobile/entrypoints/app/domain_module.ts",
-      "default": "./lib/module/entrypoints/app/domain_module.js"
-    },
-    "./entrypoints/app/orchestrator": {
-      "source": "./sincpro_mobile/entrypoints/app/orchestrator.ts",
-      "types": "./lib/typescript/entrypoints/app/orchestrator.d.ts",
-      "react-native": "./sincpro_mobile/entrypoints/app/orchestrator.ts",
-      "default": "./lib/module/entrypoints/app/orchestrator.js"
-    },
-    "./ui/components/molecules": {
-      "source": "./sincpro_mobile/ui/components/molecules/index.ts",
-      "types": "./lib/typescript/ui/components/molecules/index.d.ts",
-      "react-native": "./sincpro_mobile/ui/components/molecules/index.ts",
-      "default": "./lib/module/ui/components/molecules/index.js"
-    },
-    "./ui/components/organisms": {
-      "source": "./sincpro_mobile/ui/components/organisms/index.ts",
-      "types": "./lib/typescript/ui/components/organisms/index.d.ts",
-      "react-native": "./sincpro_mobile/ui/components/organisms/index.ts",
-      "default": "./lib/module/ui/components/organisms/index.js"
-    },
-    "./ui/components/organisms/Receipt": {
-      "source": "./sincpro_mobile/ui/components/organisms/Receipt.tsx",
-      "types": "./lib/typescript/ui/components/organisms/Receipt.d.ts",
-      "react-native": "./sincpro_mobile/ui/components/organisms/Receipt.tsx",
-      "default": "./lib/module/ui/components/organisms/Receipt.js"
-    },
-    "./ui/screens": {
-      "source": "./sincpro_mobile/ui/screens/index.ts",
-      "types": "./lib/typescript/ui/screens/index.d.ts",
-      "react-native": "./sincpro_mobile/ui/screens/index.ts",
-      "default": "./lib/module/ui/screens/index.js"
-    },
-    "./exceptions": {
-      "source": "./sincpro_mobile/exceptions.ts",
-      "types": "./lib/typescript/exceptions.d.ts",
-      "react-native": "./sincpro_mobile/exceptions.ts",
-      "default": "./lib/module/exceptions.js"
-    },
-    "./*": {
-      "source": "./sincpro_mobile/*",
-      "types": "./lib/typescript/*.d.ts",
-      "react-native": "./sincpro_mobile/*",
-      "default": "./lib/module/*.js"
-    },
-    "./package.json": "./package.json"
-  },
   "files": [
-    "lib",
-    "sincpro_mobile",
-    "!**/__tests__",
-    "!**/*.test.*",
-    "README.md",
-    "LICENSE"
+    "dist",
+    "README.md"
   ],
   "sideEffects": false,
-  "scripts": {
-    "build": "bob build",
-    "prepare": "bob build",
-    "clean": "rm -rf lib",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "typecheck": "tsc --noEmit",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,yml,yaml,md}\" --ignore-path .prettierignore --ignore-unknown",
-    "check": "yarn lint && yarn typecheck"
-  },
-  "react-native-builder-bob": {
-    "source": "sincpro_mobile",
-    "output": "lib",
-    "targets": [
-      [
-        "module",
-        {
-          "esm": true,
-          "configFile": true
-        }
-      ],
-      "typescript"
-    ]
-  },
   "prettier": {
     "printWidth": 94
   },
@@ -319,7 +27,6 @@
   "author": "Gutierrez, Andres <andres.gutierrez@sincpro.com.bo>",
   "license": "MIT",
   "dependencies": {
-    "@sincpro/mobile-ui": "^0.1.2",
     "async-mutex": "^0.5.0",
     "big.js": "^7.0.1",
     "dayjs": "^1.11.18",
@@ -329,7 +36,6 @@
     "uuid": "^13.0.0"
   },
   "peerDependencies": {
-    "@sincpro/printer-expo": ">=1",
     "expo-background-task": "*",
     "expo-clipboard": "*",
     "expo-crypto": "*",
@@ -340,6 +46,7 @@
     "expo-network": "*",
     "expo-print": "*",
     "expo-sharing": "*",
+    "expo-splash-screen": "*",
     "expo-sqlite": "*",
     "expo-task-manager": "*",
     "nativewind": ">=4",
@@ -351,18 +58,10 @@
     "react-native-toast-message": "*",
     "react-native-view-shot": "*",
     "react-native-webview": "*",
-    "react-router-native": ">=6"
-  },
-  "peerDependenciesMeta": {
-    "@sincpro/printer-expo": {
-      "optional": true
-    }
+    "react-router-native": ">=6",
+    "@sincpro/mobile-ui": "^0.2.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.25.0",
-    "@babel/plugin-proposal-class-properties": "^7.18.6",
-    "@babel/plugin-proposal-decorators": "^7.25.0",
-    "@sincpro/printer-expo": "^1.0.6",
     "@types/big.js": "^6.2.2",
     "@types/react": "~19.1.10",
     "@types/uuid": "^10.0.0",
@@ -382,13 +81,13 @@
     "expo-network": "~8.0.8",
     "expo-print": "~15.0.8",
     "expo-sharing": "~14.0.8",
+    "expo-splash-screen": "~31.0.13",
     "expo-sqlite": "~16.0.10",
     "expo-task-manager": "~14.0.9",
     "nativewind": "^4.0.1",
     "prettier": "^3.6.2",
     "react": "19.1.0",
     "react-native": "0.81.5",
-    "react-native-builder-bob": "^0.40.13",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-keyboard-controller": "1.18.5",
     "react-native-reanimated": "~4.1.1",
@@ -398,6 +97,29 @@
     "react-native-view-shot": "^4.0.3",
     "react-native-webview": "13.15.0",
     "react-router-native": "^6.30.0",
-    "typescript": "~5.9.2"
+    "tsc-alias": "^1.8.17",
+    "typescript": "~5.9.2",
+    "@sincpro/mobile-ui": "^0.2.0"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./domain": "./dist/domain/index.js",
+    "./domain/entity": "./dist/domain/entity/index.js",
+    "./domain/event_sourcing": "./dist/domain/event_sourcing/index.js",
+    "./domain/database": "./dist/domain/database/index.js",
+    "./domain/connectivity": "./dist/domain/connectivity/index.js",
+    "./domain/print": "./dist/domain/print/index.js",
+    "./domain/webview": "./dist/domain/webview/index.js",
+    "./entrypoints/db": "./dist/entrypoints/db/index.js",
+    "./infrastructure/database": "./dist/infrastructure/database/index.js",
+    "./infrastructure/workers": "./dist/infrastructure/workers/index.js",
+    "./ui": "./dist/ui/index.js",
+    "./ui/components/atoms": "./dist/ui/components/atoms/index.js",
+    "./ui/components/molecules": "./dist/ui/components/molecules/index.js",
+    "./ui/components/organisms": "./dist/ui/components/organisms/index.js",
+    "./ui/screens": "./dist/ui/screens/index.js",
+    "./ui/screens/events": "./dist/ui/screens/events/index.js",
+    "./*": "./dist/*.js",
+    "./package.json": "./package.json"
   }
 }

@@ -1,4 +1,4 @@
-import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile-ui/lib/serializer";
+import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { TouchableOpacity, View } from "react-native";
 

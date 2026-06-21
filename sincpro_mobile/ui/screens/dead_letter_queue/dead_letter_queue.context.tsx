@@ -1,3 +1,5 @@
+import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { deadLetterQueueUseCases } from "@sincpro/mobile/services/dead_letter_queue.service";
 import React, {
   createContext,
   ReactNode,
@@ -6,9 +8,6 @@ import React, {
   useMemo,
   useState,
 } from "react";
-
-import { DomainEvent } from "../../../domain/event";
-import { deadLetterQueueUseCases } from "../../../services/dead_letter_queue.service";
 
 interface IDeadLetterQueueContext {
   events: DomainEvent[];

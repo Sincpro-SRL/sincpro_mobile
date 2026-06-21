@@ -3,18 +3,6 @@
 PACKAGE := @sincpro/mobile
 VERSION := $(shell node -p "require('./package.json').version")
 
-help:
-	@echo "$(PACKAGE) — comandos:"
-	@echo "  init                       prepare-environment + yarn install"
-	@echo "  format / format-check      Formatea / verifica formato (prettier)"
-	@echo "  lint / typecheck / check   ESLint / tsc / ambos"
-	@echo "  verify-format              Falla si el formateo cambia archivos (pre-commit/CI)"
-	@echo "  test                       Ejecuta los tests"
-	@echo "  build                      Compila ESM + tipos (builder-bob) a ./lib"
-	@echo "  update-version VERSION=x.y.z   Actualiza la versión"
-	@echo "  publish                    build + npm publish (usa NPM_TOKEN si está presente)"
-	@echo "  clean                      Borra lib/ y node_modules/"
-
 prepare-environment:
 	@pipx install pre-commit
 	@pipx ensurepath
@@ -24,24 +12,24 @@ init: prepare-environment
 	@echo "Installing Node.js dependencies..."
 	@yarn install
 
-format:
-	@npx prettier --write "**/*.{ts,tsx,js,jsx,json,yml,yaml,md}" --ignore-path .prettierignore --ignore-unknown
-
-format-check:
-	@npx prettier --check "**/*.{ts,tsx,js,jsx,json,yml,yaml,md}" --ignore-path .prettierignore --ignore-unknown
-
-lint:
-	@yarn lint
 
 typecheck:
-	@yarn typecheck
+	@npx tsc --noEmit
 
-check: lint typecheck
+format:
+	@echo "🔤 Ordenando imports + auto-fix (eslint)..."
+	@npx eslint . --fix
+	@echo "🎨 Formateando (prettier)..."
+	@npx prettier --experimental-cli --write "**/*.{ts,tsx,js,jsx,json,yml,yaml,md}" --ignore-path .prettierignore --ignore-unknown
+	@echo "Check types after formatting..."
+	@make typecheck
 
 build:
-	@echo "🏗️  Building $(PACKAGE) (ESM + types)..."
-	@yarn bob build
-	@echo "✓ Build artifacts ready in ./lib"
+	@echo "🏗️  Compilando $(PACKAGE) -> dist (tsc + tsc-alias)..."
+	@rm -rf dist
+	@npx tsc -p tsconfig.build.json
+	@npx tsc-alias -p tsconfig.build.json
+	@echo "✓ Build listo en ./dist (JS + .d.ts, alias @ resuelto a relativo)"
 
 test:
 	@echo "Running tests..."
@@ -83,7 +71,7 @@ deploy:
 	@echo "Deploy not applicable for library modules"
 
 clean:
-	@rm -rf lib node_modules
+	@rm -rf dist node_modules
 	@echo "✓ Cleaned"
 
-.PHONY: help prepare-environment init format format-check lint typecheck check build test verify-format update-version publish deploy clean
+.PHONY: prepare-environment init format typecheck build test verify-format update-version publish deploy clean

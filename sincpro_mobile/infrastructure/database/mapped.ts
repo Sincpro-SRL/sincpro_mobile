@@ -1,6 +1,6 @@
-import type { RepositoriesContainer } from "../../entrypoints/db/repositories";
-import { DomainAppError } from "../../exceptions";
-import { loggerRepositories } from "../logger";
+import type { RepositoriesContainer } from "@sincpro/mobile/entrypoints/db/repositories";
+import { DomainAppError } from "@sincpro/mobile/exceptions";
+import { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
 /**
  * Repository facade reference that will be injected after initialization.
  * This avoids circular import issues by delaying the repository resolution.
@@ -17,8 +17,8 @@ let repositoryFacade: RepositoriesContainer | null = null;
  *
  * @example
  * // In your app bootstrap (e.g., InfrastructureOrchestrator)
- * import { initializeRepositoryFacade } from "./";
- * import { repos } from "../../entrypoints/db";
+ * import { initializeRepositoryFacade } from "@sincpro/mobile/infrastructure/database";
+ * import { repos } from "@sincpro/mobile/entrypoints/db";
  *
  * async function bootstrap() {
  *   await initDatabase();
@@ -110,8 +110,8 @@ export function resolveEntity(
  *
  * @example
  * // One-to-One relationship (hasOne)
- * import { mapped } from "./";
- * import { EDistributionDomainRepository } from "../../entrypoints/db";
+ * import { mapped } from "@sincpro/mobile/infrastructure/database";
+ * import { EDistributionDomainRepository } from "@sincpro/mobile/entrypoints/db";
  *
  * export class SaleOrder {
  *   customerId: number;

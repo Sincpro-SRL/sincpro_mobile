@@ -1,15 +1,13 @@
+import { BluetoothDevice, ISelectedPrinter } from "@sincpro/mobile/domain/print";
+import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
+import { printerService } from "@sincpro/mobile/services/printer.service";
+import { BluetoothDeviceSelectorModal } from "@sincpro/mobile/ui/components/molecules/BluetoothDeviceSelectorModal";
 import { Display, Form } from "@sincpro/mobile-ui";
 import PrinterIcon from "@sincpro/mobile-ui/icons/PrinterIcon";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { tv } from "tailwind-variants";
-
-import { BluetoothDevice } from "../../../adapters/Printer.adapter";
-import { ISelectedPrinter } from "../../../domain/print";
-import { bluetoothService } from "../../../services/bluetooth.service";
-import { printerService } from "../../../services/printer.service";
-import { BluetoothDeviceSelectorModal } from "../molecules/BluetoothDeviceSelectorModal";
 
 interface BluetoothPrinterSelectorProps {
   onPrinterSelected?: (printer: ISelectedPrinter) => void;

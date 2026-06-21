@@ -1,6 +1,6 @@
-import type { Subscriber } from "../../domain/subscriber";
-import { loggerQueueProcessor } from "../../infrastructure/logger";
-import { EventBus } from "../../infrastructure/workers";
+import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
+import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
+import { EventBus } from "@sincpro/mobile/infrastructure/workers";
 
 interface SyncState {
   domains: Set<string>;

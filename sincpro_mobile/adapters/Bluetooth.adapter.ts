@@ -1,10 +1,9 @@
-import { PermissionsAndroid, Platform } from "react-native";
-
 import {
   BluetoothPermissionStatus,
   BluetoothState,
   BluetoothStatus,
-} from "../domain/bluetooth";
+} from "@sincpro/mobile/domain/connectivity";
+import { PermissionsAndroid, Platform } from "react-native";
 
 const ANDROID_12_API_LEVEL = 31;
 

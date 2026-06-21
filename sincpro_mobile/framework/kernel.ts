@@ -1,10 +1,11 @@
-import type { IMigration } from "../../domain/database";
-import type { Subscriber } from "../../domain/subscriber";
-import { DBCursor } from "../../infrastructure/database";
-import { initializeRepositoryFacade } from "../../infrastructure/database/mapped";
-import logger, { loggerRepositories } from "../../infrastructure/logger";
-import type { CronWorker } from "../../infrastructure/workers";
-import { repos } from "../db/repositories";
+import type { IMigration } from "@sincpro/mobile/domain/database";
+import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
+import { repos } from "@sincpro/mobile/entrypoints/db/repositories";
+import { DBCursor } from "@sincpro/mobile/infrastructure/database";
+import { initializeRepositoryFacade } from "@sincpro/mobile/infrastructure/database/mapped";
+import logger, { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
+import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
+
 import type { DomainModule } from "./domain_module";
 
 export class Kernel {

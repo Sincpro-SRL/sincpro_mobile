@@ -1,9 +1,9 @@
+import DatabaseInfoRow from "@sincpro/mobile/ui/components/organisms/DatabaseInfoRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import { EVariantScreenHeader } from "@sincpro/mobile-ui/widgets/ScreenHeader";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-native";
 
-import DatabaseInfoRow from "../../components/organisms/DatabaseInfoRow";
 import { DatabaseProvider, EDatabaseView, useDatabase } from "./database.context";
 import JsonDetailView from "./database.json_detail";
 import TableRowsView from "./database.table_rows";

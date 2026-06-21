@@ -1,4 +1,4 @@
-import { DomainEvent } from "../event";
+import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
 
 export class WebViewMessageReceivedEvent extends DomainEvent {
   static readonly name = "common.webview.v1.message_received";

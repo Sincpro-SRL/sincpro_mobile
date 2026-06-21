@@ -1,15 +1,13 @@
+import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import DeadLetterErrorBlock from "@sincpro/mobile/ui/components/molecules/DeadLetterErrorBlock";
 import { Display } from "@sincpro/mobile-ui/Display";
 import { Form } from "@sincpro/mobile-ui/Form";
-import { formatDateWithDefaultTimezone } from "@sincpro/mobile-ui/lib/date";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { IRowItemProps } from "@sincpro/mobile-ui/views/types/IListView";
 import JsonPreview from "@sincpro/mobile-ui/widgets/JSONViewer";
 import * as Clipboard from "expo-clipboard";
 import React, { useState } from "react";
 import { View } from "react-native";
-
-import { DomainEvent } from "../../../domain/event";
-import DeadLetterErrorBlock from "../molecules/DeadLetterErrorBlock";
 
 interface DeadLetterQueueRowProps extends IRowItemProps<DomainEvent> {
   onRetry: (event: DomainEvent) => Promise<void> | void;
@@ -48,7 +46,6 @@ function DeadLetterQueueRow({ item, onRetry }: DeadLetterQueueRowProps) {
   };
 
   const friendlyName = event.label || event.name;
-  const formattedDate = formatDateWithDefaultTimezone(event.createdAt, { showTime: true });
   const attemptsBadgeVariant = getAttemptsBadgeVariant(event.attempts ?? 0);
 
   function renderBadges() {
@@ -104,9 +101,12 @@ function DeadLetterQueueRow({ item, onRetry }: DeadLetterQueueRowProps) {
   function renderMeta() {
     return (
       <View className="flex-row items-center justify-between mb-3">
-        <Typography.Text className="text-gray-800" variant="bodySmall">
-          {formattedDate}
-        </Typography.Text>
+        <Display.Date
+          className="text-gray-800"
+          showTime
+          textVariant="bodySmall"
+          value={event.createdAt}
+        />
         <Display.CopyableText label="Copiar UUID" value={event.uuid} />
       </View>
     );

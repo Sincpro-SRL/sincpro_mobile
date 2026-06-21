@@ -1,32 +1,47 @@
+import { ReceiptExporterAdapter } from "@sincpro/mobile/adapters/ReceiptExporter.adapter";
+import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
+import {
+  type BluetoothDevice,
+  getPrinterDriver,
+  hasPrinterDriver,
+  type IPrinterDriver,
+  type ISelectedPrinter,
+  type PairedPrinter,
+  setPrinterDriver,
+} from "@sincpro/mobile/domain/print";
+import { ECommonSetting } from "@sincpro/mobile/domain/settings";
+import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { UI_NOTIFICATION_EVENT } from "@sincpro/mobile/infrastructure/ui/events";
+import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 import { File } from "expo-file-system";
 import * as Print from "expo-print";
 import type { RefObject } from "react";
 import type { View } from "react-native";
 
-import { BluetoothDevice, PairedPrinter, PrinterAdapter } from "../adapters/Printer.adapter";
-import { ReceiptExporterAdapter } from "../adapters/ReceiptExporter.adapter";
-import { SettingsRepository } from "../adapters/repositories/setting.repository";
-import { ISelectedPrinter } from "../domain/print";
-import { ECommonSetting } from "../domain/settings";
-import { loggerUseCases } from "../infrastructure/logger";
-import { UI_NOTIFICATION_EVENT } from "../infrastructure/ui/events";
-import { UIEventBus } from "../infrastructure/ui/UIEventBus";
 import { bluetoothService } from "./bluetooth.service";
 
 class PrinterService {
   private readonly bluetooth = bluetoothService;
   private cachedPrinter: ISelectedPrinter | null = null;
 
+  setDriver(driver: IPrinterDriver): void {
+    setPrinterDriver(driver);
+  }
+
+  hasDriver(): boolean {
+    return hasPrinterDriver();
+  }
+
   getPairedDevices(): BluetoothDevice[] {
-    return PrinterAdapter.getPairedDevices();
+    return getPrinterDriver().getPairedDevices();
   }
 
   getPairedPrinters(): PairedPrinter[] {
-    return PrinterAdapter.getPairedPrinters();
+    return getPrinterDriver().getPairedPrinters();
   }
 
   isConnected(): boolean {
-    return PrinterAdapter.isConnected();
+    return getPrinterDriver().isConnected();
   }
 
   async connect(address: string, name: string): Promise<boolean> {
@@ -36,7 +51,7 @@ class PrinterService {
     }
 
     try {
-      await PrinterAdapter.connectBluetooth(address);
+      await getPrinterDriver().connectBluetooth(address);
 
       const printer: ISelectedPrinter = {
         name,
@@ -68,7 +83,7 @@ class PrinterService {
 
   async disconnect(): Promise<void> {
     try {
-      await PrinterAdapter.disconnect();
+      await getPrinterDriver().disconnect();
       UIEventBus.emit(UI_NOTIFICATION_EVENT, {
         type: "info",
         text1: "Desconectado",
@@ -112,18 +127,18 @@ class PrinterService {
     }
 
     try {
-      await PrinterAdapter.printText("=== PRUEBA DE IMPRESIÓN ===", {
+      await getPrinterDriver().printText("=== PRUEBA DE IMPRESIÓN ===", {
         alignment: "center",
         bold: true,
         fontSize: "large",
       });
 
-      await PrinterAdapter.printText("Impresora configurada correctamente", {
+      await getPrinterDriver().printText("Impresora configurada correctamente", {
         alignment: "center",
         fontSize: "medium",
       });
 
-      await PrinterAdapter.printText(new Date().toLocaleString(), {
+      await getPrinterDriver().printText(new Date().toLocaleString(), {
         alignment: "center",
         fontSize: "small",
       });
@@ -153,7 +168,7 @@ class PrinterService {
     if (!connected) return false;
 
     try {
-      await PrinterAdapter.printImageBase64(base64Data);
+      await getPrinterDriver().printImageBase64(base64Data);
       return true;
     } catch (error) {
       loggerUseCases.error("Error printing image", error);
@@ -172,7 +187,7 @@ class PrinterService {
         return false;
       }
 
-      await PrinterAdapter.printImageBase64(imageBase64);
+      await getPrinterDriver().printImageBase64(imageBase64);
 
       UIEventBus.emit(UI_NOTIFICATION_EVENT, {
         type: "success",
@@ -199,7 +214,7 @@ class PrinterService {
       }
 
       loggerUseCases.info("PDF base64 length:", pdfBase64.length);
-      await PrinterAdapter.printPdfBase64(pdfBase64, 1);
+      await getPrinterDriver().printPdfBase64(pdfBase64, 1);
       return true;
     } catch (error) {
       loggerUseCases.error("Error printing HTML", error);

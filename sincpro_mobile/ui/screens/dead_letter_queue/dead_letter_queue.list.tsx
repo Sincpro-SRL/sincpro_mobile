@@ -1,10 +1,10 @@
+import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import DeadLetterQueueRow from "@sincpro/mobile/ui/components/organisms/DeadLetterQueueRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import { EVariantScreenHeader } from "@sincpro/mobile-ui/widgets/ScreenHeader";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-native";
 
-import { DomainEvent } from "../../../domain/event";
-import DeadLetterQueueRow from "../../components/organisms/DeadLetterQueueRow";
 import { DeadLetterQueueProvider, useDeadLetterQueue } from "./dead_letter_queue.context";
 
 function DeadLetterQueueScreenComponent() {

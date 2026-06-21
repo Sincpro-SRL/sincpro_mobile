@@ -1,7 +1,7 @@
-import { PrintImageRequestedEvent } from "../../domain/print";
-import { Subscriber } from "../../domain/subscriber";
-import { DomainValidationError } from "../../exceptions";
-import { printerService } from "../../services/printer.service";
+import { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
+import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/events";
+import { DomainValidationError } from "@sincpro/mobile/exceptions";
+import { printerService } from "@sincpro/mobile/services/printer.service";
 
 export class PrintImageSubscriber extends Subscriber {
   public readonly requiresAuth = false;

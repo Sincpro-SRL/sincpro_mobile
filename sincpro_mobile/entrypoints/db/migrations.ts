@@ -1,5 +1,5 @@
-import { IMigration } from "../../domain/database";
-import { DBCursor } from "../../infrastructure/database";
+import { IMigration } from "@sincpro/mobile/domain/database";
+import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 
 export const enum DATABASE_TABLES {
   SETTINGS = "settings",

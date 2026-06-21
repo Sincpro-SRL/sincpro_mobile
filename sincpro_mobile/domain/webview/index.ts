@@ -1,4 +1,3 @@
-export { WebViewMessageReceivedEvent } from "./events";
 export {
   EWebViewMessageType,
   type IAjaxInterceptedMessage,

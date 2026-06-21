@@ -1,13 +1,11 @@
+import { DomainEvent, EEventStatus } from "@sincpro/mobile/domain/event_sourcing";
 import { Display } from "@sincpro/mobile-ui/Display";
 import CopyableText from "@sincpro/mobile-ui/Display/Display.CopyableText";
-import { formatDateWithDefaultTimezone } from "@sincpro/mobile-ui/lib/date";
 import { theme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import JsonPreview from "@sincpro/mobile-ui/widgets/JSONViewer";
 import { useState } from "react";
 import { TouchableOpacity, View } from "react-native";
-
-import { DomainEvent, EEventStatus } from "../../../domain/event";
 
 const statusColorMap = {
   [EEventStatus.ACKNOWLEDGED]: {
@@ -65,16 +63,12 @@ function formatEventName(name: string): string {
 interface EventTimelineItemProps {
   event: DomainEvent;
   isLast?: boolean;
-  formatDate?: (date: string, options?: { showTime?: boolean }) => string;
 }
 
-function EventTimelineItem({ event, isLast = false, formatDate }: EventTimelineItemProps) {
+function EventTimelineItem({ event, isLast = false }: EventTimelineItemProps) {
   const [expanded, setExpanded] = useState(false);
   const statusInfo = getStatusColor(event.status);
   const statusIcon = getStatusIcon(event.status);
-  const formattedTime = formatDate
-    ? formatDate(event.createdAt, { showTime: true })
-    : formatDateWithDefaultTimezone(event.createdAt, { showTime: true });
   const friendlyName = formatEventName(event.name);
 
   return (
@@ -107,9 +101,12 @@ function EventTimelineItem({ event, isLast = false, formatDate }: EventTimelineI
 
         <View className="flex-row items-center mb-1 gap-1.5">
           <Display.Icon color={theme.text.secondary} name="clock" size={12} type="feather" />
-          <Typography.Text className="text-text-tertiary" variant="caption">
-            {formattedTime}
-          </Typography.Text>
+          <Display.Date
+            className="text-text-tertiary"
+            showTime
+            textVariant="caption"
+            value={event.createdAt}
+          />
         </View>
 
         <View className="flex-row items-center mb-1 gap-1.5">

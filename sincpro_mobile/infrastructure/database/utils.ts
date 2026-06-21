@@ -1,7 +1,6 @@
+import { convertToArray } from "@sincpro/mobile/tools/utils/collections";
 import * as Crypto from "expo-crypto";
 import { v7 as uuidv7 } from "uuid";
-
-import { convertToArray } from "../../tools/utils/collections";
 
 /**
  * Constructs a SQL placeholder string and corresponding values for use in a query based on the provided field and data.

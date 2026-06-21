@@ -1,8 +1,8 @@
-import { safeJsonStringify } from "@sincpro/mobile-ui/lib/serializer";
+import { safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
+import TableInfoRow from "@sincpro/mobile/ui/components/organisms/TableInfoInfoRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import { EVariantScreenHeader } from "@sincpro/mobile-ui/widgets/ScreenHeader";
 
-import TableInfoRow from "../../components/organisms/TableInfoInfoRow";
 import { useDatabase } from "./database.context";
 
 function TableRowsView() {

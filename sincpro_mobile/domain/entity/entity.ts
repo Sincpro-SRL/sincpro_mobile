@@ -1,10 +1,15 @@
-import { DomainValidationError } from "../exceptions";
-import { mapped, resolveEntity } from "../infrastructure/database";
-import { generateUUID } from "../infrastructure/database/utils";
-import { loggerQueueProcessor } from "../infrastructure/logger";
-import { EventBus } from "../infrastructure/workers";
-import { type DomainEvent, type DomainEventClass, type EventData } from "./event";
-import { ECommonRepository } from "./repository";
+import {
+  type DomainEvent,
+  type DomainEventClass,
+  type EventData,
+} from "@sincpro/mobile/domain/event_sourcing/domain_event";
+import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
+import { DomainValidationError } from "@sincpro/mobile/exceptions";
+import { mapped, resolveEntity } from "@sincpro/mobile/infrastructure/database";
+import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
+import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
+import { EventBus } from "@sincpro/mobile/infrastructure/workers";
+
 import { IValueObject, ValueObject } from "./value_object";
 
 export enum ERemoteState {

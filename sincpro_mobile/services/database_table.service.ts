@@ -1,6 +1,6 @@
-import { IDatabaseTable } from "../domain/database";
-import { ECommonRepository, repos } from "../entrypoints/db";
-import { loggerUseCases } from "../infrastructure/logger";
+import { IDatabaseTable } from "@sincpro/mobile/domain/database";
+import { ECommonRepository, repos } from "@sincpro/mobile/entrypoints/db";
+import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 
 class DatabaseTablesUseCase {
   private get repository() {
