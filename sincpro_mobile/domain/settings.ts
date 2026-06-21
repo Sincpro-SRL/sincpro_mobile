@@ -1,4 +1,4 @@
-export const enum ECommonSetting {
+export enum ECommonSetting {
   SELECTED_PRINTER = "common.selected_printer",
 }
 

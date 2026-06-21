@@ -1,7 +1,7 @@
 import { IMigration } from "@sincpro/mobile/domain/database";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 
-export const enum DATABASE_TABLES {
+export enum DATABASE_TABLES {
   SETTINGS = "settings",
   EVENT_QUEUE = "event_queue",
   DEAD_LETTER_QUEUE = "dead_letter_queue",
