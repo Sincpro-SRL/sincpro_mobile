@@ -2,9 +2,10 @@ import { BluetoothDevice } from "@sincpro/mobile/domain/print";
 import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
 import { printerService } from "@sincpro/mobile/services/printer.service";
 import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
-import { Display, Form } from "@sincpro/mobile-ui";
 import Sheet from "@sincpro/mobile-ui/Dialog/Sheet";
-import { theme } from "@sincpro/mobile-ui/theme";
+import { Display } from "@sincpro/mobile-ui/Display";
+import { Form } from "@sincpro/mobile-ui/Form";
+import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useCallback, useEffect, useState } from "react";
 import { TouchableOpacity, View } from "react-native";
@@ -22,6 +23,7 @@ interface DeviceRowProps {
 }
 
 function DeviceRow({ device, onSelect, isSelected }: DeviceRowProps) {
+  const theme = useTheme();
   return (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -57,6 +59,7 @@ function DeviceRow({ device, onSelect, isSelected }: DeviceRowProps) {
 }
 
 function EmptyState() {
+  const theme = useTheme();
   return (
     <View className="p-8 items-center justify-center" style={{ minHeight: 250 }}>
       <Display.Icon
@@ -80,6 +83,7 @@ function BluetoothDeviceSelectorModal({
   onClose,
   onSelect,
 }: BluetoothDeviceSelectorModalProps) {
+  const theme = useTheme();
   const [devices, setDevices] = useState<BluetoothDevice[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<BluetoothDevice | null>(null);

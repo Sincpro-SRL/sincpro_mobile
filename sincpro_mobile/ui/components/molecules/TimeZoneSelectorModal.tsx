@@ -1,6 +1,7 @@
 import Sheet from "@sincpro/mobile-ui/Dialog/Sheet";
-import { Display, Form } from "@sincpro/mobile-ui/index";
-import { theme } from "@sincpro/mobile-ui/theme";
+import { Display } from "@sincpro/mobile-ui/Display";
+import { Form } from "@sincpro/mobile-ui/Form";
+import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useMemo, useState } from "react";
 import { TextInput, TouchableOpacity, View } from "react-native";
@@ -37,6 +38,7 @@ function TimezoneRow({
   isSelected: boolean;
   onSelect: () => void;
 }) {
+  const theme = useTheme();
   return (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -67,6 +69,7 @@ function TimezoneRow({
 }
 
 function EmptyState() {
+  const theme = useTheme();
   return (
     <View className="p-8 items-center justify-center" style={{ minHeight: 200 }}>
       <Display.Icon color={theme.text.tertiary} name="search-off" size={48} type="material" />
@@ -83,6 +86,7 @@ function TimeZoneSelectorModal({
   onSelect,
   currentTimezone,
 }: TimeZoneSelectorModalProps) {
+  const theme = useTheme();
   const [query, setQuery] = useState("");
   const [selectedTimezone, setSelectedTimezone] = useState<string | null>(
     currentTimezone || null,

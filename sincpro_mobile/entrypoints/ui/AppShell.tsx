@@ -39,6 +39,10 @@ export interface AppShellConfig {
   theme?: ThemeTokens;
   darkTheme?: ThemeTokens;
   branding?: BrandingConfig;
+  /** Component rendered while fonts + domain init complete. Use `AppSplashView` from the DS or roll your own. */
+  splashComponent?: ComponentType;
+  /** Minimum time (ms) the splash stays visible. Default 2000. */
+  splashDuration?: number;
 }
 
 function withProviders(providers: ProviderComponent[], children: ReactNode): ReactNode {
@@ -66,6 +70,7 @@ export function createAppShell(config: AppShellConfig): ComponentType {
   }
   return function AppShell() {
     const [isReady, setIsReady] = useState(false);
+    const [minDurationMet, setMinDurationMet] = useState(false);
     const fontsLoaded = useAppFonts();
     const activeTheme = useTheme();
     const themeStyle = vars(themeToVars(activeTheme));
@@ -89,13 +94,23 @@ export function createAppShell(config: AppShellConfig): ComponentType {
     }, []);
 
     useEffect(() => {
-      if (fontsLoaded && isReady) {
+      const t = setTimeout(() => setMinDurationMet(true), config.splashDuration ?? 2000);
+      return () => clearTimeout(t);
+    }, []);
+
+    useEffect(() => {
+      if (fontsLoaded && isReady && minDurationMet) {
         SplashScreen.hideAsync().catch(() => {});
       }
-    }, [fontsLoaded, isReady]);
+    }, [fontsLoaded, isReady, minDurationMet]);
 
-    if (!isReady || !fontsLoaded) {
-      return null;
+    if (!isReady || !fontsLoaded || !minDurationMet) {
+      const Splash = config.splashComponent;
+      return Splash ? (
+        <Splash />
+      ) : (
+        <View style={{ flex: 1, backgroundColor: activeTheme.bg.page }} />
+      );
     }
 
     return (

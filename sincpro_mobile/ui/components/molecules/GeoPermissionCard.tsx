@@ -1,5 +1,6 @@
-import { Display, Form } from "@sincpro/mobile-ui/index";
-import { theme } from "@sincpro/mobile-ui/theme";
+import { Display } from "@sincpro/mobile-ui/Display";
+import { Form } from "@sincpro/mobile-ui/Form";
+import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { View } from "react-native";
 import { tv } from "tailwind-variants";
@@ -26,6 +27,7 @@ function GeoPermissionCard({
   handleRequestPermission,
   hasPermission,
 }: GeoPermissionCardProps) {
+  const theme = useTheme();
   const granted = hasPermission !== undefined ? hasPermission : false;
 
   return (

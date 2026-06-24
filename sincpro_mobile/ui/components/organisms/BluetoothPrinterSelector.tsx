@@ -3,8 +3,9 @@ import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
 import { printerService } from "@sincpro/mobile/services/printer.service";
 import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
 import { BluetoothDeviceSelectorModal } from "@sincpro/mobile/ui/components/molecules/BluetoothDeviceSelectorModal";
-import { Display, Form } from "@sincpro/mobile-ui";
-import { theme } from "@sincpro/mobile-ui/theme";
+import { Display } from "@sincpro/mobile-ui/Display";
+import { Form } from "@sincpro/mobile-ui/Form";
+import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
@@ -132,6 +133,7 @@ function BluetoothPrinterSelector({
   onConnectionChange,
   compact = false,
 }: BluetoothPrinterSelectorProps) {
+  const theme = useTheme();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [selectedPrinter, setSelectedPrinter] = useState<ISelectedPrinter | null>(null);
   const [isConnected, setIsConnected] = useState(false);

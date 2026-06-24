@@ -1,5 +1,5 @@
 import { Display } from "@sincpro/mobile-ui/Display";
-import { theme } from "@sincpro/mobile-ui/theme";
+import { useTheme } from "@sincpro/mobile-ui/theme";
 import { cn } from "@sincpro/mobile-ui/theme/tw";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { TouchableOpacity, View } from "react-native";
@@ -17,6 +17,7 @@ function DeadLetterErrorBlock({
   onToggle,
   previewChars = 140,
 }: DeadLetterErrorBlockProps) {
+  const theme = useTheme();
   if (!errorMessage) return null;
   const preview = errorMessage.substring(0, previewChars);
   const truncated = errorMessage.length > previewChars;

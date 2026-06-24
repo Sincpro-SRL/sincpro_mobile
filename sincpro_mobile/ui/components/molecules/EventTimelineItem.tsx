@@ -1,44 +1,11 @@
 import { DomainEvent, EEventStatus } from "@sincpro/mobile/domain/event_sourcing";
 import { Display } from "@sincpro/mobile-ui/Display";
 import CopyableText from "@sincpro/mobile-ui/Display/Display.CopyableText";
-import { theme } from "@sincpro/mobile-ui/theme";
+import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import JsonPreview from "@sincpro/mobile-ui/widgets/JSONViewer";
 import { useState } from "react";
 import { TouchableOpacity, View } from "react-native";
-
-const statusColorMap = {
-  [EEventStatus.ACKNOWLEDGED]: {
-    bg: "bg-success",
-    color: theme.success,
-    light: `${theme.success}4D`,
-  },
-  [EEventStatus.PENDING]: {
-    bg: "bg-warning",
-    color: theme.warning,
-    light: `${theme.warning}4D`,
-  },
-  [EEventStatus.PROCESSING]: {
-    bg: "bg-accent",
-    color: theme.warning,
-    light: `${theme.warning}4D`,
-  },
-  [EEventStatus.FAILED]: {
-    bg: "bg-danger",
-    color: theme.danger,
-    light: `${theme.danger}4D`,
-  },
-} as const;
-
-const defaultStatus = {
-  bg: "bg-text-tertiary",
-  color: theme.text.secondary,
-  light: `${theme.text.secondary}4D`,
-};
-
-function getStatusColor(status: string) {
-  return statusColorMap[status as keyof typeof statusColorMap] ?? defaultStatus;
-}
 
 function getStatusIcon(status: string): string {
   switch (status) {
@@ -67,7 +34,38 @@ interface EventTimelineItemProps {
 
 function EventTimelineItem({ event, isLast = false }: EventTimelineItemProps) {
   const [expanded, setExpanded] = useState(false);
-  const statusInfo = getStatusColor(event.status);
+  const theme = useTheme();
+
+  const statusColorMap = {
+    [EEventStatus.ACKNOWLEDGED]: {
+      bg: "bg-success",
+      color: theme.success,
+      light: `${theme.success}4D`,
+    },
+    [EEventStatus.PENDING]: {
+      bg: "bg-warning",
+      color: theme.warning,
+      light: `${theme.warning}4D`,
+    },
+    [EEventStatus.PROCESSING]: {
+      bg: "bg-accent",
+      color: theme.warning,
+      light: `${theme.warning}4D`,
+    },
+    [EEventStatus.FAILED]: {
+      bg: "bg-danger",
+      color: theme.danger,
+      light: `${theme.danger}4D`,
+    },
+  };
+  const defaultStatus = {
+    bg: "bg-text-tertiary",
+    color: theme.text.secondary,
+    light: `${theme.text.secondary}4D`,
+  };
+  const statusInfo =
+    statusColorMap[event.status as keyof typeof statusColorMap] ?? defaultStatus;
+
   const statusIcon = getStatusIcon(event.status);
   const friendlyName = formatEventName(event.name);
 

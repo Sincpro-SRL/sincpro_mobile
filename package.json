@@ -61,7 +61,7 @@
     "@react-navigation/native": ">=7",
     "@react-navigation/native-stack": ">=7",
     "react-native-screens": "*",
-    "@sincpro/mobile-ui": "^0.6.0"
+    "@sincpro/mobile-ui": "^0.7.0"
   },
   "devDependencies": {
     "@types/big.js": "^6.2.2",
@@ -103,7 +103,7 @@
     "react-native-screens": "~4.25.2",
     "tsc-alias": "^1.8.17",
     "typescript": "~5.9.2",
-    "@sincpro/mobile-ui": "^0.6.0"
+    "@sincpro/mobile-ui": "^0.7.0"
   },
   "exports": {
     ".": "./dist/index.js",

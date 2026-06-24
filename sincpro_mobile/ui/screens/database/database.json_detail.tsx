@@ -1,6 +1,6 @@
 import { Display } from "@sincpro/mobile-ui/Display";
 import { Form } from "@sincpro/mobile-ui/Form";
-import { theme } from "@sincpro/mobile-ui/theme";
+import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { FormViewV2 } from "@sincpro/mobile-ui/views/FormViewV2";
 import JsonPreview from "@sincpro/mobile-ui/widgets/JSONViewer";
@@ -13,6 +13,7 @@ const Button = Form.Button;
 const Icon = Display.Icon;
 
 function JsonDetailView() {
+  const theme = useTheme();
   const {
     selectedTable,
     selectedRowJson,
