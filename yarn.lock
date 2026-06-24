@@ -861,10 +861,10 @@
   resolved "https://registry.yarnpkg.com/@sinclair/typebox/-/typebox-0.27.10.tgz#beefe675f1853f73676aecc915b2bd2ac98c4fc6"
   integrity sha512-MTBk/3jGLNB2tVxv6uLlFh1iu64iYOQ2PbdOSK3NW8JZsmlaOh2q6sdtKowBhfw8QFLmYNzTW4/oK4uATIi6ZA==
 
-"@sincpro/mobile-ui@^0.7.0":
-  version "0.7.0"
-  resolved "https://registry.yarnpkg.com/@sincpro/mobile-ui/-/mobile-ui-0.7.0.tgz#ababae934663d1d172daa6a32a41a41207244595"
-  integrity sha512-DNJ5sOob53IdICYNob2wgusDsJ35W2cZeRMo/4YUQZ2PRIC80Yj3q7+tt+HKao5B3/UaSpVsqZqYAr2N7aC8EA==
+"@sincpro/mobile-ui@^0.7.1":
+  version "0.7.1"
+  resolved "https://registry.yarnpkg.com/@sincpro/mobile-ui/-/mobile-ui-0.7.1.tgz#bb44e3a68e852f611344b6463f28314eaca8e6a2"
+  integrity sha512-jl79TwD9LpC+tL9Osrv/vmmb++tOrJsY2kCHYeTb+YQ6x7tOtt/bou04qIhSPUS7d7nqnKJBl4pglN3O5fg3+g==
   dependencies:
     big.js "^7.0.1"
     clsx "^2.1.1"
