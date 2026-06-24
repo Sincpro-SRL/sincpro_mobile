@@ -16,6 +16,9 @@ init: prepare-environment
 typecheck:
 	@npx tsc --noEmit
 
+doctor:
+	@bash scripts/doctor.sh
+
 format:
 	@echo "🔤 Ordenando imports + auto-fix (eslint)..."
 	@npx eslint . --fix
@@ -34,7 +37,7 @@ build:
 test:
 	@echo "Running tests..."
 
-verify-format: format
+verify-format: format doctor
 	@if ! git diff --quiet; then \
 	  echo >&2 "✘ El formateo ha modificado archivos. Por favor agrégalos al commit."; \
 	  git --no-pager diff --name-only HEAD -- >&2; \
@@ -74,4 +77,4 @@ clean:
 	@rm -rf dist node_modules
 	@echo "✓ Cleaned"
 
-.PHONY: prepare-environment init format typecheck build test verify-format update-version publish deploy clean
+.PHONY: prepare-environment init format typecheck doctor build test verify-format update-version publish deploy clean

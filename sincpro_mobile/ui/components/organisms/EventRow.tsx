@@ -24,28 +24,28 @@ function EventRow({ item, onRetry }: EventRowProps) {
   const statusBadge = (() => {
     if (item.status === EEventStatus.FAILED) {
       return {
-        backgroundClass: "bg-red-100 border-red-200",
-        textClass: "text-red-700",
+        backgroundClass: "bg-danger-light border-danger",
+        textClass: "text-danger",
         label: "FAILED",
       };
     }
     if (item.status === EEventStatus.ACKNOWLEDGED) {
       return {
-        backgroundClass: "bg-green-100 border-green-200",
-        textClass: "text-green-700",
+        backgroundClass: "bg-success-light border-success",
+        textClass: "text-success",
         label: "ACKNOWLEDGED",
       };
     }
     if (item.status === EEventStatus.PENDING || item.status === EEventStatus.PROCESSING) {
       return {
-        backgroundClass: "bg-blue-100 border-blue-200",
-        textClass: "text-blue-700",
+        backgroundClass: "bg-info-light border-info",
+        textClass: "text-info",
         label: item.status,
       };
     }
     return {
-      backgroundClass: "bg-gray-100 border-gray-200",
-      textClass: "text-gray-700",
+      backgroundClass: "bg-bg-muted border-border-default",
+      textClass: "text-text-primary",
       label: item.status,
     };
   })();
@@ -64,7 +64,7 @@ function EventRow({ item, onRetry }: EventRowProps) {
     return (
       <View className="flex-row items-center justify-between mb-3">
         <Display.Date
-          className="text-gray-800"
+          className="text-text-primary"
           showTime
           textVariant="bodySmall"
           value={item.createdAt}
@@ -81,10 +81,10 @@ function EventRow({ item, onRetry }: EventRowProps) {
       string,
       "danger" | "success" | "successDark" | "info" | "infoDark" | "warning"
     > = {
-      "bg-red-100 border-red-200": "danger",
-      "bg-green-100 border-green-200": "successDark",
-      "bg-blue-100 border-blue-200": "infoDark",
-      "bg-gray-100 border-gray-200": "warning",
+      "bg-danger-light border-danger": "danger",
+      "bg-success-light border-success": "successDark",
+      "bg-info-light border-info": "infoDark",
+      "bg-bg-muted border-border-default": "warning",
     };
 
     const variant = statusVariantMap[statusBadge.backgroundClass] || "info";
@@ -124,8 +124,8 @@ function EventRow({ item, onRetry }: EventRowProps) {
     }
 
     return (
-      <View className="bg-gray-50 rounded-lg p-2 border border-gray-200 mb-2">
-        <Typography.Text className="text-gray-700 mb-1" semibold variant="bodySmall">
+      <View className="bg-bg-muted rounded-lg p-2 border border-border-default mb-2">
+        <Typography.Text className="text-text-primary mb-1" semibold variant="bodySmall">
           {"Payload"}
         </Typography.Text>
         <JsonPreview selectedJson={payloadString} />
@@ -166,7 +166,7 @@ function EventRow({ item, onRetry }: EventRowProps) {
   }
 
   return (
-    <View className="bg-white border border-gray-200 rounded-2xl mx-4 p-3.5 mb-3 shadow-sm">
+    <View className="bg-bg-card border border-border-default rounded-2xl mx-4 p-3.5 mb-3 shadow-sm">
       <View className="flex-row items-start mb-2">
         <View className="flex-1 pr-2">
           <Typography.Text className="mb-1" numberOfLines={2} semibold variant="body">

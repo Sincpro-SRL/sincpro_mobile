@@ -1,9 +1,8 @@
+import { useNavigation } from "@react-navigation/native";
 import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
 import EventRow from "@sincpro/mobile/ui/components/organisms/EventRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
-import { EVariantScreenHeader } from "@sincpro/mobile-ui/widgets/ScreenHeader";
 import { useEffect } from "react";
-import { useNavigate } from "react-router-native";
 
 import { EventsProvider, useEvents } from "./events.context";
 
@@ -17,14 +16,14 @@ const FILTER_OPTIONS: { label: string; value: FilterValue }[] = [
 ];
 
 function EventsScreenComponent() {
-  const navigate = useNavigate();
+  const navigation = useNavigation();
   const { pagedEvents, isLoading, loadEvents, retryEvent, filter, setFilter } = useEvents();
 
   useEffect(() => {
     void loadEvents();
   }, [loadEvents]);
 
-  const onBack = () => navigate(-1);
+  const onBack = () => navigation.goBack();
 
   return (
     <ListViewV2.Root
@@ -35,7 +34,7 @@ function EventsScreenComponent() {
       onBack={onBack}
       onRefresh={loadEvents}
     >
-      <ListViewV2.Header variant={EVariantScreenHeader.FLAT_HEADER}>
+      <ListViewV2.Header variant="default">
         <ListViewV2.Header.Filters>
           <ListViewV2.Header.Filters.Chips>
             {FILTER_OPTIONS.map((option) => (

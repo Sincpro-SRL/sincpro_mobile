@@ -1,11 +1,12 @@
 import { IInjectedScript } from "@sincpro/mobile/domain/webview";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { webViewService } from "@sincpro/mobile/services/webview.service";
+import { useToast } from "@sincpro/mobile-ui/Feedback";
 import Spinner from "@sincpro/mobile-ui/Feedback/Feedback.Spinner";
+import { useBottomInset } from "@sincpro/mobile-ui/layouts/BottomInset";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, NativeSyntheticEvent, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Toast from "react-native-toast-message";
 import WebView, {
   type WebViewMessageEvent,
   type WebViewNavigation,
@@ -59,11 +60,12 @@ function WebViewLoadingIndicator({ backgroundColor }: { backgroundColor: string 
 }
 
 function useWebView() {
+  const toast = useToast();
   const webViewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLoadingRef = useRef(false);
 
   const handleNavigationStateChange = useCallback((navState: WebViewNavigation) => {
@@ -86,11 +88,11 @@ function useWebView() {
   const hardRefresh = useCallback(() => {
     if (webViewRef.current) {
       loggerUseCases.info("Hard refresh: Clearing cache and reloading");
-      Toast.show({
-        type: "info",
-        text1: "Limpiando caché...",
-        text2: "Descargando cliente fresco",
-        visibilityTime: 2000,
+      toast.show({
+        variant: "info",
+        title: "Limpiando caché...",
+        message: "Descargando cliente fresco",
+        duration: 2000,
       });
 
       if (webViewRef.current.clearCache) {
@@ -103,7 +105,7 @@ function useWebView() {
         }
       }, 300);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -170,7 +172,9 @@ function InjectableWebView({
     isLoadingRef,
   } = useWebView();
 
+  const bottomInset = useBottomInset();
   const finalScript = webViewService.combineScripts(scripts, injectedJavaScript);
+  const [isLoading, setIsLoading] = useState(true);
 
   function handleMessage(event: WebViewMessageEvent) {
     onMessage?.(event);
@@ -183,6 +187,7 @@ function InjectableWebView({
 
   function handleLoadStart() {
     isLoadingRef.current = true;
+    setIsLoading(true);
 
     if (loadingTimeoutRef.current) {
       clearTimeout(loadingTimeoutRef.current);
@@ -200,6 +205,7 @@ function InjectableWebView({
 
   function handleLoadEnd() {
     isLoadingRef.current = false;
+    setIsLoading(false);
 
     if (loadingTimeoutRef.current) {
       clearTimeout(loadingTimeoutRef.current);
@@ -258,32 +264,42 @@ function InjectableWebView({
   const cacheMode = useDefaultCache ? "LOAD_DEFAULT" : "LOAD_NO_CACHE";
 
   return (
-    <SafeAreaView className="flex-1" edges={["top", "bottom"]} style={{ backgroundColor }}>
-      <WebView
-        allowsBackForwardNavigationGestures={true}
-        cacheEnabled={true}
-        cacheMode={cacheMode}
-        domStorageEnabled={true}
-        injectedJavaScript={finalScript}
-        javaScriptEnabled={true}
-        mixedContentMode="compatibility"
-        onError={handleError}
-        onLoadEnd={handleLoadEnd}
-        onLoadStart={handleLoadStart}
-        onMessage={handleMessage}
-        onNavigationStateChange={handleNavigationStateChangeInternal}
-        ref={webViewRef}
-        renderLoading={
-          renderLoading ||
-          (() => <WebViewLoadingIndicator backgroundColor={backgroundColor} />)
-        }
-        scalesPageToFit={true}
-        sharedCookiesEnabled={true}
-        source={{ uri: url }}
-        startInLoadingState={true}
-        style={{ flex: 1, backgroundColor }}
-      />
-    </SafeAreaView>
+    // Outer full-bleed container: under edge-to-edge (SDK 54+ / targetSdk 36) the window
+    // draws behind the transparent system bars. The loading overlay lives here (NOT inside
+    // the inset SafeAreaView) so it covers the whole screen and also shows on reload/refresh.
+    <View style={{ flex: 1, backgroundColor }}>
+      <SafeAreaView
+        className="flex-1"
+        edges={["bottom"]}
+        style={{ backgroundColor, marginBottom: bottomInset }}
+      >
+        <WebView
+          allowsBackForwardNavigationGestures={true}
+          cacheEnabled={true}
+          cacheMode={cacheMode}
+          domStorageEnabled={true}
+          injectedJavaScript={finalScript}
+          javaScriptEnabled={true}
+          mixedContentMode="compatibility"
+          onError={handleError}
+          onLoadEnd={handleLoadEnd}
+          onLoadStart={handleLoadStart}
+          onMessage={handleMessage}
+          onNavigationStateChange={handleNavigationStateChangeInternal}
+          ref={webViewRef}
+          scalesPageToFit={true}
+          sharedCookiesEnabled={true}
+          source={{ uri: url }}
+          style={{ flex: 1, backgroundColor }}
+        />
+      </SafeAreaView>
+      {isLoading &&
+        (renderLoading ? (
+          renderLoading()
+        ) : (
+          <WebViewLoadingIndicator backgroundColor={backgroundColor} />
+        ))}
+    </View>
   );
 }
 

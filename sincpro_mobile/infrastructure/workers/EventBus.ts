@@ -23,7 +23,7 @@ export class EventBus {
   private static subscribers = new Map<string, Subscriber[]>();
 
   private static isDraining = false;
-  private static intervalId: NodeJS.Timeout | null = null;
+  private static intervalId: ReturnType<typeof setTimeout> | null = null;
   private static internetConnected = true;
   private static consecutiveFailures = 0;
   private static currentInterval = EventBus.INTERVAL_MS;

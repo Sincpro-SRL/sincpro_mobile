@@ -58,6 +58,12 @@
 
 ## UI / Expo / build nativo
 
+### Logo/branding desaparece tras migrar (Display.Logo, HomeHeader, AuthFormView)
+
+- **Síntoma:** login/perfil/home renderizan pero **sin logo** (espacio vacío donde iba el logo).
+- **Causa:** el design system standalone (`@sincpro/mobile-ui`) entrega assets **por props**, no por el mapa `EDomain` del monolito. `Display.Logo` renderiza `null` si no recibe `source`; `LoginScreen`/`ProfileScreen` (odoo) muestran logo solo si les pasás `logoSource`.
+- **Fix:** pasar el asset explícitamente: `<LoginScreen logoSource={require(".../<APP>/logo.png")} />`, `<ProfileScreen logoSource={...} />`, y en headers locales `<Display.Logo source={require(...)} />`. El asset vive en `assets/<APP>/logo.png` (repo-root). Mismo patrón para cualquier branding que el monolito resolvía por dominio.
+
 ### NativeWind: estilos `className` no se aplican (render sin estilos)
 
 - **Síntoma:** la UI renderiza pero sin estilos de Tailwind.
@@ -76,10 +82,12 @@
 - **Causa:** `adaptiveIcon.foregroundImage` apunta a un icono full-bleed (con su propio fondo). Android le agrega su `backgroundColor` + máscara → doble fondo / recorte.
 - **Fix:** el foreground debe ser **transparente** con el glifo centrado dentro de la safe-zone (~58–66%). Generar con Pillow/sips un PNG 1024 transparente con el logo centrado; `backgroundColor` sólido aparte.
 
-### Pantalla en blanco tras el splash (fonts / layouts)
+### 🔴 Pantalla en blanco tras el splash → layouts de `@sincpro/mobile-ui` en vez del core (sin `<Outlet/>`)
 
-- **Síntoma:** blanco después del splash.
-- **Causas posibles:** (a) fuentes no cargadas → usar `useAppFonts()` + `SplashScreen` en el AppShell; (b) layouts de router sin `<Outlet/>` al volverlos standalone. (Ver también el `const enum` arriba, que es la causa más común tras una migración.)
+- **Síntoma:** el splash carga y se desvanece, pero ninguna pantalla aparece (ni el login). La infra arranca bien en los logs; el router monta (warnings de React Router) pero nada renderiza.
+- **Causa:** `AppRoutes.tsx` importa `PlainLayout`/`TabNavigatorLayout` desde **`@sincpro/mobile-ui/layouts/*`** (versiones **presentacionales**, renderizan `children`/`content` pero **no `<Outlet/>`**). Usados como _layout routes_ de react-router v6, las rutas hijas montan en `<Outlet/>` — que no existe → ninguna ruta hija renderiza → blanco. Típico tras una migración: el remapeo manda `@apk/ui/layouts/*` → `@sincpro/mobile-ui/layouts/*`, pero estos dos son la excepción.
+- **Fix:** importar las versiones **router-aware del core**: `import { PlainLayout, TabNavigatorLayout } from "@sincpro/mobile"` (viven en `@sincpro/mobile/ui/layouts/router_layouts`; el core posee el router e inyecta `<Outlet/>`, `location` y `navigate`). El JSX (`.Tabs`/`.Tab`) es idéntico.
+- **Otras causas de blanco tras splash:** fuentes no cargadas (usar `useAppFonts()` + `SplashScreen` en el AppShell); y el `const enum` de arriba (rutas con `path` undefined).
 
 ---
 

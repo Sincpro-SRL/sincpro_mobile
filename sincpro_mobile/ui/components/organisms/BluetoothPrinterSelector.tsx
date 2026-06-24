@@ -1,9 +1,10 @@
 import { BluetoothDevice, ISelectedPrinter } from "@sincpro/mobile/domain/print";
 import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
 import { printerService } from "@sincpro/mobile/services/printer.service";
+import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
 import { BluetoothDeviceSelectorModal } from "@sincpro/mobile/ui/components/molecules/BluetoothDeviceSelectorModal";
 import { Display, Form } from "@sincpro/mobile-ui";
-import PrinterIcon from "@sincpro/mobile-ui/icons/PrinterIcon";
+import { theme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
@@ -12,13 +13,15 @@ import { tv } from "tailwind-variants";
 interface BluetoothPrinterSelectorProps {
   onPrinterSelected?: (printer: ISelectedPrinter) => void;
   onConnectionChange?: (isConnected: boolean) => void;
+  /** Render as section rows (no outer card) — use inside FormViewV2.Content.Section. */
+  compact?: boolean;
 }
 
 const statusTextVariants = tv({
   variants: {
     granted: {
-      true: "text-green-600",
-      false: "text-red-500",
+      true: "text-success",
+      false: "text-danger",
     },
   },
 });
@@ -40,6 +43,7 @@ function PermissionRequired({
         onPress={onRequestPermission}
         size="small"
         title="Solicitar Permiso"
+        variant="cta"
       />
     </>
   );
@@ -61,11 +65,13 @@ function PrinterInfo({
   onChangePrinter: () => void;
 }) {
   return (
-    <View className="mt-2 bg-white rounded-lg p-3">
-      <Typography.Text className="text-gray-700" semibold>
+    <View className="mt-2 bg-bg-muted rounded-lg p-3">
+      <Typography.Text className="text-text-primary" semibold>
         {printer.name}
       </Typography.Text>
-      <Typography.Text className="text-gray-400 text-xs">{printer.address}</Typography.Text>
+      <Typography.Text className="text-text-tertiary text-xs">
+        {printer.address}
+      </Typography.Text>
 
       <View className="flex-row gap-2 mt-2">
         {!isConnected ? (
@@ -74,7 +80,7 @@ function PrinterInfo({
             onPress={onConnect}
             size="small"
             title="Conectar"
-            variant="primary"
+            variant="cta"
           />
         ) : (
           <Form.Button
@@ -95,8 +101,8 @@ function PrinterInfo({
 
       {isConnected && (
         <View className="flex-row items-center mt-2">
-          <View className="w-2 h-2 rounded-full bg-green-500 mr-2" />
-          <Typography.Text className="text-green-600 text-xs">Conectado</Typography.Text>
+          <View className="w-2 h-2 rounded-full bg-success mr-2" />
+          <Typography.Text className="text-success text-xs">Conectado</Typography.Text>
         </View>
       )}
     </View>
@@ -116,6 +122,7 @@ function NoPrinterSelected({
       onPress={onSelectPrinter}
       size="small"
       title="Seleccionar Impresora"
+      variant="cta"
     />
   );
 }
@@ -123,6 +130,7 @@ function NoPrinterSelected({
 function BluetoothPrinterSelector({
   onPrinterSelected,
   onConnectionChange,
+  compact = false,
 }: BluetoothPrinterSelectorProps) {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [selectedPrinter, setSelectedPrinter] = useState<ISelectedPrinter | null>(null);
@@ -197,11 +205,90 @@ function BluetoothPrinterSelector({
 
   const granted = hasPermission === true;
 
+  const modal = (
+    <BluetoothDeviceSelectorModal
+      onClose={() => setSelectorVisible(false)}
+      onSelect={handleDeviceSelected}
+      visible={selectorVisible}
+    />
+  );
+
+  if (compact) {
+    if (hasPermission === null) {
+      return (
+        <>
+          <Display.MenuButton
+            description="Verificando permisos..."
+            icon={PrinterIcon}
+            label="Impresora Bluetooth"
+            showDivider={false}
+          />
+          {modal}
+        </>
+      );
+    }
+
+    if (!granted) {
+      return (
+        <>
+          <Display.MenuButton
+            description="Permiso de Bluetooth requerido"
+            icon={PrinterIcon}
+            label="Impresora Bluetooth"
+            onPress={handleRequestPermission}
+            showDivider={false}
+          />
+          {modal}
+        </>
+      );
+    }
+
+    if (!selectedPrinter) {
+      return (
+        <>
+          <Display.MenuButton
+            description="No configurada"
+            icon={PrinterIcon}
+            label="Impresora Bluetooth"
+            onPress={() => setSelectorVisible(true)}
+            showDivider={false}
+          />
+          {modal}
+        </>
+      );
+    }
+
+    return (
+      <>
+        <Display.MenuButton
+          description={
+            loading
+              ? "Conectando..."
+              : isConnected
+                ? "Conectado"
+                : "Sin conexión — toca para conectar"
+          }
+          icon={PrinterIcon}
+          label={selectedPrinter.name}
+          onPress={!isConnected && !loading ? handleConnect : undefined}
+        />
+        <Display.MenuButton
+          description="Seleccionar otro dispositivo"
+          icon={PrinterIcon}
+          label="Cambiar impresora"
+          onPress={() => setSelectorVisible(true)}
+          showDivider={false}
+        />
+        {modal}
+      </>
+    );
+  }
+
   return (
-    <View className="bg-slate-50 rounded-xl p-5 my-2.5 shadow-sm">
+    <Display.Card className="my-2.5">
       <View className="flex-row items-start">
         <Display.Icon
-          color={granted ? "#22c55e" : "#ef4444"}
+          color={granted ? theme.success : theme.danger}
           customIcon={PrinterIcon}
           size={35}
           type="custom"
@@ -212,7 +299,7 @@ function BluetoothPrinterSelector({
           </Typography.Text>
 
           {hasPermission === null ? (
-            <Typography.Text className="text-gray-500">
+            <Typography.Text className="text-text-secondary">
               Verificando permisos...
             </Typography.Text>
           ) : !granted ? (
@@ -251,7 +338,7 @@ function BluetoothPrinterSelector({
         onSelect={handleDeviceSelected}
         visible={selectorVisible}
       />
-    </View>
+    </Display.Card>
   );
 }
 

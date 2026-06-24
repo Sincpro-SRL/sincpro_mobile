@@ -1,21 +1,20 @@
+import { useNavigation } from "@react-navigation/native";
 import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
 import DeadLetterQueueRow from "@sincpro/mobile/ui/components/organisms/DeadLetterQueueRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
-import { EVariantScreenHeader } from "@sincpro/mobile-ui/widgets/ScreenHeader";
 import { useEffect } from "react";
-import { useNavigate } from "react-router-native";
 
 import { DeadLetterQueueProvider, useDeadLetterQueue } from "./dead_letter_queue.context";
 
 function DeadLetterQueueScreenComponent() {
-  const navigate = useNavigate();
+  const navigation = useNavigation();
   const { enrichedEvents, isLoading, loadEvents, retryEvent } = useDeadLetterQueue();
 
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
 
-  const onBack = () => navigate(-1);
+  const onBack = () => navigation.goBack();
 
   return (
     <ListViewV2.Root
@@ -26,7 +25,7 @@ function DeadLetterQueueScreenComponent() {
       onBack={onBack}
       onRefresh={loadEvents}
     >
-      <ListViewV2.Header variant={EVariantScreenHeader.FLAT_HEADER} />
+      <ListViewV2.Header variant="default" />
 
       <ListViewV2.Content>
         {(event: DomainEvent) => (

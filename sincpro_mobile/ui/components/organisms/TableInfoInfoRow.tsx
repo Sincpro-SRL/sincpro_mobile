@@ -31,7 +31,7 @@ function TableInfoRow({ item, onPress }: TableListItemProps) {
   return (
     <TouchableOpacity
       activeOpacity={0.7}
-      className="bg-white p-4 rounded-xl my-2 shadow-sm"
+      className="bg-bg-card p-4 rounded-xl my-2 shadow-sm"
       onPress={onPress}
     >
       <View>
@@ -47,7 +47,7 @@ function TableInfoRow({ item, onPress }: TableListItemProps) {
         )}
 
         <Typography.Text
-          className="text-gray-500"
+          className="text-text-secondary"
           ellipsizeMode="tail"
           numberOfLines={2}
           variant="bodySmall"

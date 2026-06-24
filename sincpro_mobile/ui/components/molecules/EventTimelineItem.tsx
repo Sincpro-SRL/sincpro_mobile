@@ -9,12 +9,12 @@ import { TouchableOpacity, View } from "react-native";
 
 const statusColorMap = {
   [EEventStatus.ACKNOWLEDGED]: {
-    bg: "bg-emerald-600",
+    bg: "bg-success",
     color: theme.success,
     light: `${theme.success}4D`,
   },
   [EEventStatus.PENDING]: {
-    bg: "bg-amber-500",
+    bg: "bg-warning",
     color: theme.warning,
     light: `${theme.warning}4D`,
   },
@@ -24,14 +24,14 @@ const statusColorMap = {
     light: `${theme.warning}4D`,
   },
   [EEventStatus.FAILED]: {
-    bg: "bg-red-500",
+    bg: "bg-danger",
     color: theme.danger,
     light: `${theme.danger}4D`,
   },
 } as const;
 
 const defaultStatus = {
-  bg: "bg-gray-500",
+  bg: "bg-text-tertiary",
   color: theme.text.secondary,
   light: `${theme.text.secondary}4D`,
 };
@@ -84,7 +84,7 @@ function EventTimelineItem({ event, isLast = false }: EventTimelineItemProps) {
 
       <TouchableOpacity
         activeOpacity={0.7}
-        className="flex-1 bg-white rounded-xl p-3 mb-3 border border-gray-100 shadow-sm"
+        className="flex-1 bg-bg-card rounded-xl p-3 mb-3 border border-border-light shadow-sm"
         onPress={() => setExpanded(!expanded)}
       >
         <View className="flex-row justify-between items-center mb-2">
@@ -126,7 +126,7 @@ function EventTimelineItem({ event, isLast = false }: EventTimelineItemProps) {
         )}
 
         {expanded && event && (
-          <View className="mt-3 border-t border-gray-100 pt-3">
+          <View className="mt-3 border-t border-border-light pt-3">
             <View className="flex-row justify-between items-center mb-2">
               <Typography.Text className="text-text-tertiary" semibold variant="caption">
                 Payload
@@ -137,7 +137,7 @@ function EventTimelineItem({ event, isLast = false }: EventTimelineItemProps) {
                 label={"copy"}
               />
             </View>
-            <View className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+            <View className="bg-bg-muted rounded-lg border border-border-default overflow-hidden">
               <JsonPreview selectedJson={event.asJSON(true)} />
             </View>
           </View>

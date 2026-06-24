@@ -17,7 +17,7 @@ function DatabaseInfoRow({ item, onPress }: DatabaseInfoRowProps) {
   return (
     <ListViewV2.Content.Row onPress={onPress}>
       <ListViewV2.Content.Row.Avatar>
-        <View className="justify-center items-center p-2 rounded-lg bg-gray-100">
+        <View className="justify-center items-center p-2 rounded-lg bg-bg-muted">
           <Display.Icon name="database" size={32} type="antdesign" />
         </View>
       </ListViewV2.Content.Row.Avatar>

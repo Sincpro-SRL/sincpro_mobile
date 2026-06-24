@@ -5,7 +5,7 @@ type Events = Record<EventType, unknown>;
 const DEBOUNCE_DELAY = 300;
 
 interface Subscription {
-  timer: NodeJS.Timeout | null;
+  timer: ReturnType<typeof setTimeout> | null;
   wrappedHandler: Handler<unknown>;
   originalHandler: Handler<unknown>;
 }

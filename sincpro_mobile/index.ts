@@ -17,4 +17,3 @@ export { DomainModule } from "@sincpro/mobile/framework/domain_module";
 export { Kernel } from "@sincpro/mobile/framework/kernel";
 export { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 export { installGlobalErrorHandler } from "@sincpro/mobile/infrastructure/ui/errorHandler";
-export { PlainLayout, TabNavigatorLayout } from "@sincpro/mobile/ui/layouts/router_layouts";

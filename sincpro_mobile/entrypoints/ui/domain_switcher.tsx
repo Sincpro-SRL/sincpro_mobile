@@ -1,3 +1,4 @@
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import {
   type ComponentType,
   createContext,
@@ -5,6 +6,8 @@ import {
   useContext,
   useState,
 } from "react";
+
+const RootStack = createNativeStackNavigator();
 
 export interface DomainApp {
   key: string;
@@ -46,8 +49,12 @@ export function useDomainSwitcher(): DomainSwitcherValue {
 
 export function ActiveDomainApp() {
   const { activeDomain, apps } = useDomainSwitcher();
-  const app = apps.find((entry) => entry.key === activeDomain);
-  if (!app) return null;
-  const Component = app.component;
-  return <Component />;
+  const currentApp = apps.find((entry) => entry.key === activeDomain);
+  if (!currentApp) return null;
+
+  return (
+    <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Screen component={currentApp.component} name={currentApp.key} />
+    </RootStack.Navigator>
+  );
 }

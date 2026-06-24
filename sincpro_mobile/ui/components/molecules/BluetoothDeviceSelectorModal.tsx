@@ -1,13 +1,13 @@
 import { BluetoothDevice } from "@sincpro/mobile/domain/print";
 import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
 import { printerService } from "@sincpro/mobile/services/printer.service";
+import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
 import { Display, Form } from "@sincpro/mobile-ui";
-import { BottomSheet } from "@sincpro/mobile-ui/Dialog/BottomSheet";
-import PrinterIcon from "@sincpro/mobile-ui/icons/PrinterIcon";
+import Sheet from "@sincpro/mobile-ui/Dialog/Sheet";
 import { theme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useCallback, useEffect, useState } from "react";
-import { FlatList, RefreshControl, TouchableOpacity, View } from "react-native";
+import { TouchableOpacity, View } from "react-native";
 
 interface BluetoothDeviceSelectorModalProps {
   visible: boolean;
@@ -25,8 +25,8 @@ function DeviceRow({ device, onSelect, isSelected }: DeviceRowProps) {
   return (
     <TouchableOpacity
       activeOpacity={0.7}
-      className={`flex-row items-center p-4 border-b border-gray-100 ${
-        isSelected ? "bg-green-50" : "bg-white"
+      className={`flex-row items-center p-4 rounded-xl ${
+        isSelected ? "bg-success-light" : "bg-bg-card"
       }`}
       onPress={onSelect}
     >
@@ -38,15 +38,17 @@ function DeviceRow({ device, onSelect, isSelected }: DeviceRowProps) {
       />
       <View className="ml-3 flex-1">
         <Typography.Text semibold>{device.name || "Dispositivo sin nombre"}</Typography.Text>
-        <Typography.Text className="text-gray-400 text-xs">{device.address}</Typography.Text>
+        <Typography.Text className="text-text-tertiary text-xs">
+          {device.address}
+        </Typography.Text>
         {device.isPrinter && (
-          <Typography.Text className="text-green-600 text-xs">
+          <Typography.Text className="text-success text-xs">
             {"Impresora detectada"}
           </Typography.Text>
         )}
       </View>
       {isSelected && (
-        <View className="w-6 h-6 rounded-full bg-green-500 items-center justify-center">
+        <View className="w-6 h-6 rounded-full bg-success items-center justify-center">
           <Display.Icon color={theme.text.inverse} name="check" size={16} type="material" />
         </View>
       )}
@@ -63,10 +65,10 @@ function EmptyState() {
         size={64}
         type="custom"
       />
-      <Typography.Text className="text-gray-500 text-center mt-4">
+      <Typography.Text className="text-text-secondary text-center mt-4">
         {"No hay dispositivos vinculados"}
       </Typography.Text>
-      <Typography.Text className="text-gray-400 text-center text-sm mt-2">
+      <Typography.Text className="text-text-tertiary text-center text-sm mt-2">
         {"Vincula una impresora desde configuración de Bluetooth del sistema"}
       </Typography.Text>
     </View>
@@ -124,71 +126,75 @@ function BluetoothDeviceSelectorModal({
 
   const printers = devices.filter((d) => d.isPrinter);
   const otherDevices = devices.filter((d) => !d.isPrinter);
-  const allDevices = [...printers, ...otherDevices];
+
+  function renderRow(item: BluetoothDevice) {
+    return (
+      <DeviceRow
+        device={item}
+        isSelected={selectedDevice?.address === item.address}
+        key={item.address}
+        onSelect={() => setSelectedDevice(item)}
+      />
+    );
+  }
 
   return (
-    <BottomSheet.Root onClose={onClose} size="large" visible={visible}>
-      <BottomSheet.Header>
-        <View className="px-5 pb-3">
-          <Typography.Text bold variant="subtitle">
-            Seleccionar Impresora
-          </Typography.Text>
-          <Typography.Text className="text-gray-500 text-xs">
-            Dispositivos Bluetooth vinculados
-          </Typography.Text>
-        </View>
-      </BottomSheet.Header>
-
-      <BottomSheet.Content scrollable>
-        {devices.length === 0 && !loading ? (
-          <EmptyState />
-        ) : (
-          <FlatList
-            data={allDevices}
-            keyExtractor={(item) => item.address}
-            ListHeaderComponent={
-              printers.length > 0 ? (
-                <Typography.Text className="text-gray-600 px-4 py-2 bg-gray-50" semibold>
-                  Impresoras ({printers.length})
-                </Typography.Text>
-              ) : null
-            }
-            refreshControl={<RefreshControl onRefresh={loadDevices} refreshing={loading} />}
-            renderItem={({ item, index }) => (
-              <>
-                {index === printers.length && otherDevices.length > 0 && (
-                  <Typography.Text className="text-gray-600 px-4 py-2 bg-gray-50" semibold>
-                    Otros dispositivos ({otherDevices.length})
-                  </Typography.Text>
-                )}
-                <DeviceRow
-                  device={item}
-                  isSelected={selectedDevice?.address === item.address}
-                  onSelect={() => setSelectedDevice(item)}
-                />
-              </>
-            )}
-            scrollEnabled={false}
+    <Sheet onClose={onClose} title="Seleccionar Impresora" visible={visible}>
+      <View className="flex-row items-center justify-between mb-3">
+        <Typography.Text className="text-text-secondary text-xs">
+          Dispositivos Bluetooth vinculados
+        </Typography.Text>
+        <TouchableOpacity
+          accessibilityLabel="Actualizar"
+          disabled={loading}
+          hitSlop={8}
+          onPress={loadDevices}
+        >
+          <Display.Icon
+            color={theme.icon.secondary}
+            name="refresh"
+            size={20}
+            type="material"
           />
-        )}
-      </BottomSheet.Content>
+        </TouchableOpacity>
+      </View>
 
-      <BottomSheet.Actions layout="horizontal">
+      {devices.length === 0 && !loading ? (
+        <EmptyState />
+      ) : (
+        <View className="gap-1">
+          {printers.length > 0 ? (
+            <Typography.Text className="text-text-secondary px-1 py-1" semibold>
+              Impresoras ({printers.length})
+            </Typography.Text>
+          ) : null}
+          {printers.map(renderRow)}
+
+          {otherDevices.length > 0 ? (
+            <Typography.Text className="text-text-secondary px-1 py-1 mt-1" semibold>
+              Otros dispositivos ({otherDevices.length})
+            </Typography.Text>
+          ) : null}
+          {otherDevices.map(renderRow)}
+        </View>
+      )}
+
+      <View className="flex-row gap-2 mt-4">
         <View className="flex-1">
           <Form.Button onPress={onClose} title="Cancelar" variant="outline" />
         </View>
-        {selectedDevice && (
+        {selectedDevice ? (
           <View className="flex-1">
             <Form.Button
               loading={connecting}
               onPress={handleConfirm}
               title={"Conectar"}
-              variant="primary"
+              variant="cta"
             />
           </View>
-        )}
-      </BottomSheet.Actions>
-    </BottomSheet.Root>
+        ) : null}
+      </View>
+    </Sheet>
   );
 }
 

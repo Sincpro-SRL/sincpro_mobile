@@ -3,6 +3,8 @@ import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/settin
 import { QueueEndEvent, QueueStartEvent } from "@sincpro/mobile/domain/events";
 import logger, { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
+import type { ThemeTokens } from "@sincpro/mobile-ui/theme";
+import { DEFAULT_DARK_THEME, DEFAULT_THEME, setActiveTheme } from "@sincpro/mobile-ui/theme";
 import {
   createContext,
   ReactNode,
@@ -13,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Appearance, AppState } from "react-native";
 
 export interface TimezoneLocale {
   timezone: string;
@@ -22,6 +25,7 @@ export interface TimezoneLocale {
 const DEBUG_MODE_SETTING_KEY = "app.debug_mode";
 const TIMEZONE_SETTING_KEY = "app.timezone";
 const LOCALE_SETTING_KEY = "app.locale";
+const COLOR_SCHEME_SETTING_KEY = "app.color_scheme";
 
 const QUEUE_MIN_VISIBLE_MS = 1200;
 
@@ -61,15 +65,19 @@ interface ICommonContext {
   requestGeoPermission: () => Promise<boolean>;
   timezone: string | null;
   updateTimezone: (tz: TimezoneLocale) => Promise<void>;
+  colorScheme: "light" | "dark" | "system";
+  setColorScheme: (scheme: "light" | "dark" | "system") => Promise<void>;
 }
 
 const CommonContext = createContext<ICommonContext | null>(null);
 
 interface CommonProviderProps {
   children: ReactNode;
+  lightTheme?: ThemeTokens;
+  darkTheme?: ThemeTokens;
 }
 
-export function CommonProvider({ children }: CommonProviderProps) {
+export function CommonProvider({ children, lightTheme, darkTheme }: CommonProviderProps) {
   const [debugMode, setDebugMode] = useState(false);
   const [debugModeLoaded, setDebugModeLoaded] = useState(false);
 
@@ -82,9 +90,10 @@ export function CommonProvider({ children }: CommonProviderProps) {
   const [geoIsLoading, setGeoIsLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [timezone, setTimezone] = useState<string | null>(null);
+  const [colorScheme, setColorSchemeState] = useState<"light" | "dark" | "system">("system");
 
-  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const queueClearTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queueClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     async function loadDebugMode() {
@@ -149,6 +158,55 @@ export function CommonProvider({ children }: CommonProviderProps) {
       logger.warn(error);
     }
   }, []);
+
+  const applyTheme = useCallback(
+    (scheme: "light" | "dark" | "system") => {
+      const resolved =
+        scheme === "system" ? (Appearance.getColorScheme() ?? "light") : scheme;
+      setActiveTheme(
+        resolved === "dark"
+          ? (darkTheme ?? DEFAULT_DARK_THEME)
+          : (lightTheme ?? DEFAULT_THEME),
+      );
+    },
+    [lightTheme, darkTheme],
+  );
+
+  const setColorScheme = useCallback(
+    async (scheme: "light" | "dark" | "system") => {
+      await SettingsRepository.saveOneSetting(COLOR_SCHEME_SETTING_KEY, scheme);
+      setColorSchemeState(scheme);
+      applyTheme(scheme);
+    },
+    [applyTheme],
+  );
+
+  useEffect(() => {
+    checkGeoPermission();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") checkGeoPermission();
+    });
+    return () => sub.remove();
+  }, [checkGeoPermission]);
+
+  // Load persisted color scheme on mount
+  useEffect(() => {
+    async function loadColorScheme() {
+      const saved = await SettingsRepository.getSettingByName(COLOR_SCHEME_SETTING_KEY);
+      const scheme =
+        saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+      setColorSchemeState(scheme);
+      applyTheme(scheme);
+    }
+    loadColorScheme();
+  }, [applyTheme]);
+
+  // Follow system changes when scheme is "system"
+  useEffect(() => {
+    if (colorScheme !== "system") return;
+    const sub = Appearance.addChangeListener(() => applyTheme("system"));
+    return () => sub.remove();
+  }, [colorScheme, applyTheme]);
 
   useEffect(() => {
     async function loadTimezone() {
@@ -286,6 +344,8 @@ export function CommonProvider({ children }: CommonProviderProps) {
       requestGeoPermission,
       timezone,
       updateTimezone,
+      colorScheme,
+      setColorScheme,
     }),
     [
       debugMode,
@@ -302,6 +362,8 @@ export function CommonProvider({ children }: CommonProviderProps) {
       requestGeoPermission,
       timezone,
       updateTimezone,
+      colorScheme,
+      setColorScheme,
     ],
   );
 
