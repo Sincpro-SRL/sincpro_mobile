@@ -170,9 +170,24 @@ class PrinterService {
     try {
       await getPrinterDriver().printImageBase64(base64Data);
       return true;
-    } catch (error) {
-      loggerUseCases.error("Error printing image", error);
-      return false;
+    } catch (firstError) {
+      loggerUseCases.warn("Print failed — attempting grace reconnect", firstError);
+
+      const reconnected = await this.forceReconnect();
+      if (!reconnected) return false; // connect() ya notificó al usuario
+
+      try {
+        await getPrinterDriver().printImageBase64(base64Data);
+        return true;
+      } catch (retryError) {
+        loggerUseCases.error("Print retry after reconnect also failed", retryError);
+        UIEventBus.emit(UI_NOTIFICATION_EVENT, {
+          type: "error",
+          text1: "Error de impresión",
+          text2: "No se pudo imprimir incluso tras reconectar la impresora",
+        });
+        return false;
+      }
     }
   }
 
@@ -247,6 +262,25 @@ class PrinterService {
       loggerUseCases.error("Error converting HTML to PDF", error);
       return null;
     }
+  }
+
+  /**
+   * Drops the current BLE connection (even if cached as "connected") and
+   * reconnects to the last saved printer. Used as a one-shot recovery after
+   * a failed print caused by a stale connection.
+   */
+  private async forceReconnect(): Promise<boolean> {
+    try {
+      await getPrinterDriver().disconnect();
+    } catch {
+      // Expected when the BLE link is already dead — ignore.
+    }
+    const printer = await this.getSelectedPrinter();
+    if (!printer) return false;
+    loggerUseCases.info(
+      `Grace reconnect: reconnecting to ${printer.name} (${printer.address})`,
+    );
+    return this.connect(printer.address, printer.name);
   }
 
   private async ensureConnected(): Promise<boolean> {

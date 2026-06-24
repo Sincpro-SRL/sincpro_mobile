@@ -8,9 +8,9 @@ export class PrintImageSubscriber extends Subscriber {
   listen = [PrintImageRequestedEvent];
 
   async process(event: PrintImageRequestedEvent): Promise<void> {
-    if (!(await printerService.isConnected())) {
-      throw new DomainValidationError("No printer connected");
+    const printed = await printerService.printImageBase64(event.imageBase64);
+    if (!printed) {
+      throw new DomainValidationError("Print failed — printer not connected or timed out");
     }
-    await printerService.printImageBase64(event.imageBase64);
   }
 }
