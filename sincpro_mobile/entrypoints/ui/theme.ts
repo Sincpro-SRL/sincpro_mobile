@@ -1,16 +1,17 @@
 import { type DeepPartial, extendTheme, type ThemeTokens } from "@sincpro/mobile-ui/theme";
 
 /**
- * API simple y extensible para que los clientes definan su theme.
- * Parte de los defaults del framework y aplica overrides parciales (tipados).
+ * Build a fully-typed theme from a partial override object.
+ * Starts from the DS base theme and deep-merges your tokens on top.
  *
- *   createApp({
- *     theme: createTheme({ primary: "#FF6600", bg: { page: "#141414" } }),
- *     domains: [...],
+ *   createAppShell({
+ *     theme: createTheme({ primary: "#FF6600", bg: { page: "#F5F5F5" } }),
+ *     darkTheme: createTheme({ bg: { page: "#0A0A0A" }, primary: "#F5F5F5" }),
+ *     ...
  *   });
  *
- * El resultado se inyecta una vez al bootstrap (estático, sin runtime switching)
- * y propaga tanto a `className` (CSS vars) como a `style={theme.x}`.
+ * The result is injected once at bootstrap (static, not swapped at runtime)
+ * and propagates as both NativeWind CSS vars (`className`) and inline style props.
  */
 export function createTheme(overrides?: DeepPartial<ThemeTokens>): ThemeTokens {
   return extendTheme(overrides);
