@@ -1,22 +1,21 @@
+import { useNavigation } from "@react-navigation/native";
 import DatabaseInfoRow from "@sincpro/mobile/ui/components/organisms/DatabaseInfoRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
-import { EVariantScreenHeader } from "@sincpro/mobile-ui/widgets/ScreenHeader";
 import { useEffect } from "react";
-import { useNavigate } from "react-router-native";
 
 import { DatabaseProvider, EDatabaseView, useDatabase } from "./database.context";
 import JsonDetailView from "./database.json_detail";
 import TableRowsView from "./database.table_rows";
 
 function TablesView() {
-  const navigate = useNavigate();
+  const navigation = useNavigation();
   const { loadTables, isLoading, tables, selectTable } = useDatabase();
 
   useEffect(() => {
     void loadTables();
   }, [loadTables]);
 
-  const onBack = () => navigate(-1);
+  const onBack = () => navigation.goBack();
 
   return (
     <ListViewV2.Root
@@ -28,7 +27,7 @@ function TablesView() {
         await selectTable(table.name);
       }}
     >
-      <ListViewV2.Header variant={EVariantScreenHeader.FLAT_HEADER} />
+      <ListViewV2.Header variant="default" />
 
       <ListViewV2.Content>
         {(table: any) => (

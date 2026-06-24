@@ -1,7 +1,6 @@
 import { safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 import TableInfoRow from "@sincpro/mobile/ui/components/organisms/TableInfoInfoRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
-import { EVariantScreenHeader } from "@sincpro/mobile-ui/widgets/ScreenHeader";
 
 import { useDatabase } from "./database.context";
 
@@ -24,7 +23,7 @@ function TableRowsView() {
       onPressItem={(item: any) => selectRowJson(safeJsonStringify(item), item.index)}
       onSearch={setSearchQuery}
     >
-      <ListViewV2.Header variant={EVariantScreenHeader.FLAT_HEADER}>
+      <ListViewV2.Header variant="default">
         <ListViewV2.Header.Search />
       </ListViewV2.Header>
 

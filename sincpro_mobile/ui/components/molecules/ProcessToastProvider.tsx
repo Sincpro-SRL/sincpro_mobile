@@ -6,7 +6,7 @@ export function ProcessToastProvider({ children }: { children: ReactNode }) {
   return (
     <>
       {children}
-      <ProcessToast position="top" />
+      <ProcessToast />
     </>
   );
 }

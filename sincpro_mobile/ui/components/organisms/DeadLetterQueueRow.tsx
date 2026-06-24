@@ -102,7 +102,7 @@ function DeadLetterQueueRow({ item, onRetry }: DeadLetterQueueRowProps) {
     return (
       <View className="flex-row items-center justify-between mb-3">
         <Display.Date
-          className="text-gray-800"
+          className="text-text-primary"
           showTime
           textVariant="bodySmall"
           value={event.createdAt}
@@ -118,8 +118,8 @@ function DeadLetterQueueRow({ item, onRetry }: DeadLetterQueueRowProps) {
     }
 
     return (
-      <View className="bg-gray-50 rounded-lg p-2 border border-gray-200 mb-2.5">
-        <Typography.Text className="text-gray-700 mb-1" semibold variant="bodySmall">
+      <View className="bg-bg-muted rounded-lg p-2 border border-border-default mb-2.5">
+        <Typography.Text className="text-text-primary mb-1" semibold variant="bodySmall">
           {"Payload"}
         </Typography.Text>
         <JsonPreview selectedJson={event.asJSON(true)} />
@@ -167,7 +167,7 @@ function DeadLetterQueueRow({ item, onRetry }: DeadLetterQueueRowProps) {
   }
 
   return (
-    <View className="bg-white border border-gray-200 rounded-2xl mx-4 p-3.5 mb-3 shadow-sm">
+    <View className="bg-bg-card border border-border-default rounded-2xl mx-4 p-3.5 mb-3 shadow-sm">
       {renderHeader()}
       {renderMeta()}
       <DeadLetterErrorBlock

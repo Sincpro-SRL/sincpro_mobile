@@ -1,10 +1,9 @@
 import { Display } from "@sincpro/mobile-ui/Display";
 import { Form } from "@sincpro/mobile-ui/Form";
-import { theme } from "@sincpro/mobile-ui/theme";
+import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { FormViewV2 } from "@sincpro/mobile-ui/views/FormViewV2";
 import JsonPreview from "@sincpro/mobile-ui/widgets/JSONViewer";
-import { EVariantScreenHeader } from "@sincpro/mobile-ui/widgets/ScreenHeader";
 import * as Clipboard from "expo-clipboard";
 import { View } from "react-native";
 
@@ -14,6 +13,7 @@ const Button = Form.Button;
 const Icon = Display.Icon;
 
 function JsonDetailView() {
+  const theme = useTheme();
   const {
     selectedTable,
     selectedRowJson,
@@ -34,9 +34,9 @@ function JsonDetailView() {
       name="Detalles"
       onBack={goBackFromJson}
     >
-      <FormViewV2.Header variant={EVariantScreenHeader.FLAT_HEADER}>
+      <FormViewV2.Header variant="default">
         <FormViewV2.Header.Actions>
-          <Typography.Text className="text-gray-500" variant="bodySmall">
+          <Typography.Text className="text-text-secondary" variant="bodySmall">
             {currentRowIndex + 1} de {filteredData.length}
           </Typography.Text>
         </FormViewV2.Header.Actions>
