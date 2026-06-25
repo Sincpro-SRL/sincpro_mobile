@@ -5,13 +5,13 @@ import type {
   FlushClient,
   FlushJobState,
   FlushQueue,
-} from "../sincpro_mobile/infrastructure/telemetry/flush_job.ts";
+} from "../../sincpro_mobile/infrastructure/telemetry/flush_job.ts";
 import {
   createFlushJobState,
   FLUSH_BATCH_SIZE,
   MAX_BATCHES_PER_TICK,
   runFlushJob,
-} from "../sincpro_mobile/infrastructure/telemetry/flush_job.ts";
+} from "../../sincpro_mobile/infrastructure/telemetry/flush_job.ts";
 
 // ---------------------------------------------------------------------------
 // In-memory store — simulates the SQLite queue for flush job tests

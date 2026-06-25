@@ -6,7 +6,7 @@ import {
   _resetTelemetry,
   initTelemetry,
   LokiClient,
-} from "../sincpro_mobile/infrastructure/telemetry/config.ts";
+} from "../../sincpro_mobile/infrastructure/telemetry/config.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal fetch mock — captures Loki push bodies
@@ -151,7 +151,7 @@ test("logger: error from disabled-console context (ODOO_CLIENT) still reaches Lo
   const { teardown, lines } = setupViaInit();
 
   // We import the logger lazily to avoid circular/static issues in test runner
-  const { loggerOdooClient } = await import("../sincpro_mobile/infrastructure/logger.ts");
+  const { loggerOdooClient } = await import("../../sincpro_mobile/infrastructure/logger.ts");
   loggerOdooClient.error("Odoo API returned 503");
   await flushMicrotasks();
 
@@ -167,7 +167,8 @@ test("logger: error from disabled-console context (ODOO_CLIENT) still reaches Lo
 test("logger: warn from disabled-console context (REPOSITORIES) still reaches Loki", async () => {
   const { teardown, lines } = setupViaInit();
 
-  const { loggerRepositories } = await import("../sincpro_mobile/infrastructure/logger.ts");
+  const { loggerRepositories } =
+    await import("../../sincpro_mobile/infrastructure/logger.ts");
   loggerRepositories.warn("slow query detected");
   await flushMicrotasks();
 
@@ -183,7 +184,7 @@ test("logger: warn from disabled-console context (REPOSITORIES) still reaches Lo
 test("logger: debug never reaches Loki regardless of context", async () => {
   const { teardown, lines } = setupViaInit();
 
-  const { loggerUseCases } = await import("../sincpro_mobile/infrastructure/logger.ts");
+  const { loggerUseCases } = await import("../../sincpro_mobile/infrastructure/logger.ts");
   loggerUseCases.debug("verbose debug trace");
   await flushMicrotasks();
 
@@ -200,7 +201,7 @@ test("logger: debug never reaches Loki regardless of context", async () => {
 test("logger: info from enabled context (USE_CASES) reaches Loki", async () => {
   const { teardown, lines } = setupViaInit();
 
-  const { loggerUseCases } = await import("../sincpro_mobile/infrastructure/logger.ts");
+  const { loggerUseCases } = await import("../../sincpro_mobile/infrastructure/logger.ts");
   loggerUseCases.info("order ACM-001 synced");
   await flushMicrotasks();
 
@@ -216,7 +217,7 @@ test("logger: info from enabled context (USE_CASES) reaches Loki", async () => {
 test("logger: info from disabled context (ODOO_CLIENT) does NOT reach Loki", async () => {
   const { teardown, lines } = setupViaInit();
 
-  const { loggerOdooClient } = await import("../sincpro_mobile/infrastructure/logger.ts");
+  const { loggerOdooClient } = await import("../../sincpro_mobile/infrastructure/logger.ts");
   loggerOdooClient.info("fetching routes");
   await flushMicrotasks();
 
@@ -233,7 +234,7 @@ test("logger: info from disabled context (ODOO_CLIENT) does NOT reach Loki", asy
 test("logger: context prefix appears in Loki message for ODOO_CLIENT error", async () => {
   const { teardown, lines } = setupViaInit();
 
-  const { loggerOdooClient } = await import("../sincpro_mobile/infrastructure/logger.ts");
+  const { loggerOdooClient } = await import("../../sincpro_mobile/infrastructure/logger.ts");
   loggerOdooClient.error("connection refused");
   await flushMicrotasks();
 
