@@ -11,6 +11,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "ignoreDeprecations": "5.0",
+    "allowImportingTsExtensions": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "paths": {
@@ -18,6 +19,6 @@
       "@sincpro/mobile/*": ["./sincpro_mobile/*"]
     }
   },
-  "include": ["sincpro_mobile/**/*.ts", "sincpro_mobile/**/*.tsx"],
+  "include": ["sincpro_mobile/**/*.ts", "sincpro_mobile/**/*.tsx", "tests/**/*.ts"],
   "exclude": ["node_modules", "lib"]
 }
