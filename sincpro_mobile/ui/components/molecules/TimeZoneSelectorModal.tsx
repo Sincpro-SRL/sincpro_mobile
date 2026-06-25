@@ -3,7 +3,7 @@ import { Display } from "@sincpro/mobile-ui/Display";
 import { Form } from "@sincpro/mobile-ui/Form";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TextInput, TouchableOpacity, View } from "react-native";
 
 import { TimezoneLocale } from "./timezone";
@@ -91,6 +91,13 @@ function TimeZoneSelectorModal({
   const [selectedTimezone, setSelectedTimezone] = useState<string | null>(
     currentTimezone || null,
   );
+
+  useEffect(() => {
+    if (visible) {
+      setQuery("");
+      setSelectedTimezone(currentTimezone || null);
+    }
+  }, [visible]);
 
   const timezoneList = useMemo<TimezoneItem[]>(() => {
     return Object.values(TIMEZONES_LOCALES).map((tz) => ({

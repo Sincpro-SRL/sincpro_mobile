@@ -35,7 +35,8 @@ build:
 	@echo "✓ Build listo en ./dist (JS + .d.ts, alias @ resuelto a relativo)"
 
 test:
-	@echo "Running tests..."
+	@echo "🧪 Running tests..."
+	@node --experimental-strip-types --test "tests/**/*.test.ts"
 
 verify-format: format doctor
 	@if ! git diff --quiet; then \
