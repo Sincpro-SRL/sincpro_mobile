@@ -27,6 +27,7 @@
   "author": "Gutierrez, Andres <andres.gutierrez@sincpro.com.bo>",
   "license": "MIT",
   "dependencies": {
+    "@opentelemetry/sdk-trace-base": "^2.8.0",
     "async-mutex": "^0.5.0",
     "big.js": "^7.0.1",
     "dayjs": "^1.11.18",
@@ -36,6 +37,10 @@
     "uuid": "^13.0.0"
   },
   "peerDependencies": {
+    "@opentelemetry/api": ">=1.3.0 <1.10.0",
+    "@react-navigation/native": ">=7",
+    "@react-navigation/native-stack": ">=7",
+    "@sincpro/mobile-ui": "^0.7.2",
     "expo-background-task": "*",
     "expo-clipboard": "*",
     "expo-crypto": "*",
@@ -55,15 +60,16 @@
     "react-native-gesture-handler": "*",
     "react-native-keyboard-controller": "*",
     "react-native-safe-area-context": "*",
+    "react-native-screens": "*",
     "react-native-toast-message": "*",
     "react-native-view-shot": "*",
-    "react-native-webview": "*",
-    "@react-navigation/native": ">=7",
-    "@react-navigation/native-stack": ">=7",
-    "react-native-screens": "*",
-    "@sincpro/mobile-ui": "^0.7.2"
+    "react-native-webview": "*"
   },
   "devDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@react-navigation/native": "^7.0.0",
+    "@react-navigation/native-stack": "^7.0.0",
+    "@sincpro/mobile-ui": "^0.7.2",
     "@types/big.js": "^6.2.2",
     "@types/react": "~19.1.10",
     "@types/uuid": "^10.0.0",
@@ -94,16 +100,13 @@
     "react-native-keyboard-controller": "1.18.5",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.25.2",
     "react-native-svg": "15.12.1",
     "react-native-toast-message": "^2.3.3",
     "react-native-view-shot": "^4.0.3",
     "react-native-webview": "13.15.0",
-    "@react-navigation/native": "^7.0.0",
-    "@react-navigation/native-stack": "^7.0.0",
-    "react-native-screens": "~4.25.2",
     "tsc-alias": "^1.8.17",
-    "typescript": "~5.9.2",
-    "@sincpro/mobile-ui": "^0.7.2"
+    "typescript": "~5.9.2"
   },
   "exports": {
     ".": "./dist/index.js",

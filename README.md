@@ -66,8 +66,9 @@ export default createAppShell({
 7. [Theme Configuration](#theme-configuration)
 8. [Brand Font Configuration](#brand-font-configuration)
 9. [Public API](#public-api)
-10. [Subpaths](#subpaths)
-11. [Development](#development)
+10. [Telemetry Architecture](#telemetry-architecture)
+11. [Subpaths](#subpaths)
+12. [Development](#development)
 
 ---
 
@@ -367,6 +368,71 @@ const status = await networkUseCases.getNetworkStatus();
 ```
 
 The EventBus subscribes to `InternetIsDownEvent` / `InternetIsUpEvent` internally — when connectivity is lost it increases the poll interval, and when it is restored it resets to 800ms and drains any held events immediately.
+
+### ✅ Telemetry & Observability (OpenTelemetry + Loki)
+
+Distributed tracing and structured logs, **offline-first**, built on the OpenTelemetry SDK. Spans buffer to SQLite and ship to any OTLP/HTTP collector (Grafana Alloy, Tempo, Jaeger); logs ship to Loki. Telemetry is **opt-in** — pass a `telemetry` config to `createApp`.
+
+```tsx
+await createApp({
+  telemetry: {
+    loki: {
+      endpoint: "https://loki.acme.com",
+      labels: { app: "pos", env: "prod", tenant: "acme" },
+      // Standard auth shortcut…
+      auth: { type: "bearer", token: "…" },
+      // …or any custom gateway headers (merged after auth, win on conflict)
+      headers: { "sincpro-api-key": "…", "X-Scope-OrgID": "acme" },
+    },
+    otlp: {
+      endpoint: "https://alloy.acme.com",
+      headers: { Authorization: "Bearer …" },
+    },
+    flush: {
+      backgroundIntervalMin: 15, // 0 disables the background cron
+      onConnectivityEvents: true, // drain the backlog the moment the network returns
+      sendTimeoutMs: 4000, // fail fast instead of hanging while offline
+    },
+  },
+});
+```
+
+**One import, simple API.** The `Tracing` facade is the single entry point for custom instrumentation:
+
+```tsx
+import { Tracing } from "@sincpro/mobile/infrastructure/telemetry";
+
+// Manual span block — start/end/error handled for you
+await Tracing.withSpan("checkout.process", async (span) => {
+  span.setAttribute("order.id", order.id);
+  await processOrder(order);
+});
+
+// Or decorate — a span per invocation, parent context propagated automatically
+class CheckoutUseCase {
+  @Tracing.Trace()
+  async process(order: Order) {
+    /* … */
+  }
+}
+
+@Tracing.TraceClass("checkout") // a span per public method + context propagation
+class InventoryService {
+  /* … */
+}
+
+// Correlate your own logs with the active trace
+logger.info("charge attempt" + Tracing.logSuffix()); // → " trace_id=… span_id=…"
+
+// Inspect offline backlog pressure (health checks / dashboards)
+const stats = await Tracing.bufferStats();
+// { logs:  { rows, approxBytes, dropped, sampled },
+//   spans: { rows, approxBytes, dropped, sampled } }
+// dropped = evicted after buffering (back-pressure);
+// sampled = refused at ingest by head sampling (load shed, spans only)
+```
+
+See [Telemetry Architecture](#telemetry-architecture) for the delivery and retention design and the reasoning behind it.
 
 ### ✅ Bluetooth Printer Integration
 
@@ -813,6 +879,59 @@ Bridges `DomainException` to native `Alert`. Call once before `createAppShell`.
 ### `baseModule` / `BaseModule`
 
 Built-in COMMON module. Always registered automatically — do not pass it to `domains`.
+
+---
+
+## 📡 Telemetry Architecture
+
+This section documents how the telemetry pipeline is built and **why**. The design target is an enterprise device fleet that is frequently offline, must never block the UI thread, and must never lose business-critical data to observability.
+
+### Layering
+
+Telemetry depends on the context manager one-directionally; nothing in the context manager imports telemetry (no cycles).
+
+```
+@Trace / @TraceClass / withSpan          ← instrumentation surface (Tracing facade)
+        │  starts spans, sets parent via the OTel Context
+        ▼
+ContextManager (stack-based)             ← carries the active OTel context across calls
+        │  Hermes has no AsyncLocalStorage → an explicit push/pop stack
+        ▼
+OpenTelemetry SDK (BasicTracerProvider)
+        │  SimpleSpanProcessor → SQLiteSpanExporter
+        ▼
+SQLite buffers  (spans_queue, telemetry_queue)
+        │  drained by the single FlushTelemetry use case
+        ▼
+OTLP/HTTP collector  +  Loki
+```
+
+**Why a stack-based context manager.** Hermes (React Native's engine) has no `AsyncLocalStorage`, so the framework carries the active OpenTelemetry context in an explicit push/pop stack (`StackContextManager`). Spans created inside a `withSpan`/`@Trace` body see the enclosing span as their parent because the parent context sits on top of the stack. The trade-off — concurrent `Promise.all` branches share the top of stack — is documented and acceptable for the sequential flows mobile apps actually run.
+
+**Why we wrap OpenTelemetry instead of reinventing it.** Spans, context propagation and OTLP serialization are standards with sharp edges; the framework uses the official OTel SDK for all of it. The only custom piece is the `SQLiteSpanExporter` (an OTel `SpanExporter` that writes to SQLite instead of the network) plus a thin DX layer — the `Tracing` / `ContextManager` facades — so application developers get one import and a small, hard-to-misuse API.
+
+### Delivery — event-driven, not a fixed timer
+
+Telemetry is delivered by a single `FlushTelemetry` use case that drains **both** queues. Three independent triggers funnel into it; **none is required**, so the framework never depends on the host app's connectivity cron or its event bus:
+
+1. **Production signal (always on, primary).** Producing telemetry schedules a _debounced_ in-memory flush (`TelemetrySignal`, ~3 s). A burst of spans collapses into one delivery attempt. Spans are persisted to SQLite first, _then_ the signal fires — **store-first**, so a crash mid-send never loses data and batches stay efficient.
+2. **Reconnect events (opt-in).** If the app emits `InternetIsUp/Down`, reconnecting drains the backlog immediately.
+3. **Background cron (opt-in).** A long-interval (≥15 min → real OS background task) safety net for whatever the other two missed.
+
+**Why not a 1-minute timer.** A fixed timer fires whether or not there is anything to send and whether or not the device is online, wasting work and hammering a dead network. Offline recovery instead rides the jobs' own **exponential backoff**: a failed delivery backs off and retries, so the pipeline self-heals when the network returns even with no cron and no events. A hard `fetch` timeout (`AbortController`) prevents a flush from hanging while offline — that is the "is there internet?" check, without coupling to a connectivity service.
+
+### Retention — bounded, coherent, severity-aware
+
+Telemetry is **best-effort and bounded by nature** — a device offline for days cannot buffer forever. The framework's job is to lose data _intelligently and visibly_, never silently. Business-critical data does **not** belong here; it goes through the durable `event_queue` / `domain_events` path with its dead-letter queue.
+
+Both buffers are capped by **row count and payload bytes** (predictable storage regardless of attribute size). When a cap is exceeded:
+
+- **Spans evict whole traces.** The oldest _entire trace_ is dropped, never individual spans. FIFO-by-row would evict root/parent spans first and leave orphaned children that render as broken traces downstream — the exact failure that makes a trace backend untrustworthy. Survivors are always complete.
+- **Logs evict by severity (count pressure) or size (byte pressure).** When there are too many rows, the lowest-severity oldest-first go first (`debug → info → warn → error`), so `error`/`warn` survive a flood of `debug`/`info`. When the byte budget is the constraint, the **largest** payloads go first — a single oversized blob is the cause of byte pressure and is shed directly, keeping the maximum number of small, information-dense entries (so keep large blobs out of logs).
+- **Spans head-sample under pressure.** Once the buffer passes 80 % of either budget, whole _new_ traces are dropped at ingest (a coherent per-trace decision via a deterministic hash, cached so a mid-trace pressure change can't split a trace). This stops the buffer thrashing insert→evict and keeps a coherent _sample_ instead of churning fragments.
+- **The loss is observable.** `Tracing.bufferStats()` exposes `rows`, `approxBytes`, `dropped` (evicted after buffering — back-pressure) and `sampled` (refused at ingest — load shed) so a rising backlog is a dashboard signal, not a silent gap.
+
+The eviction scan is **amortized** (runs once every N enqueues), so the hot path stays cheap under offline bursts; the bound is therefore soft (may transiently exceed by up to N rows).
 
 ---
 

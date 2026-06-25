@@ -83,6 +83,28 @@ test("runWithContext: nested context visible inside, outer restored after", () =
   }
 });
 
+// async runWithContext — context must survive across await boundaries
+test("runWithContext: context remains active after await inside async fn", async () => {
+  _resetContextManager();
+  try {
+    const ctx = Context.ROOT.set(TENANT, "hospital-B");
+    const readings: (string | undefined)[] = [];
+
+    await runWithContext(ctx, async () => {
+      readings.push(getContext(TENANT)); // before await
+      await Promise.resolve(); // yield to microtask queue
+      readings.push(getContext(TENANT)); // after await — must still be visible
+      await Promise.resolve();
+      readings.push(getContext(TENANT)); // second await — still visible
+    });
+
+    assert.deepEqual(readings, ["hospital-B", "hospital-B", "hospital-B"]);
+    assert.equal(getContext(TENANT), undefined); // context gone after runWithContext
+  } finally {
+    _resetContextManager();
+  }
+});
+
 // getContext returns undefined when no context is active
 test("getContext: returns undefined for key not in active context", () => {
   _resetContextManager();

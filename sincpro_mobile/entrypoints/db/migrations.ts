@@ -8,6 +8,7 @@ export enum DATABASE_TABLES {
   DOMAIN_EVENTS = "domain_events",
   DOMAIN_EVENTS_DEAD_LETTER = "domain_events_dead_letter",
   TELEMETRY_QUEUE = "telemetry_queue",
+  SPANS_QUEUE = "spans_queue",
 }
 
 async function createSettingsTable(): Promise<void> {
@@ -142,6 +143,36 @@ async function createTelemetryQueueTable(): Promise<void> {
   `);
 }
 
+async function createSpansQueueTable(): Promise<void> {
+  await DBCursor.execAsync(`
+    CREATE TABLE IF NOT EXISTS ${DATABASE_TABLES.SPANS_QUEUE} (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trace_id TEXT NOT NULL,
+      span_id TEXT NOT NULL,
+      parent_span_id TEXT,
+      name TEXT NOT NULL,
+      kind INTEGER NOT NULL DEFAULT 0,
+      start_time_unixnano TEXT NOT NULL,
+      end_time_unixnano TEXT NOT NULL,
+      attributes TEXT NOT NULL DEFAULT '{}',
+      status_code INTEGER NOT NULL DEFAULT 0,
+      status_message TEXT NOT NULL DEFAULT '',
+      resource_attrs TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await DBCursor.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_spans_queue_created
+    ON ${DATABASE_TABLES.SPANS_QUEUE}(created_at);
+  `);
+
+  await DBCursor.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_spans_queue_trace
+    ON ${DATABASE_TABLES.SPANS_QUEUE}(trace_id);
+  `);
+}
+
 const MIGRATIONS: IMigration[] = [
   { name: DATABASE_TABLES.SETTINGS, migrationFn: createSettingsTable },
   { name: DATABASE_TABLES.EVENT_QUEUE, migrationFn: createEventQueueTable },
@@ -152,6 +183,7 @@ const MIGRATIONS: IMigration[] = [
     migrationFn: createDomainEventsDeadLetterTable,
   },
   { name: DATABASE_TABLES.TELEMETRY_QUEUE, migrationFn: createTelemetryQueueTable },
+  { name: DATABASE_TABLES.SPANS_QUEUE, migrationFn: createSpansQueueTable },
 ];
 
 export default MIGRATIONS;

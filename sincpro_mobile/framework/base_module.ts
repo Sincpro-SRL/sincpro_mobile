@@ -46,10 +46,10 @@ export class BaseModule extends DomainModule {
     return [cronCheckNetworkStatus];
   }
 
-  // telemetry_queue survives restartDatabase() — logs generated during logout
-  // must still be delivered, and the flush cron runs independently of auth state.
+  // Both telemetry tables survive restartDatabase() — data generated during
+  // logout must still be delivered; the flush cron runs independently of auth state.
   override persistOnReset(): string[] {
-    return [DATABASE_TABLES.TELEMETRY_QUEUE];
+    return [DATABASE_TABLES.TELEMETRY_QUEUE, DATABASE_TABLES.SPANS_QUEUE];
   }
 }
 

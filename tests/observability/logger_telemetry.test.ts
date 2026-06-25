@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// Config-layer imports only — no expo deps, no logger static side-effects.
+import { trace } from "@opentelemetry/api";
+import { ExportResultCode } from "@opentelemetry/core";
+import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
+import { BasicTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
+
+// Loki-layer imports only — no expo deps, no logger static side-effects.
+import { LokiClient } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_client.ts";
 import {
-  _resetTelemetry,
-  initTelemetry,
-  LokiClient,
-} from "../../sincpro_mobile/infrastructure/telemetry/config.ts";
+  _resetLokiClient as _resetTelemetry,
+  initLokiClient as initTelemetry,
+} from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_registry.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal fetch mock — captures Loki push bodies
@@ -78,12 +83,7 @@ function setupViaInit(): {
   teardown(): void;
 } {
   const mock = mockLokiFetch();
-  initTelemetry({
-    loki: {
-      endpoint: "http://loki.test",
-      labels: { app: "test-mobile" },
-    },
-  });
+  initTelemetry({ endpoint: "http://loki.test", labels: { app: "test-mobile" } });
   return {
     streams: mock.streams.bind(mock),
     lines: mock.lines.bind(mock),
@@ -242,6 +242,104 @@ test("logger: context prefix appears in Loki message for ODOO_CLIENT error", asy
   assert.ok(
     pushed.some((l) => l.line.includes("[ODOO_CLIENT]")),
     `Expected '[ODOO_CLIENT]' prefix in Loki line. Got: ${JSON.stringify(pushed.map((l) => l.line))}`,
+  );
+
+  teardown();
+});
+
+// ---------------------------------------------------------------------------
+// Log-trace correlation: trace_id/span_id suffix en mensajes Loki
+// ---------------------------------------------------------------------------
+
+// Captura spans sin exportar a SQLite — solo necesitamos acceder a su SpanContext
+class CapturingExporter implements SpanExporter {
+  readonly spans: ReadableSpan[] = [];
+  export(spans: ReadableSpan[], done: (result: { code: number }) => void): void {
+    this.spans.push(...spans);
+    done({ code: ExportResultCode.SUCCESS });
+  }
+  shutdown(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
+test("logger: Loki message lleva trace_id y span_id cuando hay un span activo", async () => {
+  const { teardown, lines } = setupViaInit();
+
+  // Instala un TracerProvider en memoria (no SQLite)
+  const exporter = new CapturingExporter();
+  const provider = new BasicTracerProvider({
+    spanProcessors: [new SimpleSpanProcessor(exporter)],
+  });
+  trace.setGlobalTracerProvider(provider);
+
+  const { _getContextManager, _resetContextManager } =
+    await import("../../sincpro_mobile/infrastructure/context_manager/index.ts");
+  const { OTEL_CTX_KEY } =
+    await import("../../sincpro_mobile/infrastructure/telemetry/context_keys.ts");
+  const { loggerUseCases } = await import("../../sincpro_mobile/infrastructure/logger.ts");
+
+  // Inicia un span y lo activa manualmente en el framework context
+  const tracer = trace.getTracer("test.logger.correlation");
+  const span = tracer.startSpan("payment.process");
+  const { context: otelContext } = await import("@opentelemetry/api");
+  const spanOtelCtx = otelContext.with(otelContext.active(), () =>
+    trace.setSpan(otelContext.active(), span),
+  );
+
+  const manager = _getContextManager();
+  const frameworkCtx = manager.active().set(OTEL_CTX_KEY, spanOtelCtx);
+  manager.push(frameworkCtx);
+
+  loggerUseCases.info("payment processed");
+
+  manager.pop();
+  span.end();
+
+  await flushMicrotasks();
+
+  const pushed = lines();
+  const paymentLine = pushed.find((l) => l.line.includes("payment processed"));
+
+  assert.ok(
+    paymentLine,
+    `No se encontró la línea 'payment processed'. Got: ${JSON.stringify(pushed.map((l) => l.line))}`,
+  );
+  assert.ok(
+    paymentLine.line.includes("trace_id="),
+    `Se esperaba 'trace_id=' en la línea Loki. Got: ${paymentLine.line}`,
+  );
+  assert.ok(
+    paymentLine.line.includes("span_id="),
+    `Se esperaba 'span_id=' en la línea Loki. Got: ${paymentLine.line}`,
+  );
+
+  await provider.shutdown();
+  _resetContextManager();
+  teardown();
+});
+
+test("logger: Loki message NO lleva trace_id cuando no hay span activo", async () => {
+  const { teardown, lines } = setupViaInit();
+
+  const { _resetContextManager } =
+    await import("../../sincpro_mobile/infrastructure/context_manager/index.ts");
+  _resetContextManager();
+
+  const { loggerUseCases } = await import("../../sincpro_mobile/infrastructure/logger.ts");
+  loggerUseCases.info("order created without tracing");
+  await flushMicrotasks();
+
+  const pushed = lines();
+  const targetLine = pushed.find((l) => l.line.includes("order created without tracing"));
+
+  assert.ok(
+    targetLine,
+    `No se encontró la línea esperada. Got: ${JSON.stringify(pushed.map((l) => l.line))}`,
+  );
+  assert.ok(
+    !targetLine.line.includes("trace_id="),
+    `No debería haber 'trace_id=' cuando no hay span activo. Got: ${targetLine.line}`,
   );
 
   teardown();

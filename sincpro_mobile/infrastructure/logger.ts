@@ -1,4 +1,5 @@
-import { getLokiClient } from "./telemetry/config.ts";
+import { getLokiClient } from "./telemetry/logging/loki_registry.ts";
+import { activeTraceLabel } from "./telemetry/tracing/active_span.ts";
 
 type LoggerArgs = unknown[];
 
@@ -155,7 +156,8 @@ class BaseLogger implements ILogger {
     // without needing a high-cardinality label: `{app="..."} |= "[USE_CASES]"`
     const prefix = this.context !== EApplicationLogger.GLOBAL ? `[${this.context}] ` : "";
     const lvl = level.toLowerCase();
-    queueMicrotask(() => client.push(lvl, prefix + this.serialize(args)));
+    const traceLabel = activeTraceLabel();
+    queueMicrotask(() => client.push(lvl, prefix + this.serialize(args) + traceLabel));
   }
 
   protected output(method: typeof console.log, level: ELogLevel, args: LoggerArgs): void {

@@ -1,21 +1,6 @@
-import type { OutboxEntry, TelemetryQueueRepository } from "./queue_repository";
-
-export type LokiAuth =
-  | { type: "basic"; username: string; password: string }
-  | { type: "bearer"; token: string };
-
-export interface LokiConfig {
-  /** Base URL of the Loki instance, e.g. "https://loki.myserver.com" */
-  endpoint: string;
-  /** Labels attached to every log stream (app, env, tenant, …) */
-  labels: Record<string, string>;
-  /** Optional auth — omit for unauthenticated (internal/self-hosted) setups */
-  auth?: LokiAuth;
-}
-
-export interface TelemetryConfig {
-  loki: LokiConfig;
-}
+import { DEFAULT_SEND_TIMEOUT_MS, fetchWithTimeout } from "../fetch_with_timeout.ts";
+import type { LokiConfig } from "../types.ts";
+import type { LogEntry, LogQueueRepository } from "./log_queue_repository.ts";
 
 // ---------------------------------------------------------------------------
 // Monotonic nanosecond timestamp
@@ -49,11 +34,17 @@ export function _nowNs(): string {
  */
 export class LokiClient {
   private readonly config: LokiConfig;
-  private readonly queue: TelemetryQueueRepository | null;
+  private readonly queue: LogQueueRepository | null;
+  private readonly timeoutMs: number;
 
-  constructor(config: LokiConfig, queue?: TelemetryQueueRepository) {
+  constructor(
+    config: LokiConfig,
+    queue?: LogQueueRepository,
+    timeoutMs = DEFAULT_SEND_TIMEOUT_MS,
+  ) {
     this.config = config;
     this.queue = queue ?? null;
+    this.timeoutMs = timeoutMs;
   }
 
   push(level: string, message: string): void {
@@ -66,11 +57,15 @@ export class LokiClient {
       ],
     });
 
-    fetch(`${this.config.endpoint}/loki/api/v1/push`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...this.authHeader() },
-      body,
-    }).catch(() => {
+    fetchWithTimeout(
+      `${this.config.endpoint}/loki/api/v1/push`,
+      {
+        method: "POST",
+        headers: this.requestHeaders(),
+        body,
+      },
+      this.timeoutMs,
+    ).catch(() => {
       const q = this.queue;
       if (q) {
         queueMicrotask(() => q.enqueue(level, message).catch(() => {}));
@@ -83,13 +78,10 @@ export class LokiClient {
    * Throws on network error or non-2xx response — caller must not remove entries from the
    * outbox unless this resolves successfully.
    */
-  async deliver(entries: OutboxEntry[]): Promise<void> {
+  async deliver(entries: LogEntry[]): Promise<void> {
     if (entries.length === 0) return;
 
-    // Group by level; track per-level index to offset duplicate second-precision timestamps.
-    // SQLite CURRENT_TIMESTAMP is "YYYY-MM-DD HH:MM:SS" — second precision means two entries
-    // in the same second and level would produce identical ns values → Loki 400.
-    const byLevel = new Map<string, OutboxEntry[]>();
+    const byLevel = new Map<string, LogEntry[]>();
     for (const entry of entries) {
       if (!byLevel.has(entry.level)) byLevel.set(entry.level, []);
       byLevel.get(entry.level)!.push(entry);
@@ -98,23 +90,44 @@ export class LokiClient {
     const streams = Array.from(byLevel.entries()).map(([level, levelEntries]) => ({
       stream: { ...this.config.labels, level },
       values: levelEntries.map((entry, i) => {
-        // SQLite CURRENT_TIMESTAMP is UTC "YYYY-MM-DD HH:MM:SS"; append Z for ISO parse.
-        // BigInt required for the same precision reason as _nowNs.
         const baseNs =
           BigInt(new Date(entry.created_at.replace(" ", "T") + "Z").getTime()) * 1_000_000n;
         return [String(baseNs + BigInt(i)), entry.message] as [string, string];
       }),
     }));
 
-    const res = await fetch(`${this.config.endpoint}/loki/api/v1/push`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...this.authHeader() },
-      body: JSON.stringify({ streams }),
-    });
+    const res = await fetchWithTimeout(
+      `${this.config.endpoint}/loki/api/v1/push`,
+      {
+        method: "POST",
+        headers: this.requestHeaders(),
+        body: JSON.stringify({ streams }),
+      },
+      this.timeoutMs,
+    );
 
     if (!res.ok) {
       throw new Error(`Loki batch delivery failed: HTTP ${res.status}`);
     }
+  }
+
+  /**
+   * Builds the headers for every request: the `auth` shortcut, then any custom
+   * `headers` (which win on conflict — e.g. a gateway API key, or an explicit
+   * Authorization overriding `auth`), then a non-negotiable `Content-Type`.
+   * The body is always JSON, so a custom `content-type` (any casing) must not
+   * override it — Loki would reject the push.
+   */
+  private requestHeaders(): Record<string, string> {
+    const custom = { ...this.config.headers };
+    for (const key of Object.keys(custom)) {
+      if (key.toLowerCase() === "content-type") delete custom[key];
+    }
+    return {
+      ...this.authHeader(),
+      ...custom,
+      "Content-Type": "application/json",
+    };
   }
 
   private authHeader(): Record<string, string> {
@@ -125,27 +138,4 @@ export class LokiClient {
     }
     return { Authorization: `Bearer ${auth.token}` };
   }
-}
-
-let _client: LokiClient | null = null;
-
-/**
- * Low-level client initializer. Prefer `initTelemetry` from the telemetry index, which also
- * wires the SQLite outbox and the flush cron. Use this directly only in tests.
- */
-export function initTelemetry(
-  config: TelemetryConfig,
-  queue?: TelemetryQueueRepository,
-): void {
-  _client = new LokiClient(config.loki, queue);
-}
-
-/** Returns the active LokiClient, or null if telemetry was not initialized. */
-export function getLokiClient(): LokiClient | null {
-  return _client;
-}
-
-/** @internal — test use only */
-export function _resetTelemetry(): void {
-  _client = null;
 }

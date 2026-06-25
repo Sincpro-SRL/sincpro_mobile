@@ -16,11 +16,13 @@ import test from "node:test";
 
 import {
   _nowNs,
-  _resetTelemetry,
-  getLokiClient,
-  initTelemetry,
   LokiClient,
-} from "../../sincpro_mobile/infrastructure/telemetry/config.ts";
+} from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_client.ts";
+import {
+  _resetLokiClient as _resetTelemetry,
+  getLokiClient,
+  initLokiClient as initTelemetry,
+} from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_registry.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -240,6 +242,112 @@ test("push: consecutive calls produce strictly increasing timestamps", async () 
 });
 
 // ---------------------------------------------------------------------------
+// Auth & custom headers
+// ---------------------------------------------------------------------------
+
+test("headers: custom headers (e.g. api-key) are sent on every request", async () => {
+  const { requests, restore } = captureFetch();
+  try {
+    const client = new LokiClient({
+      endpoint: "http://loki.test",
+      labels: { app: "app" },
+      headers: { "sincpro-api-key": "secret-123", "X-Scope-OrgID": "acme" },
+    });
+    client.push("info", "msg");
+    await new Promise((r) => setTimeout(r, 10));
+
+    assert.equal(requests[0].headers["sincpro-api-key"], "secret-123");
+    assert.equal(requests[0].headers["X-Scope-OrgID"], "acme");
+    assert.equal(requests[0].headers["Content-Type"], "application/json");
+  } finally {
+    restore();
+  }
+});
+
+test("headers: basic auth and custom headers coexist", async () => {
+  const { requests, restore } = captureFetch();
+  try {
+    const client = new LokiClient({
+      endpoint: "http://loki.test",
+      labels: { app: "app" },
+      auth: { type: "basic", username: "u", password: "p" },
+      headers: { "api-key": "k" },
+    });
+    client.push("info", "msg");
+    await new Promise((r) => setTimeout(r, 10));
+
+    assert.equal(requests[0].headers["Authorization"], `Basic ${btoa("u:p")}`);
+    assert.equal(requests[0].headers["api-key"], "k");
+  } finally {
+    restore();
+  }
+});
+
+test("headers: explicit Authorization in headers overrides auth shortcut", async () => {
+  const { requests, restore } = captureFetch();
+  try {
+    const client = new LokiClient({
+      endpoint: "http://loki.test",
+      labels: { app: "app" },
+      auth: { type: "bearer", token: "from-auth" },
+      headers: { Authorization: "Bearer from-headers" },
+    });
+    client.push("info", "msg");
+    await new Promise((r) => setTimeout(r, 10));
+
+    assert.equal(requests[0].headers["Authorization"], "Bearer from-headers");
+  } finally {
+    restore();
+  }
+});
+
+test("headers: a custom content-type cannot override the JSON Content-Type", async () => {
+  const { requests, restore } = captureFetch();
+  try {
+    const client = new LokiClient({
+      endpoint: "http://loki.test",
+      labels: { app: "app" },
+      // lowercase, would clobber the body's JSON content type if not guarded
+      headers: { "content-type": "text/plain", "api-key": "k" },
+    });
+    client.push("info", "msg");
+    await new Promise((r) => setTimeout(r, 10));
+
+    assert.equal(requests[0].headers["Content-Type"], "application/json");
+    assert.equal(
+      requests[0].headers["api-key"],
+      "k",
+      "other custom headers still pass through",
+    );
+    assert.equal(
+      requests[0].headers["content-type"],
+      undefined,
+      "the clobbering lowercase header was stripped",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("headers: custom headers are also sent on the batch deliver path", async () => {
+  const { requests, restore } = captureFetch();
+  try {
+    const client = new LokiClient({
+      endpoint: "http://loki.test",
+      labels: { app: "app" },
+      headers: { "api-key": "batch-key" },
+    });
+    await client.deliver([
+      { id: 1, level: "info", message: "x", created_at: "2026-06-24 00:00:00" },
+    ]);
+
+    assert.equal(requests[0].headers["api-key"], "batch-key");
+  } finally {
+    restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // LokiClient.deliver — batch payload compliance
 // ---------------------------------------------------------------------------
 
@@ -376,7 +484,7 @@ test("initTelemetry: client is null before init, non-null after", () => {
   _resetTelemetry();
   assert.equal(getLokiClient(), null, "client must be null before initTelemetry");
 
-  initTelemetry({ loki: { endpoint: "http://loki.test", labels: { app: "test" } } });
+  initTelemetry({ endpoint: "http://loki.test", labels: { app: "test" } });
   assert.ok(getLokiClient() !== null, "client must be set after initTelemetry");
 
   _resetTelemetry();
@@ -384,10 +492,10 @@ test("initTelemetry: client is null before init, non-null after", () => {
 
 test("initTelemetry: re-calling replaces the client (idempotent restart)", () => {
   _resetTelemetry();
-  initTelemetry({ loki: { endpoint: "http://a.test", labels: { app: "a" } } });
+  initTelemetry({ endpoint: "http://a.test", labels: { app: "a" } });
   const first = getLokiClient();
 
-  initTelemetry({ loki: { endpoint: "http://b.test", labels: { app: "b" } } });
+  initTelemetry({ endpoint: "http://b.test", labels: { app: "b" } });
   const second = getLokiClient();
 
   assert.notEqual(first, second, "second initTelemetry must replace the client");
