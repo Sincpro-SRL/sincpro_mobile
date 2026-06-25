@@ -4,8 +4,8 @@ import test from "node:test";
 import {
   interceptClass,
   interceptInstance,
-} from "../sincpro_mobile/infrastructure/interceptor/intercept.ts";
-import { loggingHooks } from "../sincpro_mobile/infrastructure/interceptor/logging_hooks.ts";
+} from "../../sincpro_mobile/infrastructure/interceptor/intercept.ts";
+import { loggingHooks } from "../../sincpro_mobile/infrastructure/interceptor/logging_hooks.ts";
 
 // ---------------------------------------------------------------------------
 // Helper — capture logger calls

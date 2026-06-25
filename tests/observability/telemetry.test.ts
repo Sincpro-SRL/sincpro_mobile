@@ -6,7 +6,7 @@ import {
   getLokiClient,
   initTelemetry,
   LokiClient,
-} from "../sincpro_mobile/infrastructure/telemetry/config.ts";
+} from "../../sincpro_mobile/infrastructure/telemetry/config.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers

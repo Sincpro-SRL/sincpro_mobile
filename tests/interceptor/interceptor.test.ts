@@ -4,12 +4,12 @@ import test from "node:test";
 import type {
   InterceptorHooks,
   MethodCall,
-} from "../sincpro_mobile/infrastructure/interceptor/intercept.ts";
+} from "../../sincpro_mobile/infrastructure/interceptor/intercept.ts";
 import {
   interceptClass,
   interceptFunction,
   interceptInstance,
-} from "../sincpro_mobile/infrastructure/interceptor/intercept.ts";
+} from "../../sincpro_mobile/infrastructure/interceptor/intercept.ts";
 
 function recordingHooks(): {
   calls: MethodCall[];
