@@ -7,6 +7,7 @@ export enum DATABASE_TABLES {
   DEAD_LETTER_QUEUE = "dead_letter_queue",
   DOMAIN_EVENTS = "domain_events",
   DOMAIN_EVENTS_DEAD_LETTER = "domain_events_dead_letter",
+  TELEMETRY_QUEUE = "telemetry_queue",
 }
 
 async function createSettingsTable(): Promise<void> {
@@ -125,6 +126,22 @@ async function createDomainEventsDeadLetterTable(): Promise<void> {
   `);
 }
 
+async function createTelemetryQueueTable(): Promise<void> {
+  await DBCursor.execAsync(`
+    CREATE TABLE IF NOT EXISTS ${DATABASE_TABLES.TELEMETRY_QUEUE} (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      level TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await DBCursor.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_telemetry_queue_created
+    ON ${DATABASE_TABLES.TELEMETRY_QUEUE}(created_at);
+  `);
+}
+
 const MIGRATIONS: IMigration[] = [
   { name: DATABASE_TABLES.SETTINGS, migrationFn: createSettingsTable },
   { name: DATABASE_TABLES.EVENT_QUEUE, migrationFn: createEventQueueTable },
@@ -134,6 +151,7 @@ const MIGRATIONS: IMigration[] = [
     name: DATABASE_TABLES.DOMAIN_EVENTS_DEAD_LETTER,
     migrationFn: createDomainEventsDeadLetterTable,
   },
+  { name: DATABASE_TABLES.TELEMETRY_QUEUE, migrationFn: createTelemetryQueueTable },
 ];
 
 export default MIGRATIONS;

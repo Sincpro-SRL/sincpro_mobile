@@ -6,7 +6,7 @@ import type { IMigration } from "@sincpro/mobile/domain/database";
 import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
 import cronCheckNetworkStatus from "@sincpro/mobile/entrypoints/cron/checkNetworkStatus.cron";
-import MIGRATIONS from "@sincpro/mobile/entrypoints/db/migrations";
+import MIGRATIONS, { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
 import { ActivateDomainSubscriber } from "@sincpro/mobile/entrypoints/queue/activateDomain.subscriber";
 import { NewAppSettingsSubscriber } from "@sincpro/mobile/entrypoints/queue/newAppSettings.handler";
 import { PrintImageSubscriber } from "@sincpro/mobile/entrypoints/queue/printImage.subscriber";
@@ -44,6 +44,12 @@ export class BaseModule extends DomainModule {
 
   override crons(): CronWorker[] {
     return [cronCheckNetworkStatus];
+  }
+
+  // telemetry_queue survives restartDatabase() — logs generated during logout
+  // must still be delivered, and the flush cron runs independently of auth state.
+  override persistOnReset(): string[] {
+    return [DATABASE_TABLES.TELEMETRY_QUEUE];
   }
 }
 
