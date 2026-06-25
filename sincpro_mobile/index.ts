@@ -17,3 +17,22 @@ export { DomainModule } from "@sincpro/mobile/framework/domain_module";
 export { Kernel } from "@sincpro/mobile/framework/kernel";
 export { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 export { installGlobalErrorHandler } from "@sincpro/mobile/infrastructure/ui/errorHandler";
+
+// Observability — opt-in, tree-shakeable
+export type {
+  InterceptorHooks,
+  MethodCall,
+} from "@sincpro/mobile/infrastructure/interceptor/intercept";
+export {
+  interceptClass,
+  interceptFunction,
+  interceptInstance,
+} from "@sincpro/mobile/infrastructure/interceptor/intercept";
+export type { Logger } from "@sincpro/mobile/infrastructure/interceptor/logging_hooks";
+export { loggingHooks } from "@sincpro/mobile/infrastructure/interceptor/logging_hooks";
+export type {
+  LokiAuth,
+  LokiConfig,
+  TelemetryConfig,
+} from "@sincpro/mobile/infrastructure/telemetry";
+export { initTelemetry } from "@sincpro/mobile/infrastructure/telemetry";

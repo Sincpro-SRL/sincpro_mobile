@@ -1,3 +1,5 @@
+import { getLokiClient } from "./telemetry/config";
+
 type LoggerArgs = unknown[];
 
 interface ILogger {
@@ -130,7 +132,6 @@ class BaseLogger implements ILogger {
     const contextColor = this.getContextColor();
 
     if (this.contextPrefix) {
-      // Colorear todo el mensaje con el color del contexto
       method(
         `${Colors.Gray}${timestamp}${Colors.Reset}`,
         `${contextColor}${this.contextPrefix}`,
@@ -140,6 +141,28 @@ class BaseLogger implements ILogger {
     } else {
       method(`${Colors.Gray}${timestamp}${Colors.Reset}`, ...args);
     }
+
+    const client = getLokiClient();
+    if (client) {
+      // Deferred to avoid blocking the caller — serialize runs in the next microtask.
+      // Args are captured by reference; mutation after this call is caller's risk (acceptable for logging).
+      const lvl = level.toLowerCase();
+      queueMicrotask(() => client.push(lvl, this.serialize(args)));
+    }
+  }
+
+  private serialize(args: LoggerArgs): string {
+    const MAX = 2048;
+    const msg = args
+      .map((a) => {
+        try {
+          return typeof a === "string" ? a : JSON.stringify(a);
+        } catch {
+          return "[unserializable]";
+        }
+      })
+      .join(" ");
+    return msg.length > MAX ? `${msg.slice(0, MAX)}…` : msg;
   }
 
   debug(...args: LoggerArgs): void {
