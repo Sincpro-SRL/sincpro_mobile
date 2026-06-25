@@ -1,4 +1,4 @@
-import { getLokiClient } from "./telemetry/config";
+import { getLokiClient } from "./telemetry/config.ts";
 
 type LoggerArgs = unknown[];
 
@@ -30,22 +30,26 @@ const Colors = {
   White: "\x1b[37m",
 };
 
-enum ELogLevel {
-  DEBUG = "DEBUG",
-  INFO = "INFO",
-  WARN = "WARN",
-  ERROR = "ERROR",
-}
+const ELogLevel = {
+  DEBUG: "DEBUG",
+  INFO: "INFO",
+  WARN: "WARN",
+  ERROR: "ERROR",
+} as const;
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+type ELogLevel = (typeof ELogLevel)[keyof typeof ELogLevel];
 
-enum EApplicationLogger {
-  GLOBAL = "GLOBAL",
-  ODOO_CLIENT = "ODOO_CLIENT",
-  ADAPTER = "ADAPTER",
-  REPOSITORIES = "REPOSITORIES",
-  USE_CASES = "USE_CASES",
-  QUEUE_PROCESSOR = "EVENT_BUS",
-  CRON_JOBS = "CRON_JOBS",
-}
+const EApplicationLogger = {
+  GLOBAL: "GLOBAL",
+  ODOO_CLIENT: "ODOO_CLIENT",
+  ADAPTER: "ADAPTER",
+  REPOSITORIES: "REPOSITORIES",
+  USE_CASES: "USE_CASES",
+  QUEUE_PROCESSOR: "EVENT_BUS",
+  CRON_JOBS: "CRON_JOBS",
+} as const;
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+type EApplicationLogger = (typeof EApplicationLogger)[keyof typeof EApplicationLogger];
 
 /**
  * Color mapping for each logger context
@@ -116,6 +120,9 @@ class BaseLogger implements ILogger {
     if (this.shouldLog(level)) {
       this.output(method, level, args);
     }
+    // Remote push is independent of console filters — IS_PRODUCTION and ENABLED_LOGS
+    // control console verbosity, not what reaches Loki in production.
+    this.pushRemote(level, args);
   }
 
   protected shouldLog(level: ELogLevel): boolean {
@@ -125,6 +132,30 @@ class BaseLogger implements ILogger {
       return false;
     if (!ENABLED_LOGS[this.context]) return false;
     return true;
+  }
+
+  /**
+   * Remote logging filter — intentionally decoupled from console config.
+   * ERROR and WARN always reach Loki (production incidents must be observable).
+   * INFO reaches Loki only for enabled contexts (avoids noise from disabled ones).
+   * DEBUG never goes remote (too verbose for a push store).
+   * IS_PRODUCTION does NOT gate this — it controls the console, not telemetry.
+   */
+  private shouldLogRemote(level: ELogLevel): boolean {
+    if (level === ELogLevel.ERROR || level === ELogLevel.WARN) return true;
+    if (level === ELogLevel.INFO) return ENABLED_LOGS[this.context];
+    return false;
+  }
+
+  private pushRemote(level: ELogLevel, args: LoggerArgs): void {
+    if (!this.shouldLogRemote(level)) return;
+    const client = getLokiClient();
+    if (!client) return;
+    // Include context in the message so logs are filterable in Grafana
+    // without needing a high-cardinality label: `{app="..."} |= "[USE_CASES]"`
+    const prefix = this.context !== EApplicationLogger.GLOBAL ? `[${this.context}] ` : "";
+    const lvl = level.toLowerCase();
+    queueMicrotask(() => client.push(lvl, prefix + this.serialize(args)));
   }
 
   protected output(method: typeof console.log, level: ELogLevel, args: LoggerArgs): void {
@@ -140,14 +171,6 @@ class BaseLogger implements ILogger {
       );
     } else {
       method(`${Colors.Gray}${timestamp}${Colors.Reset}`, ...args);
-    }
-
-    const client = getLokiClient();
-    if (client) {
-      // Deferred to avoid blocking the caller — serialize runs in the next microtask.
-      // Args are captured by reference; mutation after this call is caller's risk (acceptable for logging).
-      const lvl = level.toLowerCase();
-      queueMicrotask(() => client.push(lvl, this.serialize(args)));
     }
   }
 
