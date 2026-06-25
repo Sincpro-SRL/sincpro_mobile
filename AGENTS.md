@@ -136,7 +136,15 @@ Para cambios grandes (migraciones, refactors masivos, auditorías) se usa **orqu
 
 ## Para profundizar
 
+**Documentación de ingeniería** (`docs/` — arquitectura viva):
+
+- [`docs/architecture-core.md`](docs/architecture-core.md) — capa core: casi-ORM, Entity + event sourcing, repositorios base, EventBus, ProcessQueue, Cron, AppShell. Diagramas de componentes + secuencia.
+- [`docs/architecture-telemetry.md`](docs/architecture-telemetry.md) — telemetría (OTel + Loki): pipeline, delivery, retención. Diagramas de componentes + secuencia.
+- [`docs/architecture-consumer.md`](docs/architecture-consumer.md) — arquitectura sugerida para apps consumidoras: adapters, services (use cases/workflows), ui, subscribers.
 - [`docs/GOTCHAS.md`](docs/GOTCHAS.md) — trampas de dependencias, UI y runtime (síntoma → causa → fix). **Léelo si algo "raro" pasa.**
-- [`docs/UI_ROUTER_ROADMAP.md`](docs/UI_ROUTER_ROADMAP.md) — plan progresivo de UI, router, layouts, system-UI, Expo.
-- [`docs/FRAMEWORK_ROADMAP.md`](docs/FRAMEWORK_ROADMAP.md) — plan progresivo de la **plataforma core** (infra, primitivas DDD, cola/eventos, repos base, composición, tests). Si vas a mejorar el framework, elegí una fase (FF0-FF6) de acá.
-- `README.md` — visión de producto y filosofía.
+
+**Análisis / planes históricos** (`docs/analysis/` — contexto, no documentación viva):
+
+- [`docs/analysis/FRAMEWORK_ROADMAP.md`](docs/analysis/FRAMEWORK_ROADMAP.md) — plan progresivo histórico de la plataforma core (fases FF0-FF6). Referencia, no estado actual.
+
+- `README.md` — visión de producto, filosofía y resumen de arquitectura.

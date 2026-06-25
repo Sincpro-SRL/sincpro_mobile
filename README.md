@@ -9,6 +9,8 @@ Enterprise mobile development has always been hard. Applications need to work wi
 **Sincpro maintains this.** The source is open and anyone can read it. What Sincpro provides is the commitment behind it: stable contracts, long-term API support, updates as platforms evolve, and people accountable for the behaviors your business depends on. This is not a project that gets abandoned. It is infrastructure for the new era of enterprise mobile development, and Sincpro intends to maintain it for the teams and clients that build on top of it.
 
 > **AI agent?** Read [`AGENTS.md`](AGENTS.md) first — ecosystem orientation, patterns, and traps. Known runtime issues live in [`docs/GOTCHAS.md`](docs/GOTCHAS.md).
+>
+> **Deep engineering docs** (component + sequence diagrams, design rationale) live in [`docs/`](docs/README.md): [core architecture](docs/architecture-core.md), [telemetry](docs/architecture-telemetry.md), and the [consumer app structure](docs/architecture-consumer.md). This README is the summary.
 
 ---
 
@@ -136,6 +138,56 @@ The framework is organized in strict layers with enforced one-way dependency flo
 - **Domain-Driven Design.** Each bounded context is a `DomainModule`. The framework orchestrates them; they never know about each other.
 - **Offline-First.** Every domain event is persisted to SQLite before it is processed. Events survive app restarts and process them on recovery.
 - **Strict layer boundaries.** A lower layer cannot import from a higher one. `mobile-ui` has no imports from `@sincpro/mobile`.
+
+### Base infrastructure — events, queues, repositories, orchestrator
+
+`createApp` configures the **Orchestrator**, which bootstraps the **Kernel** (the set of `DomainModule`s). Each module contributes subscribers, crons, repositories and migrations; the orchestrator wires them and starts the workers. Everything durable is a SQLite-backed queue drained by a worker — offline-first by construction.
+
+```mermaid
+flowchart TB
+    createApp["createApp(config)"] --> orch["Orchestrator<br/>configure · bootstrap"]
+    orch --> kernel["Kernel<br/>aggregates DomainModules"]
+
+    subgraph MODULES["DomainModule(s) — bounded contexts"]
+        mod["module.key / name<br/>subscribers() · crons()<br/>repositories() · migrations()"]
+    end
+    kernel --> mod
+
+    subgraph WORKERS["Background workers"]
+        qp["EventBus / QueueProcessor<br/>polls + dispatches, connectivity-gated"]
+        crons["CronWorker(s)<br/>cron.sync — setInterval &lt;15m / OS task ≥15m"]
+    end
+
+    subgraph STORE["SQLite (migrations on bootstrap)"]
+        ev[("event_queue")]
+        de[("domain_events")]
+        dlq[("dead_letter_queue")]
+        ddl[("domain_events_dead_letter")]
+        settings[("settings")]
+        tq[("telemetry_queue")]
+        sq[("spans_queue")]
+    end
+
+    subgraph REPOS["Repositories (adapters/ports)"]
+        repo["Entity & queue repositories<br/>DomainEventDeadLetterRepository · …"]
+    end
+
+    netcron["CHECK_NETWORK cron"] -->|emits| netev["InternetIsUp / Down<br/>(UIEventBus)"]
+    netev -.->|gates draining| qp
+
+    orch --> qp
+    orch --> crons
+    kernel -->|migrations| STORE
+    mod -->|subscribers| qp
+    mod -->|crons| crons
+    mod -->|repositories| repo
+
+    qp -->|read/ack| de
+    qp -->|on failure| ddl
+    repo --> de
+    repo --> dlq
+    entity["Domain Entity<br/>addDomainEvent()"] -->|persist before process| de
+```
 
 ---
 
@@ -909,6 +961,67 @@ OTLP/HTTP collector  +  Loki
 **Why a stack-based context manager.** Hermes (React Native's engine) has no `AsyncLocalStorage`, so the framework carries the active OpenTelemetry context in an explicit push/pop stack (`StackContextManager`). Spans created inside a `withSpan`/`@Trace` body see the enclosing span as their parent because the parent context sits on top of the stack. The trade-off — concurrent `Promise.all` branches share the top of stack — is documented and acceptable for the sequential flows mobile apps actually run.
 
 **Why we wrap OpenTelemetry instead of reinventing it.** Spans, context propagation and OTLP serialization are standards with sharp edges; the framework uses the official OTel SDK for all of it. The only custom piece is the `SQLiteSpanExporter` (an OTel `SpanExporter` that writes to SQLite instead of the network) plus a thin DX layer — the `Tracing` / `ContextManager` facades — so application developers get one import and a small, hard-to-misuse API.
+
+### Component diagram
+
+```mermaid
+flowchart TB
+    app["App code<br/>@Trace · @TraceClass · withSpan · logger"]
+
+    subgraph FACADE["Public facades (one import)"]
+        tracing["Tracing<br/>init · withSpan · Trace · TraceClass<br/>activeSpan · logSuffix · bufferStats"]
+        ctx["ContextManager<br/>StackContextManager · OTEL_CTX_KEY"]
+    end
+
+    subgraph SDK["OpenTelemetry SDK (Hermes-safe)"]
+        provider["BasicTracerProvider"]
+        proc["SimpleSpanProcessor"]
+        exporter["SQLiteSpanExporter<br/>(custom — writes to SQLite)"]
+    end
+
+    subgraph BUFFERS["Offline buffers (SQLite)"]
+        spanRepo["SpanQueueRepository<br/>+ SpanSampler (head sampling)<br/>trace-coherent eviction"]
+        logRepo["LogQueueRepository<br/>severity / byte eviction"]
+        spansTbl[("spans_queue")]
+        logsTbl[("telemetry_queue")]
+    end
+
+    subgraph DELIVERY["Delivery — one use case, three triggers"]
+        signal["TelemetrySignal<br/>(debounced, in-memory)"]
+        worker["TelemetryFlushWorker<br/>signal · InternetIsUp · bg cron"]
+        flush["FlushTelemetry.run()"]
+        conn["ConnectivityState"]
+        loki["LokiClient<br/>push (opportunistic) · deliver (batch)"]
+        otlp["OtlpClient"]
+    end
+
+    collector[["OTLP/HTTP collector<br/>(Alloy · Tempo · Jaeger)"]]
+    lokiSrv[["Loki"]]
+
+    app --> tracing
+    app -->|logger.push| loki
+    tracing --> provider
+    tracing -.->|active context| ctx
+    provider --> proc
+    proc --> exporter
+    exporter --> spanRepo
+    spanRepo --> spansTbl
+    exporter -->|onEnqueued / store-first| signal
+    loki -->|on failure| logRepo
+    logRepo --> logsTbl
+
+    signal --> flush
+    worker --> flush
+    flush -->|drain logs| logRepo
+    flush -->|drain spans| spanRepo
+    flush --> loki
+    loki -->|batch| lokiSrv
+    flush --> otlp
+    otlp --> collector
+    flush -.->|updates online flag| conn
+    spanRepo -.->|bufferStats| tracing
+    logRepo -.->|bufferStats| tracing
+```
 
 ### Delivery — event-driven, not a fixed timer
 
