@@ -1,4 +1,4 @@
-import type { OutboxEntry } from "./queue_repository";
+import type { LogEntry } from "./log_queue_repository.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -26,14 +26,22 @@ const MAX_SKIP_TICKS = 32;
 // State
 // ---------------------------------------------------------------------------
 
-/** Mutable backoff state — one instance per TelemetryFlushCron. */
-export interface FlushJobState {
+/** Mutable backoff state — one instance held by FlushTelemetry. */
+export interface LogFlushJobState {
   consecutiveFailures: number;
   skipTicksRemaining: number;
 }
 
-export function createFlushJobState(): FlushJobState {
+export function createLogFlushJobState(): LogFlushJobState {
   return { consecutiveFailures: 0, skipTicksRemaining: 0 };
+}
+
+/** Outcome of one flush run — lets callers update connectivity state. */
+export interface FlushResult {
+  /** Batches successfully delivered this run. */
+  delivered: number;
+  /** True if a delivery failed (network/HTTP) — caller may mark offline. */
+  failed: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -41,12 +49,12 @@ export function createFlushJobState(): FlushJobState {
 // ---------------------------------------------------------------------------
 
 export interface FlushClient {
-  deliver(entries: OutboxEntry[]): Promise<void>;
+  deliver(entries: LogEntry[]): Promise<void>;
 }
 
 export interface FlushQueue {
   pruneExpired(): Promise<void>;
-  findPending(limit: number): Promise<OutboxEntry[]>;
+  findPending(limit: number): Promise<LogEntry[]>;
   removeMany(ids: number[]): Promise<void>;
 }
 
@@ -65,15 +73,15 @@ export interface FlushQueue {
  * The mutex inside DBCursor serialises concurrent DB access, but two overlapping cron
  * ticks can still deliver the same batch twice. Again: acceptable for logs.
  */
-export async function runFlushJob(
+export async function runLogFlushJob(
   client: FlushClient,
   queue: FlushQueue,
-  state: FlushJobState,
-): Promise<void> {
+  state: LogFlushJobState,
+): Promise<FlushResult> {
   // Backoff — skip this tick if previous deliveries failed repeatedly
   if (state.skipTicksRemaining > 0) {
     state.skipTicksRemaining -= 1;
-    return;
+    return { delivered: 0, failed: false };
   }
 
   await queue.pruneExpired();
@@ -95,7 +103,7 @@ export async function runFlushJob(
         Math.pow(2, state.consecutiveFailures - 1),
         MAX_SKIP_TICKS,
       );
-      return;
+      return { delivered: batchesDelivered, failed: true };
     }
 
     await queue.removeMany(entries.map((e) => e.id));
@@ -108,4 +116,6 @@ export async function runFlushJob(
   if (batchesDelivered > 0) {
     state.consecutiveFailures = 0;
   }
+
+  return { delivered: batchesDelivered, failed: false };
 }

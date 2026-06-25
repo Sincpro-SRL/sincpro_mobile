@@ -19,10 +19,35 @@ export function getContext<T>(key: ContextKey<T>): T | undefined {
 
 /**
  * Runs fn within ctx as the active context.
- * For sequential async flows, ctx is visible to all awaited calls inside fn.
+ *
+ * For async functions, ctx stays active until the returned Promise resolves or
+ * rejects — not just until the first await. This means nested calls at any
+ * point in the async chain see the correct context.
+ *
+ * For sync functions, ctx is active for the duration of the call.
  */
 export function runWithContext<T>(ctx: Context, fn: () => T): T {
-  return _manager.with(ctx, fn);
+  _manager.push(ctx);
+  try {
+    const result = fn();
+    if (result instanceof Promise) {
+      return result.then(
+        (v) => {
+          _manager.pop();
+          return v;
+        },
+        (e) => {
+          _manager.pop();
+          throw e;
+        },
+      ) as T;
+    }
+    _manager.pop();
+    return result;
+  } catch (e) {
+    _manager.pop();
+    throw e;
+  }
 }
 
 /**

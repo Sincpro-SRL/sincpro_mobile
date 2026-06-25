@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { LokiClient } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_client.ts";
 import {
-  _resetTelemetry,
+  _resetLokiClient as _resetTelemetry,
   getLokiClient,
-  initTelemetry,
-  LokiClient,
-} from "../../sincpro_mobile/infrastructure/telemetry/config.ts";
+  initLokiClient as initTelemetry,
+} from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_registry.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -63,7 +63,8 @@ test("getLokiClient: returns null before initTelemetry is called", () => {
 test("initTelemetry: getLokiClient returns a LokiClient after init", () => {
   _resetTelemetry();
   initTelemetry({
-    loki: { endpoint: "http://loki.test", labels: { app: "test-app", env: "test" } },
+    endpoint: "http://loki.test",
+    labels: { app: "test-app", env: "test" },
   });
   assert.ok(getLokiClient() instanceof LokiClient);
   _resetTelemetry();
@@ -71,9 +72,9 @@ test("initTelemetry: getLokiClient returns a LokiClient after init", () => {
 
 test("initTelemetry: second call replaces the client (last config wins)", () => {
   _resetTelemetry();
-  initTelemetry({ loki: { endpoint: "http://loki-a.test", labels: { app: "a" } } });
+  initTelemetry({ endpoint: "http://loki-a.test", labels: { app: "a" } });
   const first = getLokiClient();
-  initTelemetry({ loki: { endpoint: "http://loki-b.test", labels: { app: "b" } } });
+  initTelemetry({ endpoint: "http://loki-b.test", labels: { app: "b" } });
   const second = getLokiClient();
   assert.notEqual(first, second);
   _resetTelemetry();

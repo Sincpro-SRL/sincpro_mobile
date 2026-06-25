@@ -1,5 +1,5 @@
+import type { TelemetryConfig } from "@sincpro/mobile/infrastructure/telemetry";
 import { initTelemetry } from "@sincpro/mobile/infrastructure/telemetry";
-import type { TelemetryConfig } from "@sincpro/mobile/infrastructure/telemetry/config";
 
 import { baseModule } from "./base_module";
 import type { DomainModule } from "./domain_module";
@@ -21,7 +21,7 @@ export async function createApp(config: AppConfig = {}): Promise<Kernel> {
   await orchestrator.bootstrap(); // migrations run here — telemetry_queue is ready
 
   if (config.telemetry) {
-    initTelemetry(config.telemetry);
+    await initTelemetry(config.telemetry);
   }
 
   return kernel;
