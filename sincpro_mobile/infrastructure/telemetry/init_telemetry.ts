@@ -89,7 +89,12 @@ export async function initTelemetry(config: TelemetryConfig): Promise<void> {
 
   // Register the TracerProvider; persist spans (and fire the signal) only when
   // an OTLP destination is configured.
-  initTracing(spanQueue, !!config.otlp, () => signal.notify());
+  initTracing(spanQueue, !!config.otlp, () => signal.notify(), {
+    serviceName: config.serviceName,
+    serviceVersion: config.serviceVersion,
+    deploymentEnvironment: config.deploymentEnvironment,
+    extra: config.resourceAttributes,
+  });
 
   _worker = new TelemetryFlushWorker(flush, signal, connectivity, {
     backgroundIntervalMin: config.flush?.backgroundIntervalMin,

@@ -219,7 +219,8 @@ calls and async hand-offs on the same logical flow.
 ```ts
 await createApp({
   telemetry: {
-    loki: { endpoint, labels, auth?, headers? },   // headers: api-key / X-Scope-OrgID / …
+    serviceName: "pos-mobile",                      // OTel resource service.name — shows in Grafana/Tempo
+    loki: { endpoint, labels, auth?, headers? },    // headers: api-key / X-Scope-OrgID / …
     otlp: { endpoint, headers? },
     flush: {
       backgroundIntervalMin,   // 0 disables the cron; ≥15 → OS background task

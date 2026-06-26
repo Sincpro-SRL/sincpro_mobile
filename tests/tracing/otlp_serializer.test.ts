@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { OtlpClient } from "../../sincpro_mobile/infrastructure/telemetry/tracing/otlp_client.ts";
 import { serializeToOtlp } from "../../sincpro_mobile/infrastructure/telemetry/tracing/otlp_serializer.ts";
 import type { SpanRow } from "../../sincpro_mobile/infrastructure/telemetry/tracing/span_queue_repository.ts";
 
@@ -18,6 +19,8 @@ function makeRow(overrides: Partial<SpanRow> = {}): SpanRow {
     status_code: 0,
     status_message: "",
     resource_attrs: '{"service.name":"sincpro-mobile"}',
+    events: "[]",
+    links: "[]",
     created_at: "2026-06-24 00:00:00",
     ...overrides,
   };
@@ -96,4 +99,131 @@ test("serializeToOtlp: empty status_message omitted from payload", () => {
   const result = serializeToOtlp([makeRow({ status_message: "" })]);
   const span = result.resourceSpans[0].scopeSpans[0].spans[0];
   assert.ok(!span.status.message, "empty status_message must be absent");
+});
+
+// ---------------------------------------------------------------------------
+// OtlpClient — Content-Type guard (same invariant as LokiClient)
+// ---------------------------------------------------------------------------
+
+interface CapturedRequest {
+  url: string;
+  headers: Record<string, string>;
+}
+
+function captureFetch(): { requests: CapturedRequest[]; restore: () => void } {
+  const requests: CapturedRequest[] = [];
+  const original = global.fetch;
+  global.fetch = async (input, init) => {
+    requests.push({
+      url: input as string,
+      headers: (init?.headers ?? {}) as Record<string, string>,
+    });
+    return new Response(null, { status: 200 });
+  };
+  return {
+    requests,
+    restore: () => {
+      global.fetch = original;
+    },
+  };
+}
+
+test("OtlpClient: always sends Content-Type application/json", async () => {
+  const { requests, restore } = captureFetch();
+  try {
+    const client = new OtlpClient({ endpoint: "http://collector" });
+    await client.deliver([makeRow()]);
+    assert.equal(requests[0].headers["Content-Type"], "application/json");
+  } finally {
+    restore();
+  }
+});
+
+test("OtlpClient: custom headers are forwarded alongside Content-Type", async () => {
+  const { requests, restore } = captureFetch();
+  try {
+    const client = new OtlpClient({
+      endpoint: "http://collector",
+      headers: { "api-key": "secret", "X-Scope-OrgID": "acme" },
+    });
+    await client.deliver([makeRow()]);
+    assert.equal(requests[0].headers["api-key"], "secret");
+    assert.equal(requests[0].headers["X-Scope-OrgID"], "acme");
+    assert.equal(requests[0].headers["Content-Type"], "application/json");
+  } finally {
+    restore();
+  }
+});
+
+test("OtlpClient: custom content-type cannot override application/json", async () => {
+  const { requests, restore } = captureFetch();
+  try {
+    const client = new OtlpClient({
+      endpoint: "http://collector",
+      headers: { "content-type": "text/plain", "api-key": "k" },
+    });
+    await client.deliver([makeRow()]);
+    assert.equal(requests[0].headers["Content-Type"], "application/json");
+    assert.equal(requests[0].headers["api-key"], "k");
+    assert.ok(!("content-type" in requests[0].headers), "lowercase key must be stripped");
+  } finally {
+    restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Events — span.recordException() must reach Tempo as OTLP events with the
+// correct attribute encoding.
+// ---------------------------------------------------------------------------
+
+test("serializeToOtlp: events included in span payload with encoded attributes", () => {
+  const row = makeRow({
+    events: JSON.stringify([
+      {
+        name: "exception",
+        timeUnixNano: "1750000000500000000",
+        attributes: { "exception.message": "boom", "exception.type": "Error" },
+      },
+    ]),
+  });
+  const span = serializeToOtlp([row]).resourceSpans[0].scopeSpans[0].spans[0];
+  assert.equal(span.events.length, 1);
+  assert.equal(span.events[0].name, "exception");
+  assert.equal(span.events[0].timeUnixNano, "1750000000500000000");
+  const msg = span.events[0].attributes.find((a) => a.key === "exception.message");
+  assert.deepEqual(msg?.value, { stringValue: "boom" });
+});
+
+test("serializeToOtlp: empty events produces empty array in payload", () => {
+  const span = serializeToOtlp([makeRow({ events: "[]" })]).resourceSpans[0].scopeSpans[0]
+    .spans[0];
+  assert.deepEqual(span.events, []);
+});
+
+// ---------------------------------------------------------------------------
+// Links — cross-service correlation must survive SQLite → OTLP round-trip.
+// ---------------------------------------------------------------------------
+
+test("serializeToOtlp: links included in span payload with traceId and spanId", () => {
+  const row = makeRow({
+    links: JSON.stringify([
+      {
+        traceId: "bbbbccccddddeeee1111222233334444",
+        spanId: "ccdd11223344aabb",
+        attributes: { "link.type": "follows_from" },
+      },
+    ]),
+  });
+  const span = serializeToOtlp([row]).resourceSpans[0].scopeSpans[0].spans[0];
+  assert.equal(span.links.length, 1);
+  assert.equal(span.links[0].traceId, "bbbbccccddddeeee1111222233334444");
+  assert.equal(span.links[0].spanId, "ccdd11223344aabb");
+  const linkType = span.links[0].attributes.find((a) => a.key === "link.type");
+  assert.deepEqual(linkType?.value, { stringValue: "follows_from" });
+});
+
+test("serializeToOtlp: empty links produces empty array in payload", () => {
+  const span = serializeToOtlp([makeRow({ links: "[]" })]).resourceSpans[0].scopeSpans[0]
+    .spans[0];
+  assert.deepEqual(span.links, []);
 });

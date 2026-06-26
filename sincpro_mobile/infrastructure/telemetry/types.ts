@@ -48,6 +48,36 @@ export interface FlushConfig {
 }
 
 export interface TelemetryConfig {
+  /**
+   * Name of this app/service as it appears in Grafana/Tempo/Jaeger.
+   * Becomes the OTel resource `service.name` attribute on every span.
+   * Without it, spans are grouped under `unknown_service`, making multi-app
+   * setups impossible to filter. Example: `"pos-mobile"`, `"warehouse-mobile"`.
+   */
+  serviceName?: string;
+  /**
+   * Semver of the deployed app. Becomes `service.version` on every span.
+   * Enables filtering by version in Grafana Tempo and alerting on regressions.
+   * Example: `"1.4.2"`.
+   */
+  serviceVersion?: string;
+  /**
+   * Deployment tier. Becomes `deployment.environment` on every span.
+   * Separates dev/staging/production traces in Grafana without label tricks.
+   * Example: `"production"`, `"staging"`, `"development"`.
+   */
+  deploymentEnvironment?: string;
+  /**
+   * Extra OTel resource attributes merged onto every span. Use for device,
+   * OS, tenant, or any dimension not covered above.
+   * Common keys (OTel semantic conventions):
+   *   `"device.model.name"` — e.g. "iPhone 16 Pro"
+   *   `"os.type"` — `Platform.OS` ("ios" | "android")
+   *   `"os.version"` — `String(Platform.Version)`
+   *   `"device.id"` — opaque installation ID
+   * Values must be strings (OTel resource attributes are always string here).
+   */
+  resourceAttributes?: Record<string, string>;
   /** Omit to disable log shipping (e.g. traces-only setup). */
   loki?: LokiConfig;
   /** Omit to disable span flushing (e.g. logs-only setup). */
