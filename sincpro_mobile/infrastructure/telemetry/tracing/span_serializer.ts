@@ -14,6 +14,17 @@ export function hrTimeToNanoString(hrTime: [number, number]): string {
  * Using a local interface instead of importing from sdk-trace-base so this
  * module stays importable in the Node test runner (OTel packages are CJS).
  */
+export interface SerializableSpanEvent {
+  name: string;
+  time: [number, number];
+  attributes?: Record<string, unknown>;
+}
+
+export interface SerializableSpanLink {
+  context: { traceId: string; spanId: string };
+  attributes?: Record<string, unknown>;
+}
+
 export interface SerializableSpan {
   name: string;
   kind: number;
@@ -24,10 +35,22 @@ export interface SerializableSpan {
   attributes: Record<string, unknown>;
   status: { code: number; message?: string };
   resource?: { attributes: Record<string, unknown> };
+  events?: SerializableSpanEvent[];
+  links?: SerializableSpanLink[];
 }
 
 export function serializeSpan(span: SerializableSpan): SpanInput {
   const ctx = span.spanContext();
+  const events = (span.events ?? []).map((e) => ({
+    name: e.name,
+    timeUnixNano: hrTimeToNanoString(e.time),
+    attributes: e.attributes ?? {},
+  }));
+  const links = (span.links ?? []).map((l) => ({
+    traceId: l.context.traceId,
+    spanId: l.context.spanId,
+    attributes: l.attributes ?? {},
+  }));
   return {
     trace_id: ctx.traceId,
     span_id: ctx.spanId,
@@ -40,5 +63,7 @@ export function serializeSpan(span: SerializableSpan): SpanInput {
     status_code: span.status.code,
     status_message: span.status.message ?? "",
     resource_attrs: JSON.stringify(span.resource?.attributes ?? {}),
+    events: JSON.stringify(events),
+    links: JSON.stringify(links),
   };
 }

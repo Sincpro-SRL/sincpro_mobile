@@ -33,9 +33,61 @@ function encodeAttrs(json: string): OtlpKeyValue[] {
   }
 }
 
+function parseEvents(json: string): OtlpEvent[] {
+  try {
+    const raw = JSON.parse(json) as {
+      name: string;
+      timeUnixNano: string;
+      attributes: Record<string, unknown>;
+    }[];
+    return raw.map((e) => ({
+      name: e.name,
+      timeUnixNano: e.timeUnixNano,
+      attributes: Object.entries(e.attributes ?? {}).map(([key, value]) => ({
+        key,
+        value: encodeValue(value),
+      })),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function parseLinks(json: string): OtlpLink[] {
+  try {
+    const raw = JSON.parse(json) as {
+      traceId: string;
+      spanId: string;
+      attributes: Record<string, unknown>;
+    }[];
+    return raw.map((l) => ({
+      traceId: l.traceId,
+      spanId: l.spanId,
+      attributes: Object.entries(l.attributes ?? {}).map(([key, value]) => ({
+        key,
+        value: encodeValue(value),
+      })),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // OTLP span / scopeSpans / resourceSpans types
 // ---------------------------------------------------------------------------
+
+interface OtlpEvent {
+  name: string;
+  timeUnixNano: string;
+  attributes: OtlpKeyValue[];
+}
+
+interface OtlpLink {
+  traceId: string;
+  spanId: string;
+  attributes: OtlpKeyValue[];
+}
 
 interface OtlpSpan {
   traceId: string;
@@ -46,6 +98,8 @@ interface OtlpSpan {
   startTimeUnixNano: string;
   endTimeUnixNano: string;
   attributes: OtlpKeyValue[];
+  events: OtlpEvent[];
+  links: OtlpLink[];
   status: { code: number; message?: string };
 }
 
@@ -99,6 +153,8 @@ export function serializeToOtlp(spans: SpanRow[]): OtlpExportRequest {
         startTimeUnixNano: s.start_time_unixnano,
         endTimeUnixNano: s.end_time_unixnano,
         attributes: encodeAttrs(s.attributes),
+        events: parseEvents(s.events ?? "[]"),
+        links: parseLinks(s.links ?? "[]"),
         status: { code: s.status_code, message: s.status_message || undefined },
       };
       if (s.parent_span_id) span.parentSpanId = s.parent_span_id;

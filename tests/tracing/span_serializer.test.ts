@@ -24,6 +24,8 @@ function makeSpan(overrides: Partial<SerializableSpan> = {}): SerializableSpan {
     attributes: {},
     status: { code: 0 },
     resource: { attributes: {} },
+    events: [],
+    links: [],
     ...overrides,
   };
 }
@@ -71,4 +73,81 @@ test("serializeSpan: parent_span_id extracted from parentSpanContext when presen
 test("serializeSpan: resource_attrs defaults to empty object when resource is absent", () => {
   const row = serializeSpan(makeSpan({ resource: undefined }));
   assert.equal(row.resource_attrs, "{}");
+});
+
+// service.name flows through to resource_attrs so Grafana/Tempo can group by service
+test("serializeSpan: service.name in resource.attributes is preserved in resource_attrs", () => {
+  const row = serializeSpan(
+    makeSpan({ resource: { attributes: { "service.name": "pos-mobile" } } }),
+  );
+  const attrs = JSON.parse(row.resource_attrs) as Record<string, unknown>;
+  assert.equal(attrs["service.name"], "pos-mobile");
+});
+
+// ---------------------------------------------------------------------------
+// Events — span.recordException() produces an event; it must survive the
+// SQLite round-trip so Tempo can display the full stacktrace.
+// ---------------------------------------------------------------------------
+
+test("serializeSpan: events defaults to empty JSON array when absent", () => {
+  const row = serializeSpan(makeSpan({ events: undefined }));
+  assert.deepEqual(JSON.parse(row.events), []);
+});
+
+test("serializeSpan: events serialized with name, timeUnixNano and attributes", () => {
+  const row = serializeSpan(
+    makeSpan({
+      events: [
+        {
+          name: "exception",
+          time: [1750000000, 500_000_000],
+          attributes: { "exception.message": "boom", "exception.type": "Error" },
+        },
+      ],
+    }),
+  );
+  const events = JSON.parse(row.events) as {
+    name: string;
+    timeUnixNano: string;
+    attributes: Record<string, unknown>;
+  }[];
+  assert.equal(events.length, 1);
+  assert.equal(events[0].name, "exception");
+  // timeUnixNano must be the BigInt-precise nanosecond string
+  assert.equal(events[0].timeUnixNano, hrTimeToNanoString([1750000000, 500_000_000]));
+  assert.equal(events[0].attributes["exception.message"], "boom");
+});
+
+// ---------------------------------------------------------------------------
+// Links — cross-service span linkage; traceId/spanId must survive round-trip.
+// ---------------------------------------------------------------------------
+
+test("serializeSpan: links defaults to empty JSON array when absent", () => {
+  const row = serializeSpan(makeSpan({ links: undefined }));
+  assert.deepEqual(JSON.parse(row.links), []);
+});
+
+test("serializeSpan: links serialized with traceId, spanId and attributes", () => {
+  const row = serializeSpan(
+    makeSpan({
+      links: [
+        {
+          context: {
+            traceId: "bbbbccccddddeeee1111222233334444",
+            spanId: "ccdd11223344aabb",
+          },
+          attributes: { "link.type": "follows_from" },
+        },
+      ],
+    }),
+  );
+  const links = JSON.parse(row.links) as {
+    traceId: string;
+    spanId: string;
+    attributes: Record<string, unknown>;
+  }[];
+  assert.equal(links.length, 1);
+  assert.equal(links[0].traceId, "bbbbccccddddeeee1111222233334444");
+  assert.equal(links[0].spanId, "ccdd11223344aabb");
+  assert.equal(links[0].attributes["link.type"], "follows_from");
 });

@@ -26,6 +26,8 @@ function makeCursor() {
           status_code,
           status_message,
           resource_attrs,
+          events,
+          links,
         ] = params as [
           string,
           string,
@@ -36,6 +38,8 @@ function makeCursor() {
           string,
           string,
           number,
+          string,
+          string,
           string,
           string,
         ];
@@ -53,6 +57,8 @@ function makeCursor() {
           status_code,
           status_message,
           resource_attrs,
+          events: events ?? "[]",
+          links: links ?? "[]",
           created_at: "2026-06-24 00:00:00",
         });
         return { changes: 1, lastInsertRowId: id };
@@ -112,7 +118,9 @@ function makeCursor() {
           r.end_time_unixnano.length +
           r.attributes.length +
           r.status_message.length +
-          r.resource_attrs.length,
+          r.resource_attrs.length +
+          (r.events ?? "[]").length +
+          (r.links ?? "[]").length,
         0,
       );
       return { rows: rows.length, bytes } as unknown as T;
@@ -140,6 +148,8 @@ function makeSpanInput(overrides: Partial<SpanRow> = {}) {
     status_code: 0,
     status_message: "",
     resource_attrs: '{"service.name":"sincpro-mobile"}',
+    events: "[]",
+    links: "[]",
     ...overrides,
   };
 }

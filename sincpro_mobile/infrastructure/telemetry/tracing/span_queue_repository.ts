@@ -16,6 +16,10 @@ export interface SpanRow {
   status_code: number;
   status_message: string;
   resource_attrs: string;
+  /** JSON array of {name, timeUnixNano, attributes} — from span.recordException() etc. */
+  events: string;
+  /** JSON array of {traceId, spanId, attributes} — cross-service links. */
+  links: string;
   created_at: string;
 }
 
@@ -99,8 +103,9 @@ export class SpanQueueRepository {
       `INSERT INTO spans_queue
         (trace_id, span_id, parent_span_id, name, kind,
          start_time_unixnano, end_time_unixnano,
-         attributes, status_code, status_message, resource_attrs)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         attributes, status_code, status_message, resource_attrs,
+         events, links)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       span.trace_id,
       span.span_id,
       span.parent_span_id,
@@ -112,6 +117,8 @@ export class SpanQueueRepository {
       span.status_code,
       span.status_message,
       span.resource_attrs,
+      span.events,
+      span.links,
     );
 
     if (++this.ops >= this.evictEvery) {
@@ -156,6 +163,7 @@ export class SpanQueueRepository {
           length(trace_id) + length(span_id) + length(COALESCE(parent_span_id, ''))
           + length(name) + length(start_time_unixnano) + length(end_time_unixnano)
           + length(attributes) + length(status_message) + length(resource_attrs)
+          + length(events) + length(links)
         ), 0) AS bytes
        FROM spans_queue`,
     );

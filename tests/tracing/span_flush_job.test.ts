@@ -28,6 +28,8 @@ function makeRow(id: number): SpanRow {
     status_code: 0,
     status_message: "",
     resource_attrs: "{}",
+    events: "[]",
+    links: "[]",
     created_at: "2026-06-24 00:00:00",
   };
 }

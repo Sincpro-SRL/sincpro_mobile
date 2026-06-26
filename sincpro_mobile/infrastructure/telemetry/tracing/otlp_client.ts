@@ -26,10 +26,7 @@ export class OtlpClient {
       url,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...this.config.headers,
-        },
+        headers: this.requestHeaders(),
         body,
       },
       this.timeoutMs,
@@ -38,5 +35,14 @@ export class OtlpClient {
     if (!res.ok) {
       throw new Error(`OTLP collector responded ${res.status}`);
     }
+  }
+
+  private requestHeaders(): Record<string, string> {
+    const custom = this.config.headers ?? {};
+    // Strip any content-type the caller may have set — JSON is always required for OTLP/HTTP.
+    const stripped = Object.fromEntries(
+      Object.entries(custom).filter(([k]) => k.toLowerCase() !== "content-type"),
+    );
+    return { ...stripped, "Content-Type": "application/json" };
   }
 }
