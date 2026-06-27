@@ -1,7 +1,7 @@
-import { DEFAULT_SEND_TIMEOUT_MS, fetchWithTimeout } from "../fetch_with_timeout.ts";
-import type { OtlpConfig } from "../types.ts";
-import { serializeToOtlp } from "./otlp_serializer.ts";
-import type { SpanRow } from "./span_queue_repository.ts";
+import { DEFAULT_SEND_TIMEOUT_MS, fetchWithTimeout } from "../fetch_with_timeout";
+import type { OtlpConfig } from "../types";
+import { serializeToOtlp } from "./otlp_serializer";
+import type { SpanRow } from "./span_queue_repository";
 
 /**
  * Sends a batch of spans to an OTLP/HTTP collector (Grafana Alloy, Jaeger, etc.).

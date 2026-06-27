@@ -1,6 +1,6 @@
-import type { LokiConfig } from "../types.ts";
-import type { LogQueueRepository } from "./log_queue_repository.ts";
-import { LokiClient } from "./loki_client.ts";
+import type { LokiConfig } from "../types";
+import type { LogQueueRepository } from "./log_queue_repository";
+import { LokiClient } from "./loki_client";
 
 let _client: LokiClient | null = null;
 

@@ -1,10 +1,10 @@
-import { Context } from "./context.ts";
-import { getActiveContext, getContext, runWithContext } from "./context_api.ts";
-import type { ContextKey } from "./context_key.ts";
-import { createContextKey } from "./context_key.ts";
-import { PropagateContext } from "./decorators/propagate_context.ts";
-import { SetContext, WithContext } from "./decorators/with_context.ts";
-import { managed, ManagedContext } from "./managed_context.ts";
+import { Context } from "./context";
+import { getActiveContext, getContext, runWithContext } from "./context_api";
+import type { ContextKey } from "./context_key";
+import { createContextKey } from "./context_key";
+import { PropagateContext } from "./decorators/propagate_context";
+import { SetContext, WithContext } from "./decorators/with_context";
+import { managed, ManagedContext } from "./managed_context";
 
 export function run<T>(
   transform: (ctx: Context) => Context,

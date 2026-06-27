@@ -2,8 +2,8 @@ import type { ExportResult } from "@opentelemetry/core";
 import { ExportResultCode } from "@opentelemetry/core";
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
 
-import type { SpanQueueRepository } from "./span_queue_repository.ts";
-import { serializeSpan } from "./span_serializer.ts";
+import type { SpanQueueRepository } from "./span_queue_repository";
+import { serializeSpan } from "./span_serializer";
 
 /**
  * OTel SpanExporter that persists spans to SQLite instead of sending them

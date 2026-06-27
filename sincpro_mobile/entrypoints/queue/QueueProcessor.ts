@@ -6,7 +6,7 @@ import {
   calculateDesiredSubscribers,
   statesAreEqual,
   type SyncState,
-} from "./subscriber_filter.ts";
+} from "./subscriber_filter";
 
 export interface SyncResult {
   changed: boolean;

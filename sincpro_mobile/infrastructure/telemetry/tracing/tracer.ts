@@ -2,8 +2,8 @@ import { trace } from "@opentelemetry/api";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BasicTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 
-import type { SpanQueueRepository } from "./span_queue_repository.ts";
-import { SQLiteSpanExporter } from "./sqlite_span_exporter.ts";
+import type { SpanQueueRepository } from "./span_queue_repository";
+import { SQLiteSpanExporter } from "./sqlite_span_exporter";
 
 let _provider: BasicTracerProvider | null = null;
 

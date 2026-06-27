@@ -1,6 +1,6 @@
-import { Context } from "./context.ts";
-import type { ContextKey } from "./context_key.ts";
-import { StackContextManager } from "./stack_context_manager.ts";
+import { Context } from "./context";
+import type { ContextKey } from "./context_key";
+import { StackContextManager } from "./stack_context_manager";
 
 const _manager = new StackContextManager();
 
