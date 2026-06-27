@@ -63,6 +63,7 @@ interface ICommonContext {
   geoError: string | null;
   checkGeoPermission: () => Promise<void>;
   requestGeoPermission: () => Promise<boolean>;
+  locale: string | null;
   timezone: string | null;
   updateTimezone: (tz: TimezoneLocale) => Promise<void>;
   colorScheme: "light" | "dark" | "system";
@@ -89,6 +90,7 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
   const [hasGeoPermission, setHasGeoPermission] = useState(false);
   const [geoIsLoading, setGeoIsLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
+  const [locale, setLocale] = useState<string | null>(null);
   const [timezone, setTimezone] = useState<string | null>(null);
   const [colorScheme, setColorSchemeState] = useState<"light" | "dark" | "system">("system");
 
@@ -154,6 +156,7 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
       await SettingsRepository.saveOneSetting(TIMEZONE_SETTING_KEY, tz.timezone);
       await SettingsRepository.saveOneSetting(LOCALE_SETTING_KEY, tz.locale);
       setTimezone(tz.timezone);
+      setLocale(tz.locale);
     } catch (error) {
       logger.warn(error);
     }
@@ -209,16 +212,19 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
   }, [colorScheme, applyTheme]);
 
   useEffect(() => {
-    async function loadTimezone() {
+    async function loadTimezoneAndLocale() {
       try {
-        const timezoneResult =
-          await SettingsRepository.getSettingByName(TIMEZONE_SETTING_KEY);
+        const [timezoneResult, localeResult] = await Promise.all([
+          SettingsRepository.getSettingByName(TIMEZONE_SETTING_KEY),
+          SettingsRepository.getSettingByName(LOCALE_SETTING_KEY),
+        ]);
         setTimezone(timezoneResult);
+        setLocale(localeResult);
       } catch (error) {
-        logger.warn("Failed to load timezone", error);
+        logger.warn("Failed to load timezone/locale", error);
       }
     }
-    loadTimezone();
+    loadTimezoneAndLocale();
   }, []);
 
   useEffect(() => {
@@ -342,6 +348,7 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
       geoError,
       checkGeoPermission,
       requestGeoPermission,
+      locale,
       timezone,
       updateTimezone,
       colorScheme,
@@ -360,6 +367,7 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
       geoError,
       checkGeoPermission,
       requestGeoPermission,
+      locale,
       timezone,
       updateTimezone,
       colorScheme,
