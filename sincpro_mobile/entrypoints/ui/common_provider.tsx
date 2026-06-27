@@ -275,13 +275,13 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
 
     function handleCronStart(payload: unknown) {
       if (!payload || typeof payload !== "object" || !("task" in payload)) return;
-      const { task } = payload as CronEventPayload;
+      const { task, label } = payload as CronEventPayload;
 
       setCronTasks((prev) => {
         const next = new Map(prev);
         next.set(task, {
           id: task,
-          label: task,
+          label: label ?? task,
           type: "cron",
           status: "running",
           startedAt: Date.now(),

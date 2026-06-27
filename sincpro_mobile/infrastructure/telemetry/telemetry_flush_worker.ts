@@ -77,6 +77,8 @@ export class TelemetryFlushWorker {
         "TELEMETRY_FLUSH",
         () => this.flush.run({ resetBackoff: true }),
         intervalMin,
+        false,
+        "Sincronizando telemetría",
       );
       this.cron.start().catch(() => {});
     }

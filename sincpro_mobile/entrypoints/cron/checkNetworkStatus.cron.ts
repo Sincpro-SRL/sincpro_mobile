@@ -8,6 +8,12 @@ async function checkNetworkStatus(): Promise<void> {
   loggerCronJobs.info("Finished checking network status");
 }
 
-const cronCheckNetworkStatus = new CronWorker("CHECK_NETWORK", checkNetworkStatus, 2.5);
+const cronCheckNetworkStatus = new CronWorker(
+  "CHECK_NETWORK",
+  checkNetworkStatus,
+  2.5,
+  false,
+  "Verificando red",
+);
 
 export default cronCheckNetworkStatus;

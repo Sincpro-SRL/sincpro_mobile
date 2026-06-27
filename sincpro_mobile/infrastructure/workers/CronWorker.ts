@@ -16,6 +16,7 @@ export class CronWorker {
     private readonly job: CronJob,
     private readonly intervalMin = 15,
     public readonly requiresAuth = false,
+    public readonly label?: string,
   ) {}
 
   /**
@@ -117,7 +118,7 @@ export class CronWorker {
   private async runWithEvents(job: () => void | Promise<void>) {
     this.isExecuting = true;
     const startTime = Date.now();
-    UIEventBus.emit("CRON_START", { task: this.taskName });
+    UIEventBus.emit("CRON_START", { task: this.taskName, label: this.label });
     try {
       await Promise.resolve(job());
       const duration = Date.now() - startTime;
