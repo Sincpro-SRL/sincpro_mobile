@@ -175,26 +175,6 @@ async function createSpansQueueTable(): Promise<void> {
   `);
 }
 
-// Adds events and links columns to spans_queue for existing installs.
-// Fresh installs get them from createSpansQueueTable above; ALTER TABLE is a
-// no-op on those (caught and ignored — duplicate column error is expected).
-async function addSpansQueueEventsLinks(): Promise<void> {
-  try {
-    await DBCursor.execAsync(
-      `ALTER TABLE ${DATABASE_TABLES.SPANS_QUEUE} ADD COLUMN events TEXT NOT NULL DEFAULT '[]'`,
-    );
-  } catch {
-    // column already exists on fresh installs
-  }
-  try {
-    await DBCursor.execAsync(
-      `ALTER TABLE ${DATABASE_TABLES.SPANS_QUEUE} ADD COLUMN links TEXT NOT NULL DEFAULT '[]'`,
-    );
-  } catch {
-    // column already exists on fresh installs
-  }
-}
-
 const MIGRATIONS: IMigration[] = [
   { name: DATABASE_TABLES.SETTINGS, migrationFn: createSettingsTable },
   { name: DATABASE_TABLES.EVENT_QUEUE, migrationFn: createEventQueueTable },
@@ -206,7 +186,6 @@ const MIGRATIONS: IMigration[] = [
   },
   { name: DATABASE_TABLES.TELEMETRY_QUEUE, migrationFn: createTelemetryQueueTable },
   { name: DATABASE_TABLES.SPANS_QUEUE, migrationFn: createSpansQueueTable },
-  { name: "spans_queue_v2_events_links", migrationFn: addSpansQueueEventsLinks },
 ];
 
 export default MIGRATIONS;
