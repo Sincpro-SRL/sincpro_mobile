@@ -3,15 +3,15 @@ import { ROOT_CONTEXT as OTEL_ROOT, SpanStatusCode, trace } from "@opentelemetry
 import {
   _getContextManager,
   PropagateContext,
-} from "@sincpro/mobile/infrastructure/context_manager/index.ts";
-import { interceptClass } from "@sincpro/mobile/infrastructure/interceptor/intercept.ts";
+} from "@sincpro/mobile/infrastructure/context_manager/index";
+import { interceptClass } from "@sincpro/mobile/infrastructure/interceptor/intercept";
 
-import { bufferStats } from "./buffer_registry.ts";
-import { OTEL_CTX_KEY } from "./context_keys.ts";
-import { initTelemetry } from "./init_telemetry.ts";
-import { activeTraceLabel, getActiveSpanContext } from "./tracing/active_span.ts";
-import { getTracer as _getTracer } from "./tracing/tracer.ts";
-import { tracingHooks } from "./tracing/tracing_hooks.ts";
+import { bufferStats } from "./buffer_registry";
+import { OTEL_CTX_KEY } from "./context_keys";
+import { initTelemetry } from "./init_telemetry";
+import { activeTraceLabel, getActiveSpanContext } from "./tracing/active_span";
+import { getTracer as _getTracer } from "./tracing/tracer";
+import { tracingHooks } from "./tracing/tracing_hooks";
 
 // ---------------------------------------------------------------------------
 // withSpan — manual span block with automatic lifecycle

@@ -1,6 +1,6 @@
-import { DEFAULT_SEND_TIMEOUT_MS, fetchWithTimeout } from "../fetch_with_timeout.ts";
-import type { LokiConfig } from "../types.ts";
-import type { LogEntry, LogQueueRepository } from "./log_queue_repository.ts";
+import { DEFAULT_SEND_TIMEOUT_MS, fetchWithTimeout } from "../fetch_with_timeout";
+import type { LokiConfig } from "../types";
+import type { LogEntry, LogQueueRepository } from "./log_queue_repository";
 
 // ---------------------------------------------------------------------------
 // Monotonic nanosecond timestamp

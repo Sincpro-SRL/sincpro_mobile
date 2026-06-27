@@ -1,4 +1,4 @@
-import { getActiveContext, runWithContext } from "../context_api.ts";
+import { getActiveContext, runWithContext } from "../context_api";
 
 type AnyClass = new (...args: never[]) => object;
 

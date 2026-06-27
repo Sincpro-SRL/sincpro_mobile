@@ -1,6 +1,6 @@
 import type { Context as OtelContext } from "@opentelemetry/api";
 
-import { createContextKey } from "../context_manager/index.ts";
+import { createContextKey } from "../context_manager/index";
 
 /**
  * Key under which the active OTel Context (carrying the current Span) is

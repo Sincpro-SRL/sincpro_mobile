@@ -1,6 +1,6 @@
-import type { LogQueueRepository } from "./logging/log_queue_repository.ts";
-import type { SpanQueueRepository } from "./tracing/span_queue_repository.ts";
-import type { TelemetryBufferStats } from "./types.ts";
+import type { LogQueueRepository } from "./logging/log_queue_repository";
+import type { SpanQueueRepository } from "./tracing/span_queue_repository";
+import type { TelemetryBufferStats } from "./types";
 
 let _logQueue: LogQueueRepository | null = null;
 let _spanQueue: SpanQueueRepository | null = null;

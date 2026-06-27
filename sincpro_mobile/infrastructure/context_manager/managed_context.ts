@@ -1,6 +1,6 @@
-import { _getContextManager, getContext } from "./context_api.ts";
-import type { ContextKey } from "./context_key.ts";
-import { createContextKey } from "./context_key.ts";
+import { _getContextManager, getContext } from "./context_api";
+import type { ContextKey } from "./context_key";
+import { createContextKey } from "./context_key";
 
 /**
  * Contract exposed by both managed context flavors.

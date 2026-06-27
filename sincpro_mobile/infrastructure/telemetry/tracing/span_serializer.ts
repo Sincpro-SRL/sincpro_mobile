@@ -1,4 +1,4 @@
-import type { SpanInput } from "./span_queue_repository.ts";
+import type { SpanInput } from "./span_queue_repository";
 
 /**
  * OTel HrTime: [seconds: number, nanoseconds: number].

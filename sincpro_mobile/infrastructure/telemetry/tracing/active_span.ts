@@ -1,8 +1,8 @@
 import type { SpanContext } from "@opentelemetry/api";
 import { trace } from "@opentelemetry/api";
 
-import { _getContextManager } from "../../context_manager/index.ts";
-import { OTEL_CTX_KEY } from "../context_keys.ts";
+import { _getContextManager } from "../../context_manager/index";
+import { OTEL_CTX_KEY } from "../context_keys";
 
 /**
  * Returns the SpanContext (traceId + spanId + traceFlags) of the span

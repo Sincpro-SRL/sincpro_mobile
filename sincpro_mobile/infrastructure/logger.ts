@@ -1,5 +1,5 @@
-import { getLokiClient } from "./telemetry/logging/loki_registry.ts";
-import { activeTraceLabel } from "./telemetry/tracing/active_span.ts";
+import { getLokiClient } from "./telemetry/logging/loki_registry";
+import { activeTraceLabel } from "./telemetry/tracing/active_span";
 
 type LoggerArgs = unknown[];
 

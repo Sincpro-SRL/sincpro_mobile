@@ -1,5 +1,5 @@
-import type { FlushResult } from "../logging/flush_job.ts";
-import type { SpanRow } from "./span_queue_repository.ts";
+import type { FlushResult } from "../logging/flush_job";
+import type { SpanRow } from "./span_queue_repository";
 
 export const SPAN_FLUSH_BATCH_SIZE = 100;
 export const SPAN_MAX_BATCHES_PER_TICK = 5;

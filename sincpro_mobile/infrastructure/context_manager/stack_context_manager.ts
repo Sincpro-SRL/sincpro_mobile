@@ -1,4 +1,4 @@
-import { Context } from "./context.ts";
+import { Context } from "./context";
 
 /**
  * Hermes-compatible context manager.

@@ -1,7 +1,7 @@
 import type { DBCursor } from "@sincpro/mobile/infrastructure/database";
 
-import type { BufferStats } from "../types.ts";
-import type { SpanSampler } from "./span_sampler.ts";
+import type { BufferStats } from "../types";
+import type { SpanSampler } from "./span_sampler";
 
 export interface SpanRow {
   id: number;

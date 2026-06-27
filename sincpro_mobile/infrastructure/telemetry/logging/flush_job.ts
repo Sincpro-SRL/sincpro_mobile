@@ -1,4 +1,4 @@
-import type { LogEntry } from "./log_queue_repository.ts";
+import type { LogEntry } from "./log_queue_repository";
 
 // ---------------------------------------------------------------------------
 // Constants

@@ -5,9 +5,9 @@ import {
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 import { CronWorker } from "@sincpro/mobile/infrastructure/workers/CronWorker";
 
-import type { ConnectivityState } from "./connectivity_state.ts";
-import type { FlushTelemetry } from "./flush_telemetry.ts";
-import type { TelemetrySignal } from "./telemetry_signal.ts";
+import type { ConnectivityState } from "./connectivity_state";
+import type { FlushTelemetry } from "./flush_telemetry";
+import type { TelemetrySignal } from "./telemetry_signal";
 
 /** Default background-flush interval (minutes). ≥15 → real OS background task. */
 export const DEFAULT_BACKGROUND_INTERVAL_MIN = 15;

@@ -1,9 +1,9 @@
 import type { Span } from "@opentelemetry/api";
 import { ROOT_CONTEXT as OTEL_ROOT, SpanStatusCode, trace } from "@opentelemetry/api";
 
-import { _getContextManager } from "../../context_manager/index.ts";
-import type { InterceptorHooks, MethodCall } from "../../interceptor/intercept.ts";
-import { OTEL_CTX_KEY } from "../context_keys.ts";
+import { _getContextManager } from "../../context_manager/index";
+import type { InterceptorHooks, MethodCall } from "../../interceptor/intercept";
+import { OTEL_CTX_KEY } from "../context_keys";
 
 const _spanMap = new WeakMap<MethodCall, Span>();
 // Tracks whether `before` successfully pushed a context entry for this call.

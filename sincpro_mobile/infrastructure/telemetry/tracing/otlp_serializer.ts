@@ -1,4 +1,4 @@
-import type { SpanRow } from "./span_queue_repository.ts";
+import type { SpanRow } from "./span_queue_repository";
 
 // ---------------------------------------------------------------------------
 // OTLP attribute value — one-of encoding per OTLP/JSON spec

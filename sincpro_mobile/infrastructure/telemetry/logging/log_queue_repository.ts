@@ -1,6 +1,6 @@
 import type { DBCursor } from "@sincpro/mobile/infrastructure/database";
 
-import type { BufferStats } from "../types.ts";
+import type { BufferStats } from "../types";
 
 export interface LogEntry {
   id: number;

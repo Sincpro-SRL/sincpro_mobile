@@ -1,4 +1,4 @@
-import type { ContextKey } from "./context_key.ts";
+import type { ContextKey } from "./context_key";
 
 /**
  * Immutable execution-scoped key-value store.

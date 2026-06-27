@@ -1,12 +1,12 @@
-import type { ConnectivityState } from "./connectivity_state.ts";
-import type { FlushClient, FlushQueue, LogFlushJobState } from "./logging/flush_job.ts";
-import { createLogFlushJobState, runLogFlushJob } from "./logging/flush_job.ts";
+import type { ConnectivityState } from "./connectivity_state";
+import type { FlushClient, FlushQueue, LogFlushJobState } from "./logging/flush_job";
+import { createLogFlushJobState, runLogFlushJob } from "./logging/flush_job";
 import type {
   SpanFlushClient,
   SpanFlushJobState,
   SpanFlushQueue,
-} from "./tracing/span_flush_job.ts";
-import { createSpanFlushJobState, runSpanFlushJob } from "./tracing/span_flush_job.ts";
+} from "./tracing/span_flush_job";
+import { createSpanFlushJobState, runSpanFlushJob } from "./tracing/span_flush_job";
 
 export interface FlushTelemetryDeps {
   connectivity: ConnectivityState;

@@ -1,22 +1,22 @@
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 
-import { _registerBuffers } from "./buffer_registry.ts";
-import { ConnectivityState } from "./connectivity_state.ts";
-import { FlushTelemetry } from "./flush_telemetry.ts";
-import { LogQueueRepository } from "./logging/log_queue_repository.ts";
-import { _resetLokiClient, getLokiClient, initLokiClient } from "./logging/loki_registry.ts";
-import { TelemetryFlushWorker } from "./telemetry_flush_worker.ts";
-import { TelemetrySignal } from "./telemetry_signal.ts";
-import { OtlpClient } from "./tracing/otlp_client.ts";
+import { _registerBuffers } from "./buffer_registry";
+import { ConnectivityState } from "./connectivity_state";
+import { FlushTelemetry } from "./flush_telemetry";
+import { LogQueueRepository } from "./logging/log_queue_repository";
+import { _resetLokiClient, getLokiClient, initLokiClient } from "./logging/loki_registry";
+import { TelemetryFlushWorker } from "./telemetry_flush_worker";
+import { TelemetrySignal } from "./telemetry_signal";
+import { OtlpClient } from "./tracing/otlp_client";
 import {
   EVICT_CHECK_EVERY,
   MAX_SPANS_QUEUE_BYTES,
   MAX_SPANS_QUEUE_SIZE,
   SpanQueueRepository,
-} from "./tracing/span_queue_repository.ts";
-import { SpanSampler } from "./tracing/span_sampler.ts";
-import { initTracing } from "./tracing/tracer.ts";
-import type { TelemetryConfig } from "./types.ts";
+} from "./tracing/span_queue_repository";
+import { SpanSampler } from "./tracing/span_sampler";
+import { initTracing } from "./tracing/tracer";
+import type { TelemetryConfig } from "./types";
 
 let _worker: TelemetryFlushWorker | null = null;
 

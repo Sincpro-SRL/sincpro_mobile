@@ -1,6 +1,6 @@
-import { Context } from "../context.ts";
-import { getActiveContext, runWithContext } from "../context_api.ts";
-import type { ContextKey } from "../context_key.ts";
+import { Context } from "../context";
+import { getActiveContext, runWithContext } from "../context_api";
+import type { ContextKey } from "../context_key";
 
 /**
  * Method decorator. Before calling the method, applies transform to the
