@@ -5,18 +5,37 @@ import * as TaskManager from "expo-task-manager";
 
 export type CronJob = () => Promise<void>;
 
+export interface CronWorkerOpts {
+  requiresAuth?: boolean;
+  label?: string;
+  showToast?: boolean;
+}
+
 export class CronWorker {
   private stopFn?: () => void;
   private isRegistering = false;
   private isExecuting = false;
   private registrationError?: Error;
 
+  public readonly requiresAuth: boolean;
+  public label?: string;
+  private showToast: boolean;
+
   constructor(
     public readonly taskName: string,
     private readonly job: CronJob,
     private readonly intervalMin = 15,
-    public readonly requiresAuth = false,
-  ) {}
+    opts: CronWorkerOpts = {},
+  ) {
+    this.requiresAuth = opts.requiresAuth ?? false;
+    this.label = opts.label;
+    this.showToast = opts.showToast ?? false;
+  }
+
+  configure(opts: Partial<CronWorkerOpts>): void {
+    if (opts.label !== undefined) this.label = opts.label;
+    if (opts.showToast !== undefined) this.showToast = opts.showToast;
+  }
 
   /**
    * Registers a task with a specified interval and execution logic.
@@ -117,7 +136,10 @@ export class CronWorker {
   private async runWithEvents(job: () => void | Promise<void>) {
     this.isExecuting = true;
     const startTime = Date.now();
-    UIEventBus.emit("CRON_START", { task: this.taskName });
+    if (this.showToast) {
+      UIEventBus.emit("CRON_START", { task: this.taskName, label: this.label });
+    }
+
     try {
       await Promise.resolve(job());
       const duration = Date.now() - startTime;
@@ -130,7 +152,7 @@ export class CronWorker {
       );
     } finally {
       this.isExecuting = false;
-      UIEventBus.emit("CRON_END", { task: this.taskName });
+      if (this.showToast) UIEventBus.emit("CRON_END", { task: this.taskName });
     }
   }
 
