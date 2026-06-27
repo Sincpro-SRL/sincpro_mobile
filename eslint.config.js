@@ -8,6 +8,19 @@ module.exports = defineConfig([
   {
     ignores: ["dist/**", "node_modules/**"],
   },
+  {
+    files: ["**/*.cjs"],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: {
+        __dirname: "readonly",
+        __filename: "readonly",
+        require: "readonly",
+        module: "writable",
+        exports: "writable",
+      },
+    },
+  },
   expoConfig,
   eslintPluginPrettierRecommended,
   {
