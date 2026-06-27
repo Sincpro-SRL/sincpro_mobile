@@ -108,6 +108,7 @@
     "react-native-view-shot": "^4.0.3",
     "react-native-webview": "13.15.0",
     "tsc-alias": "^1.8.17",
+    "tsx": "^4.22.4",
     "typescript": "~5.9.2"
   },
   "exports": {

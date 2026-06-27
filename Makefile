@@ -36,7 +36,7 @@ build:
 
 test:
 	@echo "🧪 Running tests..."
-	@node --experimental-strip-types --test "tests/**/*.test.ts"
+	@node --require ./tests/cjs-stubs.cjs --import tsx --import ./tests/loader.mjs --test "tests/**/*.test.ts"
 
 verify-format: format doctor
 	@if ! git diff --quiet; then \
