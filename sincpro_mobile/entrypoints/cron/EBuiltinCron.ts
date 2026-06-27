@@ -1,0 +1,4 @@
+export enum EBuiltinCron {
+  CHECK_NETWORK = "CHECK_NETWORK",
+  TELEMETRY_FLUSH = "TELEMETRY_FLUSH",
+}

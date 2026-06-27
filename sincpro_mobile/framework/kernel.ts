@@ -4,7 +4,7 @@ import { repos } from "@sincpro/mobile/entrypoints/db/repositories";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 import { initializeRepositoryFacade } from "@sincpro/mobile/infrastructure/database/mapped";
 import logger, { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
-import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
+import type { CronWorker, CronWorkerOpts } from "@sincpro/mobile/infrastructure/workers";
 
 import type { DomainModule } from "./domain_module";
 
@@ -52,6 +52,14 @@ export class Kernel {
       map[module.key] = module.crons();
     }
     return map;
+  }
+
+  applyCronConfig(config: Record<string, Partial<CronWorkerOpts>>): void {
+    for (const crons of Object.values(this.cronsByKey())) {
+      for (const cron of crons) {
+        if (config[cron.taskName]) cron.configure(config[cron.taskName]);
+      }
+    }
   }
 
   async runMigrations(): Promise<void> {

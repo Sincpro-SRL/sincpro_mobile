@@ -1,3 +1,4 @@
+export { EBuiltinCron } from "@sincpro/mobile/entrypoints/cron/EBuiltinCron";
 export type { AppShellConfig } from "@sincpro/mobile/entrypoints/ui/AppShell";
 export { createAppShell } from "@sincpro/mobile/entrypoints/ui/AppShell";
 export type { TimezoneLocale } from "@sincpro/mobile/entrypoints/ui/common_provider";

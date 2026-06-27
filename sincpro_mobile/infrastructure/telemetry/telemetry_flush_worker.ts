@@ -2,8 +2,9 @@ import {
   InternetIsDownEvent,
   InternetIsUpEvent,
 } from "@sincpro/mobile/domain/connectivity/events";
+import { EBuiltinCron } from "@sincpro/mobile/entrypoints/cron/EBuiltinCron";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
-import { CronWorker } from "@sincpro/mobile/infrastructure/workers/CronWorker";
+import { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 
 import type { ConnectivityState } from "./connectivity_state";
 import type { FlushTelemetry } from "./flush_telemetry";
@@ -74,11 +75,9 @@ export class TelemetryFlushWorker {
     const intervalMin = this.opts.backgroundIntervalMin ?? DEFAULT_BACKGROUND_INTERVAL_MIN;
     if (intervalMin > 0) {
       this.cron = new CronWorker(
-        "TELEMETRY_FLUSH",
+        EBuiltinCron.TELEMETRY_FLUSH,
         () => this.flush.run({ resetBackoff: true }),
         intervalMin,
-        false,
-        "Sincronizando telemetría",
       );
       this.cron.start().catch(() => {});
     }
