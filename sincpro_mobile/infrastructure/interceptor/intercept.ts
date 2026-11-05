@@ -121,6 +121,11 @@ export function interceptFunction<T extends (...args: never[]) => unknown>(
   return wrap(fn as unknown as AnyFn, "", fn.name || "anonymous", hooks) as unknown as T;
 }
 
+export type InstanceInterceptOptions = {
+  /** Method names for which the proxy returns the raw function. */
+  skip?: (methodName: string) => boolean;
+};
+
 /**
  * Wraps a single live instance via Proxy without touching the class prototype.
  * Use for singletons exported directly (e.g. `dbCursor`, `distributionWorkflows`).
@@ -132,9 +137,14 @@ export function interceptFunction<T extends (...args: never[]) => unknown>(
  *
  * Hooks contract: `before` fires before the call; `after` fires on success with
  * the resolved value; `onError` fires on throw or rejection — the error is always
- * re-thrown after `onError` completes.
+ * re-thrown after `onError` completes. `skip` leaves a method unwrapped — a `_`
+ * helper must not open a span.
  */
-export function interceptInstance<T extends object>(instance: T, hooks: InterceptorHooks): T {
+export function interceptInstance<T extends object>(
+  instance: T,
+  hooks: InterceptorHooks,
+  options?: InstanceInterceptOptions,
+): T {
   const className = instance.constructor?.name ?? "Object";
 
   return new Proxy(instance, {
@@ -143,6 +153,7 @@ export function interceptInstance<T extends object>(instance: T, hooks: Intercep
       if (typeof value !== "function" || typeof prop === "symbol") {
         return value;
       }
+      if (options?.skip?.(prop)) return value;
       return wrap(value as AnyFn, className, prop, hooks).bind(target);
     },
   });

@@ -127,29 +127,32 @@ unit-test business logic with an in-memory fake. The framework's own `DBCursor`,
 ### `services/` — use cases & workflows (business logic)
 
 A **use case** is one business transaction: load entities via repositories, run domain
-logic, persist, and let entities emit domain events. A **workflow** orchestrates several
-steps (often across screens or with retries) — decorate it with `@TraceClass` for a span
-per step.
+logic, persist, and let entities emit domain events. It extends `Feature`. A
+**workflow** orchestrates several `Feature`s in one turn and extends
+`ApplicationService`. Every public method is a span (`ClassName.method`); a method
+whose name starts with `_` is not. No decorator. See
+[PRD 01](prd/PRD_01_feature-y-application-service.md).
 
 ```ts
-// services/use_cases/create_ticket.use_case.ts
-export class CreateTicketUseCase {
-  constructor(private readonly tickets: ITicketRepository) {}
+import { ApplicationService, Feature } from "@sincpro/mobile";
 
+export class CreateTicket extends Feature<{ tickets: ITicketRepository }> {
   async execute(input: CreateTicketInput): Promise<Ticket> {
-    const ticket = Ticket.create(input); // domain logic + ticket.addDomainEvent(new TicketCreatedEvent(...))
-    await this.tickets.save(ticket); // persists; the event lands in domain_events
+    const ticket = Ticket.create(input);
+    await this.deps.tickets.save(ticket);
     return ticket;
   }
 }
 
-// services/workflows/sync_day.workflow.ts
-@Tracing.TraceClass("sync")
-export class SyncDayWorkflow {
-  async run() {
-    /* multi-step; each method = a child span, context propagated */
+const day = { createTicket: new CreateTicket({ tickets }) };
+
+export class SyncDay extends ApplicationService<typeof day> {
+  async run(input: CreateTicketInput) {
+    return this.features.createTicket.execute(input); // child span, same trace
   }
 }
+
+export const syncDay = new SyncDay(day);
 ```
 
 **Why a thin use-case layer:** it's the seam the UI and subscribers both call, the unit
@@ -281,4 +284,4 @@ lives in one adapter.
 4. **UI** — a screen that calls the use case, built from `@sincpro/mobile-ui`.
 5. **Subscribers** — for each side effect, declare a subscriber on the relevant event.
 6. **Module** — register repositories/migrations/subscribers/crons; add the screen to the `ui` map.
-7. **(Optional) Telemetry** — `@Tracing.TraceClass` on workflows/use cases; correlate logs with `Tracing.logSuffix()`.
+7. **Telemetry** — a `Feature` / `ApplicationService` already opens the span. Shipping it is still opt-in: `createApp({ telemetry })` with an `otlp` endpoint. `@Tracing.TraceClass` remains for a class that is not one of those two.

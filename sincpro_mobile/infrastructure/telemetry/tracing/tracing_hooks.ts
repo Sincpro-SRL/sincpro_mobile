@@ -1,9 +1,11 @@
 import type { Span } from "@opentelemetry/api";
 import { ROOT_CONTEXT as OTEL_ROOT, SpanStatusCode, trace } from "@opentelemetry/api";
-
-import { _getContextManager } from "../../context_manager/index";
-import type { InterceptorHooks, MethodCall } from "../../interceptor/intercept";
-import { OTEL_CTX_KEY } from "../context_keys";
+import { _getContextManager } from "@sincpro/mobile/infrastructure/context_manager";
+import type {
+  InterceptorHooks,
+  MethodCall,
+} from "@sincpro/mobile/infrastructure/interceptor/intercept";
+import { OTEL_CTX_KEY } from "@sincpro/mobile/infrastructure/telemetry/context_keys";
 
 const _spanMap = new WeakMap<MethodCall, Span>();
 // Tracks whether `before` successfully pushed a context entry for this call.
@@ -11,60 +13,72 @@ const _spanMap = new WeakMap<MethodCall, Span>();
 const _pushedMap = new WeakSet<MethodCall>();
 
 /**
- * Returns InterceptorHooks that record an OTel span for every intercepted
- * method call. Parent-child relationships are maintained through the framework
- * StackContextManager: the OTel context (with the active span) is stored as a
- * value inside our Context, pushed in `before` and popped in `after`/`onError`.
+ * A span per intercepted call. The active span lives in the framework context,
+ * so a nested call — an application service running a feature — is a child of
+ * the same trace.
  *
- * @param tracerName - instrumentation scope name, e.g. "sincpro.mobile.checkout"
+ * Tracing is optional. No provider, a missing SDK, or an exporter that throws:
+ * the hooks swallow it and the use case runs. `before` only records a push it
+ * actually made, so `after` never pops a context it did not push.
+ *
+ * @param tracerName - instrumentation scope, e.g. "sincpro.mobile.checkout"
  */
 export function tracingHooks(tracerName: string): InterceptorHooks {
   return {
     before(call) {
-      const manager = _getContextManager();
-      const frameworkCtx = manager.active();
-
-      // Read the OTel context carried inside our framework context.
-      // Falls back to OTel ROOT if tracing has not been initialized yet.
-      const otelCtx = frameworkCtx.get(OTEL_CTX_KEY) ?? OTEL_ROOT;
-
-      const spanName = call.className
-        ? `${call.className}.${call.methodName}`
-        : call.methodName;
-
-      const span = trace.getTracer(tracerName).startSpan(spanName, undefined, otelCtx);
-
-      _spanMap.set(call, span);
-
-      // Store the updated OTel context (now containing this span) back into
-      // the framework context and push it onto the stack so nested calls see
-      // this span as their parent.
-      const newOtelCtx = trace.setSpan(otelCtx, span);
-      manager.push(frameworkCtx.set(OTEL_CTX_KEY, newOtelCtx));
-      _pushedMap.add(call);
+      try {
+        const manager = _getContextManager();
+        const frameworkCtx = manager.active();
+        const otelCtx = frameworkCtx.get(OTEL_CTX_KEY) ?? OTEL_ROOT;
+        const spanName = call.className
+          ? `${call.className}.${call.methodName}`
+          : call.methodName;
+        const span = trace.getTracer(tracerName).startSpan(spanName, undefined, otelCtx);
+        _spanMap.set(call, span);
+        manager.push(frameworkCtx.set(OTEL_CTX_KEY, trace.setSpan(otelCtx, span)));
+        _pushedMap.add(call);
+      } catch {
+        _spanMap.delete(call);
+      }
     },
 
     after(call) {
       const span = _spanMap.get(call);
-      if (!span) return;
       _spanMap.delete(call);
-
-      span.setStatus({ code: SpanStatusCode.OK });
-      span.end();
-
-      if (_pushedMap.delete(call)) _getContextManager().pop();
+      try {
+        span?.setStatus({ code: SpanStatusCode.OK });
+        span?.end();
+      } catch {
+        // The use case already finished. A failing exporter does not change that.
+      } finally {
+        pop(call);
+      }
     },
 
     onError(call, error) {
       const span = _spanMap.get(call);
-      if (!span) return;
       _spanMap.delete(call);
-
-      if (error instanceof Error) span.recordException(error);
-      span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error)?.message });
-      span.end();
-
-      if (_pushedMap.delete(call)) _getContextManager().pop();
+      try {
+        if (error instanceof Error) span?.recordException(error);
+        span?.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : undefined,
+        });
+        span?.end();
+      } catch {
+        // Same as `after`: the business error is the one that propagates.
+      } finally {
+        pop(call);
+      }
     },
   };
+}
+
+function pop(call: MethodCall): void {
+  if (!_pushedMap.delete(call)) return;
+  try {
+    _getContextManager().pop();
+  } catch {
+    // The stack was already cleared. Nothing of this call is left on it.
+  }
 }

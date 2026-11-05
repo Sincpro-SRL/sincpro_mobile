@@ -15,6 +15,7 @@ export { BaseModule, baseModule } from "@sincpro/mobile/framework/base_module";
 export type { AppConfig } from "@sincpro/mobile/framework/createApp";
 export { createApp } from "@sincpro/mobile/framework/createApp";
 export { DomainModule } from "@sincpro/mobile/framework/domain_module";
+export { ApplicationService, Feature } from "@sincpro/mobile/framework/feature";
 export { Kernel } from "@sincpro/mobile/framework/kernel";
 export { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 export { installGlobalErrorHandler } from "@sincpro/mobile/infrastructure/ui/errorHandler";
