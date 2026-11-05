@@ -185,9 +185,9 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
   );
 
   useEffect(() => {
-    checkGeoPermission();
+    Promise.resolve().then(() => checkGeoPermission());
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") checkGeoPermission();
+      if (state === "active") Promise.resolve().then(() => checkGeoPermission());
     });
     return () => sub.remove();
   }, [checkGeoPermission]);

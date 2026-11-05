@@ -152,6 +152,9 @@ function BluetoothPrinterSelector({
   }, []);
 
   useEffect(() => {
+    // Async side effect on mount — checkStatus does sync setState internally,
+    // which is the documented React 19 pattern for on-mount async work.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     checkStatus();
   }, [checkStatus]);
 

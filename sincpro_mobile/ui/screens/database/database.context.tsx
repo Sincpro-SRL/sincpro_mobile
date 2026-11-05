@@ -5,7 +5,7 @@ import React, {
   ReactNode,
   useCallback,
   useContext,
-  useEffect,
+  useMemo,
   useState,
 } from "react";
 
@@ -43,7 +43,6 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
   const [currentView, setCurrentView] = useState<EDatabaseView>(EDatabaseView.TABLES_LIST);
   const [tables, setTables] = useState<any[]>([]);
   const [data, setData] = useState<any[]>([]);
-  const [filteredData, setFilteredData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [selectedRowJson, setSelectedRowJson] = useState<string>("");
@@ -52,31 +51,18 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
   const [previousSearchQuery, setPreviousSearchQuery] = useState<string>("");
   const [isTransitioning, setIsTransitioning] = useState<boolean>(false);
 
-  const filterData = useCallback(() => {
-    if (!searchQuery.trim()) {
-      setFilteredData(data);
-      return;
-    }
-
+  const filteredData = useMemo(() => {
+    if (!searchQuery.trim()) return data;
     const query = searchQuery.toLowerCase().trim();
-    const filtered = data.filter((row) => {
+    return data.filter((row) => {
       const parsedData = safeJsonParse(typeof row === "string" ? row : JSON.stringify(row));
-
       if (!parsedData) return false;
-
       const remoteId = parsedData.remote_id?.toString().toLowerCase() || "";
       const uuid = parsedData.uuid?.toLowerCase() || "";
       const name = parsedData.name?.toLowerCase() || "";
-
       return remoteId.includes(query) || uuid.includes(query) || name.includes(query);
     });
-
-    setFilteredData(filtered);
   }, [data, searchQuery]);
-
-  useEffect(() => {
-    filterData();
-  }, [filterData]);
 
   const loadTables = useCallback(async () => {
     setIsLoading(true);
@@ -175,12 +161,10 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
   const hasNextRow = currentRowIndex < filteredData.length - 1;
   const hasPreviousRow = currentRowIndex > 0;
 
-  useEffect(() => {
-    if (currentView === EDatabaseView.JSON_DETAIL && searchQuery !== previousSearchQuery) {
-      goBackFromJson();
-      setPreviousSearchQuery(searchQuery);
-    }
-  }, [searchQuery, previousSearchQuery, currentView, goBackFromJson]);
+  if (currentView === EDatabaseView.JSON_DETAIL && searchQuery !== previousSearchQuery) {
+    setPreviousSearchQuery(searchQuery);
+    goBackFromJson();
+  }
 
   return (
     <DatabaseContext.Provider

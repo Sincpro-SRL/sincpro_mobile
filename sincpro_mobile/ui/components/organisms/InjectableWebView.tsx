@@ -53,7 +53,7 @@ function WebViewControls({
 
 function WebViewLoadingIndicator({ backgroundColor }: { backgroundColor: string }) {
   return (
-    <View style={[StyleSheet.absoluteFillObject, styles.loading, { backgroundColor }]}>
+    <View style={[StyleSheet.absoluteFill, styles.loading, { backgroundColor }]}>
       <Spinner size="large" text="Cargando página..." />
     </View>
   );

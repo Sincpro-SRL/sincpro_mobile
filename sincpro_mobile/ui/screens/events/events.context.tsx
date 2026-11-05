@@ -5,7 +5,6 @@ import React, {
   ReactNode,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -39,64 +38,59 @@ export function EventsProvider({
   pageSize?: number;
 }) {
   const [events, setEvents] = useState<DomainEvent[]>([]);
-  const [pagedEvents, setPagedEvents] = useState<DomainEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
   const [filter, setFilter] = useState<EventFilter>("ALL");
 
-  const filterEvents = useCallback((list: DomainEvent[], currentFilter: EventFilter) => {
-    if (currentFilter === "ALL") return list;
-    return list.filter((ev) => {
+  const filteredEvents = useMemo(() => {
+    if (filter === "ALL") return events;
+    return events.filter((ev) => {
       if (!ev.status) return false;
-      if (currentFilter === "FAILED") return ev.status === "FAILED";
-      if (currentFilter === "ACKNOWLEDGED") return ev.status === "ACKNOWLEDGED";
-      if (currentFilter === "PENDING") return ev.status === "PENDING";
+      if (filter === "FAILED") return ev.status === "FAILED";
+      if (filter === "ACKNOWLEDGED") return ev.status === "ACKNOWLEDGED";
+      if (filter === "PENDING") return ev.status === "PENDING";
       return true;
     });
-  }, []);
+  }, [events, filter]);
 
-  const paginate = useCallback(
-    (list: DomainEvent[], nextPage: number, currentFilter: EventFilter) => {
-      const filtered = filterEvents(list, currentFilter);
-      const slice = filtered.slice(0, nextPage * pageSize);
-      setPagedEvents(slice);
-      setHasMore(slice.length < filtered.length);
-      setPage(nextPage);
-    },
-    [filterEvents, pageSize],
+  const pagedEvents = useMemo(
+    () => filteredEvents.slice(0, page * pageSize),
+    [filteredEvents, page, pageSize],
   );
+  const hasMore = pagedEvents.length < filteredEvents.length;
+
+  const [prevFilter, setPrevFilter] = useState(filter);
+  if (filter !== prevFilter) {
+    setPrevFilter(filter);
+    setPage(1);
+  }
 
   const loadEvents = useCallback(async () => {
     setIsLoading(true);
     try {
       const fetched = await eventService.listAllEvents();
       setEvents(fetched);
-      paginate(fetched, 1, filter);
+      setPage(1);
     } finally {
       setIsLoading(false);
     }
-  }, [filter, paginate]);
+  }, []);
 
   const refreshEvents = useCallback(async () => {
     await loadEvents();
   }, [loadEvents]);
 
-  useEffect(() => {
-    paginate(events, 1, filter);
-  }, [events, filter, paginate]);
-
   const loadMore = useCallback(async () => {
     if (isLoadingMore || isLoading || !hasMore) return;
     setIsLoadingMore(true);
     try {
-      paginate(events, page + 1, filter);
+      setPage((p) => p + 1);
     } finally {
       setIsLoadingMore(false);
     }
-  }, [events, hasMore, isLoading, isLoadingMore, page, paginate, filter]);
+  }, [hasMore, isLoading, isLoadingMore]);
 
   const retryEvent = useCallback(
     async (event: DomainEvent) => {
