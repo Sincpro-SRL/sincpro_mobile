@@ -1,4 +1,4 @@
-import { type IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { type IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
 import { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";

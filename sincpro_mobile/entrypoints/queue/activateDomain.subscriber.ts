@@ -1,5 +1,9 @@
-import { DomainEvent, Subscriber } from "@sincpro/mobile/domain/event_sourcing";
-import { ActivateDomainEvent, DeactivateDomainEvent } from "@sincpro/mobile/domain/events";
+import {
+  ActivateDomainEvent,
+  DeactivateDomainEvent,
+  DomainEvent,
+} from "@sincpro/mobile/domain/events";
+import { Subscriber } from "@sincpro/mobile/event_driven";
 import { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 
 export class ActivateDomainSubscriber extends Subscriber {

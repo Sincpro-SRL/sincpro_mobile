@@ -1,5 +1,5 @@
 import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
-import { EEventStatus, type IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { EEventStatus, type IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers/EventBus";
 

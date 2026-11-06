@@ -1,13 +1,8 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing/integration_event";
+import { IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
 import { ISetting } from "@sincpro/mobile/domain/settings";
 
-export * from "@sincpro/mobile/domain/connectivity/events";
-export * from "@sincpro/mobile/domain/event_sourcing/event";
-export * from "@sincpro/mobile/domain/print/events";
-export * from "@sincpro/mobile/domain/webview/events";
-
 export class ActivateDomainEvent extends IntegrationEvent {
-  static readonly name = "common.domain.v2.activate";
+  static readonly name = "common.domain.activate";
   static readonly label = "Activar dominio";
   static readonly requiresNetwork = false;
 
@@ -19,7 +14,7 @@ export class ActivateDomainEvent extends IntegrationEvent {
 }
 
 export class DeactivateDomainEvent extends IntegrationEvent {
-  static readonly name = "common.domain.v2.deactivate";
+  static readonly name = "common.domain.deactivate";
   static readonly label = "Desactivar dominio";
   static readonly requiresNetwork = false;
 
@@ -31,7 +26,7 @@ export class DeactivateDomainEvent extends IntegrationEvent {
 }
 
 export class NewAppSettingsEvent extends IntegrationEvent {
-  static readonly name = "common.settings.v2.added_new_settings";
+  static readonly name = "common.settings.added";
   static readonly label = "Nuevas configuraciones";
   static readonly requiresNetwork = false;
 

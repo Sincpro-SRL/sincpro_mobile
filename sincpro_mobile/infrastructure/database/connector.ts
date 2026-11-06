@@ -10,18 +10,14 @@ import {
 
 export const DB_NAME = "distribution.db";
 let dbInstance: SQLiteDatabase | null = null;
+let currentTx: SQLiteDatabase | null = null;
 const dbLock = new Mutex();
 
 // Telemetry/queue tables are excluded from query logging: logging their
 // mutations would feed the log pipeline its own writes — and a failing
 // telemetry insert logs at ERROR (always remote), which tries to insert again,
 // amplifying under exactly the offline/full conditions where inserts fail.
-const SKIP_LOG_TABLES = [
-  "event_queue",
-  "dead_letter_queue",
-  "telemetry_queue",
-  "spans_queue",
-];
+const SKIP_LOG_TABLES = ["telemetry_queue", "spans_queue"];
 
 function shouldLogQuery(query: string): boolean {
   const lowerQuery = query.toLowerCase();
@@ -59,6 +55,7 @@ export function getDatabaseSync(): SQLiteDatabase {
 }
 
 async function withDB<T>(fn: (db: SQLiteDatabase) => Promise<T>): Promise<T> {
+  if (currentTx) return fn(currentTx);
   return dbLock.runExclusive(async () => fn(await getDatabase()));
 }
 
@@ -67,6 +64,22 @@ function withDBSync<T>(fn: (db: SQLiteDatabase) => T): T {
 }
 
 export const DBCursor = {
+  async transaction<T>(work: () => Promise<T>): Promise<T> {
+    if (currentTx) return work();
+    return withDB(async (db) => {
+      let result!: T;
+      await db.withTransactionAsync(async () => {
+        currentTx = db;
+        try {
+          result = await work();
+        } finally {
+          currentTx = null;
+        }
+      });
+      return result;
+    });
+  },
+
   async mutateDatabase(
     query: string,
     ...params: SQLiteVariadicBindParams

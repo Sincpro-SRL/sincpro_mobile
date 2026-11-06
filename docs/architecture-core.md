@@ -1,10 +1,10 @@
 # Core Architecture
 
-> The framework's center: how data is stored (an "almost-ORM" over SQLite), how
-> domain state changes are captured (event-sourced entities), how those changes
-> are processed (a persistent event bus + a declarative reconciler), how recurring
-> work runs (cron), and how it all boots (AppShell → Orchestrator → Kernel).
-> This doc explains the components, the runtime sequences, and **why** each call was made.
+> The framework's center: how a document aggregate is stored, how a save records
+> facts, how those facts are delivered (a persistent queue + in-process subscribers),
+> how recurring work runs (cron), and how it all boots (AppShell → Orchestrator → Kernel).
+> The aggregate, its checks, its hooks and its repository are specified in
+> [architecture-aggregate.md](architecture-aggregate.md).
 
 ---
 
@@ -26,7 +26,7 @@ data lives only in the `EventBus`/SQLite path — never in telemetry or UI signa
 ```mermaid
 flowchart TB
     subgraph DATA["Data layer (infrastructure/database, domain, adapters)"]
-        entity["Entity (aggregate root)<br/>addDomainEvent · publishAllDomainEvents"]
+        entity["Entity (aggregate root)<br/>record · version · @relation"]
         vo["ValueObject / DomainEvent<br/>JSON-serializable, UUIDv7"]
         mapped["@mapped + resolveEntity<br/>lazy FK resolution (sync, no cache)"]
         cursor["DBCursor<br/>mutex-serialized SQLite (WAL, FK on)"]
@@ -47,7 +47,7 @@ flowchart TB
     entity -->|reads FKs via| mapped
     mapped --> repos
     repos --> cursor
-    entity -->|publish| bus
+    entity -->|save delivers IntegrationEvent| bus
     bus -->|save / read pending| repos
     bus -->|dispatch| qp
     bus <-->|emit / gate| uibus
@@ -96,61 +96,24 @@ into entities — **every access, no caching**.
 
 ---
 
-## 3. Entity model + event sourcing
+## 3. Entity model
 
-An **`Entity`** is the event-sourced aggregate root (`domain/entity/entity.ts`, extends
-`ValueObject`). State changes are captured as **`DomainEvent`s** rather than applied silently.
+An **`Entity`** is a document aggregate (`domain/entity/entity.ts`). Its state is the row.
+`record` keeps the fact on the instance. `DocumentRepository.save` writes the row and, in
+relay mode, flushes `IntegrationEvent`s to the outbox inside the same transaction.
+`DomainEvent`s stay on the aggregate. The full sequence — checks, hooks, relations,
+version, explicit `publish` — is [architecture-aggregate.md](architecture-aggregate.md).
 
-Lifecycle of a change:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Code as Business code
-    participant E as Entity
-    participant Bus as EventBus
-    participant Repo as DomainEventRepository
-    participant DB as SQLite (domain_events)
-    participant Sub as Subscriber(s)
-    participant DLQ as DeadLetterRepository
-
-    Code->>E: mutate + addDomainEvent(SomeEvent, payload)
-    Note over E: create() stamps UUIDv7 + createdAt,<br/>dedups vs in-memory events,<br/>stamps aggregateId / correlationId / sequence,<br/>pushes uuid into entity.eventIds
-    Code->>E: publishAllDomainEvents()
-    loop each recorded event
-        E->>Bus: publish(event)
-        Bus->>Repo: save(event) — INSERT OR REPLACE, dedup pending
-        Repo->>DB: serialized JSON + indexable infra columns
-    end
-    E->>E: clearDomainEvents()
-    Note over Bus,DB: later — the 800ms poll loop drains
-    Bus->>Repo: findNextPending(internetConnected)
-    Bus->>Sub: process(typed event)
-    alt all subscribers OK
-        Bus->>Repo: markAsAcknowledged + save
-    else any failure
-        Bus->>Repo: markAsFailed + save
-        Bus->>DLQ: save(event, error)  (recoverable via retry())
-    end
-```
-
-`DomainEvent` carries business identity (`name`, `label`, `requiresNetwork`), lifecycle
-(`status` ∈ PENDING/PROCESSING/ACKNOWLEDGED/FAILED/CANCELLED, `attempts`), and correlation
-(`aggregateId`, `correlationId`, `sequence`). Callers may only set **business** fields —
-infra fields are stamped by the framework. Reads of `entity.events` resolve live from
-`domain_events` via `@mapped`.
-
-**Why event-sourced entities:** the change is persisted _before_ it's processed (offline-first
-— survives restart), side effects are decoupled from the transaction (subscribers), and
-correlation/sequence give you an ordered, queryable audit trail for free.
+`entity.events` still resolves recorded ids live from `domain_events` via `@mapped`.
 
 ---
 
 ## 4. Default repositories
 
-There is **no base repository class**. Each is a hand-written `…Impl` exported as a
-**singleton**, structurally satisfying the `IRepository` / `IRemoteRepository` interfaces
-(`domain/database/repository.ts`) and hitting SQLite only through `DBCursor`.
+Document aggregates go through `DocumentRepository` (`sqliteDocuments`). The queue,
+settings and table introspection stay hand-written singletons over `DBCursor`. They are
+not the aggregate port. `IRepository` / `IRemoteRepository` live in
+`domain/repositories/repository.ts`.
 
 | Repository                        | Table                       | Role                                                                                                                                              |
 | --------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |

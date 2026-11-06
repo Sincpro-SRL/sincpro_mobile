@@ -234,10 +234,6 @@ export class DomainEvent extends ValueObject {
     );
   }
 
-  get isPartOfTransaction(): boolean {
-    return this.correlationId !== null;
-  }
-
   asJSON(pretty: boolean = false): string {
     const body: Record<string, unknown> = {
       ...this.getBusinessPayload(),

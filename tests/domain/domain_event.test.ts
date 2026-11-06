@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { readEvent } from "../../sincpro_mobile/adapters/repositories/event_row.ts";
-import { chainAfter } from "../../sincpro_mobile/domain/event_sourcing/chain.ts";
-import { EEventStatus } from "../../sincpro_mobile/domain/event_sourcing/domain_event.ts";
-import { IntegrationEvent } from "../../sincpro_mobile/domain/event_sourcing/integration_event.ts";
+import { chainAfter } from "../../sincpro_mobile/domain/events/chain.ts";
+import { EEventStatus } from "../../sincpro_mobile/domain/events/domain_event.ts";
+import { IntegrationEvent } from "../../sincpro_mobile/domain/events/integration_event.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal concrete events for testing
@@ -26,7 +26,7 @@ class PaymentEvent extends IntegrationEvent {
 // ---------------------------------------------------------------------------
 // hasSameBusinessPayload — the event dedup contract
 //
-// addDomainEvent uses this to skip events with the same business data.
+// record uses this to skip events with the same business data.
 // If infrastructure fields (uuid, correlationId, attempts…) are incorrectly
 // included in the comparison, dedup stops working and events are doubled.
 // ---------------------------------------------------------------------------

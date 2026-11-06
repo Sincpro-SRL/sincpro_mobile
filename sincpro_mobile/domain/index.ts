@@ -1,7 +1,6 @@
 export * from "@sincpro/mobile/domain/connectivity";
 export * from "@sincpro/mobile/domain/database";
 export * from "@sincpro/mobile/domain/entity";
-export * from "@sincpro/mobile/domain/event_sourcing";
 export * from "@sincpro/mobile/domain/events";
 export * from "@sincpro/mobile/domain/icon";
 export * from "@sincpro/mobile/domain/receipt";

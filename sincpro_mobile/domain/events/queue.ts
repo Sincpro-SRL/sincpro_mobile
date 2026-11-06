@@ -1,7 +1,7 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing/domain_event";
+import { DomainEvent } from "@sincpro/mobile/domain/events/domain_event";
 
 export class QueueStartEvent extends DomainEvent {
-  static readonly name = "common.queue_event.v2.start";
+  static readonly name = "common.queue.started";
   static readonly label = "Iniciando procesamiento de cola";
   static readonly requiresNetwork = false;
 
@@ -11,7 +11,7 @@ export class QueueStartEvent extends DomainEvent {
 }
 
 export class QueueEndEvent extends DomainEvent {
-  static readonly name = "common.queue_event.v2.end";
+  static readonly name = "common.queue.finished";
   static readonly label = "Finalizando procesamiento de cola";
   static readonly requiresNetwork = false;
 
@@ -21,7 +21,7 @@ export class QueueEndEvent extends DomainEvent {
 }
 
 export class QueueAttemptEndEvent extends DomainEvent {
-  static readonly name = "common.queue_event.v2.attempt_end";
+  static readonly name = "common.queue.attempt_finished";
   static readonly label = "Intento de procesamiento finalizado";
   static readonly requiresNetwork = false;
 

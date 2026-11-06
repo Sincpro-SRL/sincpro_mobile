@@ -1,4 +1,4 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { eventService } from "@sincpro/mobile/services/event.service";
 import React, {
   createContext,

@@ -25,7 +25,7 @@ npx expo install @sincpro/mobile @sincpro/mobile-ui
 ```tsx
 // 1. Define your domain module
 import { DomainModule } from "@sincpro/mobile/framework/domain_module";
-import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
+import type { Subscriber } from "@sincpro/mobile/event_driven";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 
 class SalesModule extends DomainModule {
@@ -614,7 +614,7 @@ A `DomainModule` is the primary building block. Here is how to create one from s
 
 ```tsx
 import { DomainModule } from "@sincpro/mobile/framework/domain_module";
-import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
+import type { Subscriber } from "@sincpro/mobile/event_driven";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 import type { IMigration } from "@sincpro/mobile/domain/database";
 
@@ -1057,7 +1057,7 @@ import { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 import { Kernel } from "@sincpro/mobile/framework/kernel";
 
 // Domain layer
-import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
+import type { Subscriber } from "@sincpro/mobile/event_driven";
 import { Entity } from "@sincpro/mobile/domain/entity";
 import { RemoteEntity } from "@sincpro/mobile/domain/entity";
 import type { IMigration } from "@sincpro/mobile/domain/database";

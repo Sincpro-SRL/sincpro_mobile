@@ -1,4 +1,4 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { ECommonRepository, repos } from "@sincpro/mobile/entrypoints/db";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers/EventBus";
@@ -34,10 +34,7 @@ class DeadLetterQueueUseCases {
     );
 
     try {
-      // Reset the event for retry
       event.retry();
-
-      // Re-queue the event using V2 API
       await EventBus.publish(event);
 
       // Remove from dead letter queue only after successful re-queuing

@@ -1,4 +1,4 @@
-import { type Chain } from "@sincpro/mobile/domain/event_sourcing/chain";
+import { type Chain } from "@sincpro/mobile/domain/events/chain";
 import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
 import { getActiveSpanContext } from "@sincpro/mobile/infrastructure/telemetry/tracing/active_span";
 

@@ -4,11 +4,16 @@ import {
   EntityCollection,
   RemoteEntityCollection,
 } from "@sincpro/mobile/domain/entity/entity_collection";
+import { type IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
 
 export interface IRepository<T extends Entity, C extends EntityCollection<T>> {
-  save(entity: T | T[] | C): Promise<void>;
+  save(entity: T | T[] | C, options?: { deliver?: boolean }): Promise<void>;
+
+  upsert(entity: T | T[] | C): Promise<void>;
 
   remove(entity: T | T[]): Promise<void>;
+
+  publish(events: readonly IntegrationEvent[]): Promise<void>;
 
   findById(id: string): Promise<T | null>;
 

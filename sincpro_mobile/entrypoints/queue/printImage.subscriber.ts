@@ -1,5 +1,5 @@
-import { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
 import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/events";
+import { Subscriber } from "@sincpro/mobile/event_driven";
 import { DomainValidationError } from "@sincpro/mobile/exceptions";
 import { printerService } from "@sincpro/mobile/services/printer.service";
 

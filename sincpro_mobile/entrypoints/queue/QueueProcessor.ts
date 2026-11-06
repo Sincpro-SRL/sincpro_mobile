@@ -1,4 +1,4 @@
-import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
+import type { Subscriber } from "@sincpro/mobile/event_driven";
 import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers";
 

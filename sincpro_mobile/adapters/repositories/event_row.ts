@@ -1,5 +1,5 @@
-import { EEventStatus } from "@sincpro/mobile/domain/event_sourcing/domain_event";
-import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing/integration_event";
+import { EEventStatus } from "@sincpro/mobile/domain/events/domain_event";
+import { IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
 
 export type EventRow = {
   data: string;

@@ -1,17 +1,14 @@
 import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
 import { DomainEventDeadLetterRepository } from "@sincpro/mobile/adapters/repositories/domain_event_dead_letter.repository";
-import {
-  EventName,
-  type IntegrationEvent,
-  Subscriber,
-} from "@sincpro/mobile/domain/event_sourcing";
+import { EventName, type IntegrationEvent } from "@sincpro/mobile/domain/events";
 import {
   InternetIsDownEvent,
   InternetIsUpEvent,
   QueueEndEvent,
   QueueStartEvent,
 } from "@sincpro/mobile/domain/events";
-import { DomainNetworkError } from "@sincpro/mobile/exceptions";
+import { Subscriber } from "@sincpro/mobile/event_driven";
+import { DomainNetworkError, RepeatableFailure } from "@sincpro/mobile/exceptions";
 import { runWithChain } from "@sincpro/mobile/infrastructure/event_chain";
 import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
@@ -215,10 +212,14 @@ export class EventBus {
         errors.push(errorMessage);
         loggerQueueProcessor.warn(`EVENT=${event.name} - Subscriber failed: ${errorMessage}`);
 
-        if (err instanceof DomainNetworkError) {
-          this.internetConnected = false;
-          UIEventBus.emit(InternetIsDownEvent.name);
+        if (err instanceof DomainNetworkError || err instanceof RepeatableFailure) {
+          if (err instanceof DomainNetworkError) {
+            this.internetConnected = false;
+            UIEventBus.emit(InternetIsDownEvent.name);
+          }
+          throw new RepeatableFailure(errorMessage);
         }
+        errors.push(errorMessage);
       }
     }
 
@@ -287,6 +288,10 @@ export class EventBus {
   /**
    * Publishes a DomainEvent asynchronously - enqueues for later processing.
    */
+  static schedule(): void {
+    this.triggerProcessing();
+  }
+
   static async publish(event: IntegrationEvent): Promise<void> {
     if (!event.correlationId) event.applyChain(event.uuid);
     loggerQueueProcessor.info(`EVENT=${event.name} [${event.label}] - Published ASYNC`);
@@ -312,9 +317,16 @@ export class EventBus {
     }
 
     const subscriberList = this.subscribers.get(event.name)!;
-    const errors = await this.executeSubscribers(event, subscriberList);
-
-    await this.postProcess(event, errors);
+    try {
+      const errors = await this.executeSubscribers(event, subscriberList);
+      await this.postProcess(event, errors);
+    } catch (err) {
+      if (err instanceof RepeatableFailure) {
+        event.retry();
+        await DomainEventRepository.save(event);
+      }
+      throw err;
+    }
   }
 
   /**
@@ -346,7 +358,13 @@ export class EventBus {
         );
 
         await this.postProcess(current, errors);
-      } catch {}
+      } catch (err) {
+        if (err instanceof RepeatableFailure) {
+          current.retry();
+          await DomainEventRepository.save(current);
+          break;
+        }
+      }
     }
   }
 

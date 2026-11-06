@@ -40,6 +40,42 @@ export class DomainAppError extends DomainException {
   }
 }
 
+export class StaleAggregate extends DomainException {
+  constructor(message: string) {
+    super(message);
+    this.name = "StaleAggregate";
+  }
+}
+
+export class ChecksFailed extends DomainValidationError {
+  constructor(readonly failures: { rule: string; message: string; path: string[] }[]) {
+    super(
+      failures
+        .map((failure) =>
+          failure.path.length > 0
+            ? `${failure.path.join(".")}: ${failure.message}`
+            : failure.message,
+        )
+        .join("; "),
+    );
+    this.name = "ChecksFailed";
+  }
+}
+
+export class RepeatableFailure extends DomainException {
+  constructor(message: string) {
+    super(message);
+    this.name = "RepeatableFailure";
+  }
+}
+
+export class RejectedFailure extends DomainException {
+  constructor(message: string) {
+    super(message);
+    this.name = "RejectedFailure";
+  }
+}
+
 export const ValidationError = (message: string): never => {
   // setTimeout(() => {
   //   throw new DomainValidationError(message);
