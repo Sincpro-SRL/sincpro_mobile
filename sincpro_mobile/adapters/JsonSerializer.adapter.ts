@@ -1,3 +1,4 @@
+import { valuesOf } from "@sincpro/client-framework";
 import * as Crypto from "expo-crypto";
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
@@ -16,10 +17,8 @@ export const JsonSerializerAdapter = {
   /**
    * Normalize special types (Date, etc.) into JSON-friendly structures.
    */
-  cleanData<T extends JsonValue>(data: T): JsonValue {
-    const replacer = (_key: string, value: any) =>
-      value instanceof Date ? value.toISOString() : value;
-    return JSON.parse(JSON.stringify(data, replacer));
+  cleanData(data: unknown): JsonValue {
+    return valuesOf(data) as JsonValue;
   },
 
   /**

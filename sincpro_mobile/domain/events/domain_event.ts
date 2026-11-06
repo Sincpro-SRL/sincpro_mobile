@@ -4,6 +4,7 @@ import { currentChain, traceparent } from "@sincpro/mobile/infrastructure/event_
 import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 
 import { chainAfter } from "./chain";
+import { type LabelText, textOf } from "./label";
 
 export type HandlerFn<T> = (payload: T) => Promise<void>;
 export type EventName = string;
@@ -67,6 +68,10 @@ export type EventData<T extends DomainEvent> = Omit<Partial<T>, EnvelopeFields>;
 export class DomainEvent extends ValueObject {
   constructor(..._args: any[]) {
     super();
+    const declared = (new.target as { label?: LabelText }).label;
+    if (declared && typeof declared === "object") {
+      this.#label = { ...declared };
+    }
   }
   public readonly name: string = "";
   public readonly label: string = "";
@@ -218,6 +223,10 @@ export class DomainEvent extends ValueObject {
     return this;
   }
 
+  labelText(): LabelText {
+    return this.#label ?? this.label;
+  }
+
   getBusinessPayload(): Record<string, unknown> {
     const payload: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(this)) {
@@ -254,11 +263,14 @@ export class DomainEvent extends ValueObject {
 }
 
 function readLabel(label: unknown): { text: string; label: Record<string, string> | null } {
-  if (label && typeof label === "object" && !Array.isArray(label)) {
-    const text = label as Record<string, string>;
-    return { text: text.es || text.default || "", label: text };
-  }
   if (typeof label === "string") return { text: label, label: null };
+  if (label && typeof label === "object" && !Array.isArray(label)) {
+    const record: Record<string, string> = {};
+    for (const [key, value] of Object.entries(label as Record<string, unknown>)) {
+      if (typeof value === "string") record[key] = value;
+    }
+    return { text: textOf(record), label: record };
+  }
   return { text: "", label: null };
 }
 

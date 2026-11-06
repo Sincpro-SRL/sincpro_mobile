@@ -1,5 +1,6 @@
+import { type LabelText } from "@sincpro/mobile/domain/events/label";
 import { loggerCronJobs } from "@sincpro/mobile/infrastructure/logger";
-import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
+import { publishActivity } from "@sincpro/mobile/infrastructure/ui/activity";
 import * as BackgroundTask from "expo-background-task";
 import * as TaskManager from "expo-task-manager";
 
@@ -7,8 +8,8 @@ export type CronJob = () => Promise<void>;
 
 export interface CronWorkerOpts {
   requiresAuth?: boolean;
-  label?: string;
-  showToast?: boolean;
+  label?: LabelText;
+  ui?: boolean;
 }
 
 export class CronWorker {
@@ -18,8 +19,8 @@ export class CronWorker {
   private registrationError?: Error;
 
   public readonly requiresAuth: boolean;
-  public label?: string;
-  private showToast: boolean;
+  public label?: LabelText;
+  private ui: boolean;
 
   constructor(
     public readonly taskName: string,
@@ -29,12 +30,12 @@ export class CronWorker {
   ) {
     this.requiresAuth = opts.requiresAuth ?? false;
     this.label = opts.label;
-    this.showToast = opts.showToast ?? false;
+    this.ui = opts.ui ?? false;
   }
 
   configure(opts: Partial<CronWorkerOpts>): void {
     if (opts.label !== undefined) this.label = opts.label;
-    if (opts.showToast !== undefined) this.showToast = opts.showToast;
+    if (opts.ui !== undefined) this.ui = opts.ui;
   }
 
   /**
@@ -54,13 +55,10 @@ export class CronWorker {
         this.stopFn = this.createIntervalJob(this.job, this.intervalMin);
       } else {
         TaskManager.defineTask(this.taskName, async () => {
-          try {
-            await this.job();
-            return BackgroundTask.BackgroundTaskResult.Success;
-          } catch (e) {
-            loggerCronJobs.warn(`${this.taskName} error:`, e);
-            return BackgroundTask.BackgroundTaskResult.Failed;
-          }
+          const ok = await this.runWithEvents(this.job);
+          return ok
+            ? BackgroundTask.BackgroundTaskResult.Success
+            : BackgroundTask.BackgroundTaskResult.Failed;
         });
 
         await BackgroundTask.registerTaskAsync(this.taskName, {
@@ -133,27 +131,39 @@ export class CronWorker {
     };
   }
 
-  private async runWithEvents(job: () => void | Promise<void>) {
+  private async runWithEvents(job: () => void | Promise<void>): Promise<boolean> {
     this.isExecuting = true;
     const startTime = Date.now();
-    if (this.showToast) {
-      UIEventBus.emit("CRON_START", { task: this.taskName, label: this.label });
-    }
+    this.publish("running");
 
     try {
       await Promise.resolve(job());
       const duration = Date.now() - startTime;
       loggerCronJobs.debug(`${this.taskName} completed successfully in ${duration}ms`);
+      this.publish("succeeded");
+      return true;
     } catch (e) {
       const duration = Date.now() - startTime;
       const errorMessage = e instanceof Error ? e.message : String(e);
       loggerCronJobs.error(
         `${this.taskName} failed after ${duration}ms with error: ${errorMessage}`,
       );
+      this.publish("failed", errorMessage);
+      return false;
     } finally {
       this.isExecuting = false;
-      if (this.showToast) UIEventBus.emit("CRON_END", { task: this.taskName });
     }
+  }
+
+  private publish(status: "running" | "succeeded" | "failed", detail?: string): void {
+    publishActivity({
+      channel: "cron",
+      name: this.taskName,
+      label: this.label ?? this.taskName,
+      detail,
+      status,
+      ui: this.ui,
+    });
   }
 
   /**

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { Decimal, isDay, Money } from "@sincpro/client-framework";
 
+import { JsonSerializerAdapter } from "../../sincpro_mobile/adapters/JsonSerializer.adapter.ts";
 import {
   generateUUID,
   isEntityId,
@@ -14,8 +15,10 @@ import {
 } from "../../sincpro_mobile/tools/utils/date.ts";
 import {
   calculateDiscountedTotal,
+  discountOf,
   formatTwoDecimals,
   parseToMonetaryNumber,
+  toDecimal,
 } from "../../sincpro_mobile/tools/utils/monetary.ts";
 import {
   safeJsonParse,
@@ -63,9 +66,20 @@ test("money and a decimal travel as text, and a discount is not a float", () => 
     qty: "2.500",
   });
 
+  assert.equal(toDecimal("1.2300").toString(), "1.2300");
   assert.equal(parseToMonetaryNumber("1.2300"), 1.23);
   assert.equal(formatTwoDecimals(10.1), "10,10");
+  assert.equal(discountOf("0.10", 20).toString(), "0.02000000");
   assert.equal(calculateDiscountedTotal(0.1, 20), 0.02);
+
+  const cleaned = JsonSerializerAdapter.cleanData({
+    day: "2026-03-12",
+    at: new Date("2026-03-12T14:30:00.000Z"),
+  });
+  assert.deepEqual(cleaned, {
+    day: "2026-03-12",
+    at: "2026-03-12T14:30:00.000Z",
+  });
 });
 
 test("today is a calendar day in the company's zone", () => {

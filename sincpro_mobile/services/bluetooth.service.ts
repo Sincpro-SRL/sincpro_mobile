@@ -4,8 +4,7 @@ import {
   BluetoothStatus,
 } from "@sincpro/mobile/domain/connectivity";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
-import { UI_NOTIFICATION_EVENT } from "@sincpro/mobile/infrastructure/ui/events";
-import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
+import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 
 class BluetoothService {
   private permissionStatus: BluetoothPermissionStatus | null = null;
@@ -57,10 +56,11 @@ class BluetoothService {
     const permissions = await this.ensurePermissions();
 
     if (!permissions) {
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "error",
-        text1: "Permisos de Bluetooth requeridos",
-        text2: "Habilita los permisos de Bluetooth en configuración",
+      notifyDevice({
+        name: "bluetooth.required",
+        title: "Permisos de Bluetooth requeridos",
+        message: "Habilita los permisos de Bluetooth en configuración",
+        variant: "danger",
       });
     }
 
@@ -77,17 +77,19 @@ class BluetoothService {
 
   private showPermissionToast(permissions: BluetoothPermissionStatus): void {
     if (permissions.isGranted) {
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "success",
-        text1: "Bluetooth habilitado",
-        text2: "Permisos de Bluetooth concedidos",
+      notifyDevice({
+        name: "bluetooth.enabled",
+        title: "Bluetooth habilitado",
+        message: "Permisos de Bluetooth concedidos",
+        variant: "success",
       });
       loggerUseCases.info("Bluetooth permissions granted");
     } else {
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "error",
-        text1: "Bluetooth no disponible",
-        text2: "Los permisos de Bluetooth fueron denegados",
+      notifyDevice({
+        name: "bluetooth.denied",
+        title: "Bluetooth no disponible",
+        message: "Los permisos de Bluetooth fueron denegados",
+        variant: "danger",
       });
       loggerUseCases.warn("Bluetooth permissions denied", { permissions });
     }
