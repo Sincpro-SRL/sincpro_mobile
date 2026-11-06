@@ -4,14 +4,30 @@ import { webViewService } from "@sincpro/mobile/services/webview.service";
 import { useToast } from "@sincpro/mobile-ui/Feedback";
 import Spinner from "@sincpro/mobile-ui/Feedback/Feedback.Spinner";
 import { useBottomInset } from "@sincpro/mobile-ui/layouts/BottomInset";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ComponentType,
+  type RefAttributes,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { BackHandler, NativeSyntheticEvent, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import WebView, {
+import RawWebView, {
   type WebViewMessageEvent,
   type WebViewNavigation,
+  type WebViewProps,
 } from "react-native-webview";
 import type { WebViewError } from "react-native-webview/lib/WebViewTypes";
+
+type WebViewHandle = RawWebView<Record<string, never>>;
+
+// The library defaults its extra-props generic to `undefined`, and
+// `WebViewProps & undefined` collapses to `never`. An empty record keeps the real props.
+const WebView = RawWebView as unknown as ComponentType<
+  WebViewProps & RefAttributes<WebViewHandle>
+>;
 
 export type WebViewErrorEvent = NativeSyntheticEvent<WebViewError>;
 
@@ -53,7 +69,7 @@ function WebViewControls({
 
 function WebViewLoadingIndicator({ backgroundColor }: { backgroundColor: string }) {
   return (
-    <View style={[StyleSheet.absoluteFillObject, styles.loading, { backgroundColor }]}>
+    <View style={[StyleSheet.absoluteFill, styles.loading, { backgroundColor }]}>
       <Spinner size="large" text="Cargando página..." />
     </View>
   );
@@ -61,7 +77,7 @@ function WebViewLoadingIndicator({ backgroundColor }: { backgroundColor: string 
 
 function useWebView() {
   const toast = useToast();
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<WebViewHandle>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

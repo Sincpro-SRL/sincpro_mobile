@@ -88,6 +88,14 @@ function BluetoothDeviceSelectorModal({
   const [loading, setLoading] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<BluetoothDevice | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [prevVisible, setPrevVisible] = useState(visible);
+
+  if (visible !== prevVisible) {
+    setPrevVisible(visible);
+    if (visible) {
+      setSelectedDevice(null);
+    }
+  }
 
   const loadDevices = useCallback(async () => {
     setLoading(true);
@@ -104,8 +112,7 @@ function BluetoothDeviceSelectorModal({
 
   useEffect(() => {
     if (visible) {
-      loadDevices();
-      setSelectedDevice(null);
+      Promise.resolve().then(() => loadDevices());
     }
   }, [visible, loadDevices]);
 

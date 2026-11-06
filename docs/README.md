@@ -13,6 +13,8 @@ component + sequence diagrams and the rationale behind each decision.
   Loki): the component pipeline, event-driven delivery, and bounded offline retention.
 - [**architecture-consumer.md**](architecture-consumer.md) — recommended structure for a
   consumer app: adapters, services (use cases / workflows), ui, and subscribers.
+- [**prd/PRD_01_feature-y-application-service.md**](prd/PRD_01_feature-y-application-service.md)
+  — `Feature` and `ApplicationService`: a public method is a span, with no decorator.
 
 ## Reference
 

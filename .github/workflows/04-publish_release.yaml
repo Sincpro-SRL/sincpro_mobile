@@ -12,4 +12,4 @@ jobs:
     uses: Sincpro-SRL/.github/.github/workflows/04-publish_release.yaml@main
     secrets: inherit
     with:
-      environments: '["22"]'
+      environments: '["26"]'
