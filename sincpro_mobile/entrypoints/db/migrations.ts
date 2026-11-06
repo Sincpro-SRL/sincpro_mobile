@@ -3,6 +3,8 @@ import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 
 export enum DATABASE_TABLES {
   SETTINGS = "settings",
+  EVENT_QUEUE = "event_queue",
+  DEAD_LETTER_QUEUE = "dead_letter_queue",
   DOMAIN_EVENTS = "domain_events",
   DOMAIN_EVENTS_DEAD_LETTER = "domain_events_dead_letter",
   TELEMETRY_QUEUE = "telemetry_queue",
@@ -16,6 +18,37 @@ async function createSettingsTable(): Promise<void> {
       value TEXT NOT NULL,
       type TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+}
+
+async function createDeadLetterQueueTable(): Promise<void> {
+  await DBCursor.execAsync(`
+    CREATE TABLE IF NOT EXISTS ${DATABASE_TABLES.DEAD_LETTER_QUEUE} (
+      uuid TEXT PRIMARY KEY NOT NULL, -- UUID v7 for chronological ordering
+      name TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      error_message TEXT
+    );
+  `);
+}
+
+async function createEventQueueTable(): Promise<void> {
+  await DBCursor.execAsync(`
+    CREATE TABLE IF NOT EXISTS ${DATABASE_TABLES.EVENT_QUEUE}(
+      uuid TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      network_event INTEGER DEFAULT 0,
+      aggregate_id TEXT DEFAULT NULL,
+      sequence INTEGER DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      acknowledged_at TEXT DEFAULT NULL,
+      error_message TEXT DEFAULT NULL
     );
   `);
 }
@@ -144,6 +177,8 @@ async function createSpansQueueTable(): Promise<void> {
 
 const MIGRATIONS: IMigration[] = [
   { name: DATABASE_TABLES.SETTINGS, migrationFn: createSettingsTable },
+  { name: DATABASE_TABLES.EVENT_QUEUE, migrationFn: createEventQueueTable },
+  { name: DATABASE_TABLES.DEAD_LETTER_QUEUE, migrationFn: createDeadLetterQueueTable },
   { name: DATABASE_TABLES.DOMAIN_EVENTS, migrationFn: createDomainEventsTable },
   {
     name: DATABASE_TABLES.DOMAIN_EVENTS_DEAD_LETTER,

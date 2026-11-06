@@ -17,7 +17,12 @@ const dbLock = new Mutex();
 // mutations would feed the log pipeline its own writes — and a failing
 // telemetry insert logs at ERROR (always remote), which tries to insert again,
 // amplifying under exactly the offline/full conditions where inserts fail.
-const SKIP_LOG_TABLES = ["telemetry_queue", "spans_queue"];
+const SKIP_LOG_TABLES = [
+  "event_queue",
+  "dead_letter_queue",
+  "telemetry_queue",
+  "spans_queue",
+];
 
 function shouldLogQuery(query: string): boolean {
   const lowerQuery = query.toLowerCase();
