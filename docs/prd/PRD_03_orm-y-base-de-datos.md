@@ -14,8 +14,8 @@ unidad de trabajo: `PaymentOdooRepositoryImpl.save` recorre los pagos y llama
 
 La fila es `uuid` + `data` (el JSON de la entidad) y unas columnas promocionadas
 para filtrar (`remote_id`, `remote_state`, `name`). `findById` lee el JSON y
-hace `fromJSON`. `findByCriteria` hace `findAll` y filtra en memoria. `ICriteria`
-declara `>`, `<`, `>=` y `<=`; el repositorio de pagos solo distingue `=` del
+hace `fromJSON`. `findByCriteria` hace `findAll` y filtra en memoria con el
+motor de criteria. El repositorio de pagos no lo usa: solo distingue `=` del
 resto, y el resto cae en distinto.
 
 `@mapped` resuelve un foreign key leyendo SQLite en el acceso a la propiedad,

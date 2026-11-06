@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { criteria, InvalidCriteria, selection } from "@sincpro/criteria";
+import { criteria, type Expression, InvalidCriteria, selection } from "@sincpro/criteria";
 
 import { Entity } from "../../sincpro_mobile/domain/entity/entity.ts";
 import { EntityCollection } from "../../sincpro_mobile/domain/entity/entity_collection.ts";
@@ -54,17 +54,18 @@ test("a builder is the same criteria as its value", () => {
   assert.deepEqual(names(notes().findByCriteria(asked)), ["Posted"]);
 });
 
-test("a legacy list is one selection, and not_in is not in", () => {
-  const found = notes().findByCriteria([
-    { field: "total", operator: ">=", value: 50 },
-    { field: "name", operator: "not_in", value: ["Credit"] },
-  ]);
+test("an expression is the selection", () => {
+  const found = notes().findByCriteria({
+    all: [
+      { field: "total", operator: ">=", value: 50 },
+      { field: "name", operator: "not in", value: ["Credit"] },
+    ],
+  });
 
   assert.deepEqual(names(found), ["Posted"]);
 });
 
-test("an empty list and a criteria with no selection return every row", () => {
-  assert.equal(notes().findByCriteria([]).length, 3);
+test("a criteria with no selection returns every row", () => {
   assert.equal(notes().findByCriteria({}).length, 3);
 });
 
@@ -81,7 +82,12 @@ test("order is the criteria order, and a page is cut only when one is asked", ()
 
 test("an operator the engine does not declare is refused", () => {
   assert.throws(
-    () => notes().findByCriteria([{ field: "name", operator: "not_like", value: "x" }]),
+    () =>
+      notes().findByCriteria({
+        field: "name",
+        operator: "not_like",
+        value: "x",
+      } as unknown as Expression<Note>),
     InvalidCriteria,
   );
 });

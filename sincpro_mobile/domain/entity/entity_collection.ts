@@ -17,7 +17,6 @@ import { ValueObject } from "./value_object";
 
 export {
   type DocumentCriteria,
-  type ICriteria,
   rowsMatching,
 } from "@sincpro/mobile/domain/database/criteria";
 
@@ -705,7 +704,6 @@ export class EntityCollection<T extends Entity> extends ValueObject {
 
   /**
    * The entities that answer a criteria. The filter is `selection`.
-   * A list of `{field, operator, value}` is that selection, ANDed.
    */
   findByCriteria(criteria: DocumentCriteria<T>): this {
     return this.createInstance(rowsMatching(this.toArray(), criteria));
