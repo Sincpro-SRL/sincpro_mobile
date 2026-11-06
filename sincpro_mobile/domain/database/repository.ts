@@ -1,7 +1,7 @@
+import { type DocumentCriteria } from "@sincpro/mobile/domain/database/criteria";
 import { Entity, ERemoteState, RemoteEntity } from "@sincpro/mobile/domain/entity/entity";
 import {
   EntityCollection,
-  ICriteria,
   RemoteEntityCollection,
 } from "@sincpro/mobile/domain/entity/entity_collection";
 
@@ -16,7 +16,7 @@ export interface IRepository<T extends Entity, C extends EntityCollection<T>> {
 
   findAll(): Promise<C>;
 
-  findByCriteria(criteria: ICriteria<T>[]): Promise<C>;
+  findByCriteria(criteria: DocumentCriteria<T>): Promise<C>;
 
   findByIdSync?(id: string): T | null;
 

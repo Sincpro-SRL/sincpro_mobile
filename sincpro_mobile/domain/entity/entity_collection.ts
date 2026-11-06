@@ -1,4 +1,8 @@
 import {
+  type DocumentCriteria,
+  rowsMatching,
+} from "@sincpro/mobile/domain/database/criteria";
+import {
   DomainEvent,
   type DomainEventClass,
 } from "@sincpro/mobile/domain/event_sourcing/domain_event";
@@ -11,22 +15,11 @@ import { safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 import { type Entity, type RemoteEntity } from "./entity";
 import { ValueObject } from "./value_object";
 
-export type CriteriaOperator =
-  | "="
-  | "!="
-  | "in"
-  | "not_in"
-  | "like"
-  | ">"
-  | "<"
-  | ">="
-  | "<=";
-
-export interface ICriteria<T = any> {
-  field: keyof T;
-  operator: CriteriaOperator;
-  value: any;
-}
+export {
+  type DocumentCriteria,
+  type ICriteria,
+  rowsMatching,
+} from "@sincpro/mobile/domain/database/criteria";
 
 /**
  * Type-safe, immutable collection for Entity aggregates with event sourcing support.
@@ -711,45 +704,11 @@ export class EntityCollection<T extends Entity> extends ValueObject {
   }
 
   /**
-   * Filters entities using criteria array. All criteria must match (AND).
-   * @example
-   * const filtered = collection.findByCriteria([
-   *   { field: 'customerId', operator: '=', value: 123 },
-   *   { field: 'state', operator: 'in', value: ['draft', 'posted'] }
-   * ]);
+   * The entities that answer a criteria. The filter is `selection`.
+   * A list of `{field, operator, value}` is that selection, ANDed.
    */
-  findByCriteria(criteria: ICriteria<T>[]): this {
-    const filtered = this.filter((entity) => {
-      return criteria.every((c) => {
-        const fieldValue = entity[c.field as keyof T];
-        switch (c.operator) {
-          case "=":
-            return fieldValue === c.value;
-          case "!=":
-            return fieldValue !== c.value;
-          case "in":
-            return Array.isArray(c.value) && c.value.includes(fieldValue);
-          case "not_in":
-            return Array.isArray(c.value) && !c.value.includes(fieldValue);
-          case "like":
-            return (
-              typeof fieldValue === "string" &&
-              fieldValue.toLowerCase().includes(String(c.value).toLowerCase())
-            );
-          case ">":
-            return fieldValue > c.value;
-          case "<":
-            return fieldValue < c.value;
-          case ">=":
-            return fieldValue >= c.value;
-          case "<=":
-            return fieldValue <= c.value;
-          default:
-            return false;
-        }
-      });
-    });
-    return this.createInstance(filtered.toArray());
+  findByCriteria(criteria: DocumentCriteria<T>): this {
+    return this.createInstance(rowsMatching(this.toArray(), criteria));
   }
 
   /**

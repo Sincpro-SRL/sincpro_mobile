@@ -1,5 +1,6 @@
 import { IDatabaseTable } from "@sincpro/mobile/domain/database";
-import { EntityCollection, ICriteria } from "@sincpro/mobile/domain/entity";
+import { type DocumentCriteria } from "@sincpro/mobile/domain/database/criteria";
+import { EntityCollection } from "@sincpro/mobile/domain/entity";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 import logger from "@sincpro/mobile/infrastructure/logger";
@@ -32,7 +33,7 @@ class DatabaseTableRepositoryImpl {
     throw new Error("Not implemented");
   }
 
-  async findByCriteria(criteria: ICriteria<any>[]): Promise<EntityCollection<any>> {
+  async findByCriteria(_criteria: DocumentCriteria<any>): Promise<EntityCollection<any>> {
     throw new Error("Not implemented");
   }
 }

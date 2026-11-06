@@ -1007,6 +1007,11 @@
   resolved "https://registry.yarnpkg.com/@sinclair/typebox/-/typebox-0.27.10.tgz#beefe675f1853f73676aecc915b2bd2ac98c4fc6"
   integrity sha512-MTBk/3jGLNB2tVxv6uLlFh1iu64iYOQ2PbdOSK3NW8JZsmlaOh2q6sdtKowBhfw8QFLmYNzTW4/oK4uATIi6ZA==
 
+"@sincpro/criteria@^2.0.0":
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/@sincpro/criteria/-/criteria-2.0.0.tgz#672cfe03889a771663a91939e4c56d6075578bea"
+  integrity sha512-gJmlSn4g3qlV/OZpy/iyvgXV+lB4UPIspGogru2jT/wFdlPQUB3WR/guTyVxGwWdR7v0QiKOZzgExce9B1wo2A==
+
 "@sincpro/mobile-ui@^0.7.2":
   version "0.7.2"
   resolved "https://registry.yarnpkg.com/@sincpro/mobile-ui/-/mobile-ui-0.7.2.tgz#9921f54f25e5460bbf5f6e207490a50ca0b8c38f"
