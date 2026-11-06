@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import EventRow from "@sincpro/mobile/ui/components/organisms/EventRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import { useEffect } from "react";

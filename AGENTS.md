@@ -30,12 +30,12 @@ El core **no** conoce las apps ni Odoo; el design system **no** conoce nada de n
 ```
 domain/         primitivas DDD puras (sin React, sin IO)
   entity/         Entity, RemoteEntity, ValueObject, EntityCollection
-  event_sourcing/ DomainEvent (base), EEventStatus, Subscriber, eventos de cola
-  events.ts       PUNTO ÚNICO de re-export de TODOS los eventos del dominio
-  database/       IRepository, IRemoteRepository, IDatabase, IMigration
-  repositories.ts ECommonRepository (enum catálogo de repos)
+  events/         el hecho: DomainEvent, IntegrationEvent, chain, cola. index.ts reexporta todos los eventos
+  database/       criteria, IDatabase, IMigration
+  repositories/   IRepository, hooks, DocumentStore, catálogo ECommonRepository
   connectivity/   network, bluetooth, geo + sus eventos (InternetIsUp/Down)
   print/ webview/ puertos + eventos de cada contexto
+event_driven/   Subscriber (quién escucha). La cola vive en infrastructure/workers
 adapters/       implementaciones de puertos (Network, Geo, Bluetooth, Receipt, JsonSerializer, repos)
 infrastructure/ DB connector, EventBus (cola persistente + DLQ + retry), CronWorker, UIEventBus, logger
 framework/      DomainModule, createApp, kernel, orchestrator (composición module-driven)
@@ -94,9 +94,9 @@ private get repository() { return repos.get(EXRepository.PRODUCT); }
 
 Esto **no lo detecta el typecheck** — solo se ve al arrancar la app. Ver [GOTCHAS](docs/GOTCHAS.md).
 
-### 3. Eventos: `domain/events.ts` es el punto único de export
+### 3. Eventos: `domain/events/index.ts` es el punto único de export
 
-Un evento **vive** en su contexto (`connectivity/events.ts`, `print/events.ts`…) pero se **exporta** solo vía `domain/events.ts`. Los barrels de contexto **no** re-exportan sus eventos (colisión de `export *` → TypeScript los elimina del barrel raíz en silencio). Evento nuevo → archivo en su contexto + `export *` en `domain/events.ts` + NO exportarlo desde el barrel del contexto.
+Un evento **vive** en su contexto (`connectivity/events.ts`, `print/events.ts`…) pero se **exporta** solo vía `domain/events/index.ts`. Los barrels de contexto **no** re-exportan sus eventos (colisión de `export *` → TypeScript los elimina del barrel raíz en silencio). Evento nuevo → archivo en su contexto + `export *` en `domain/events/index.ts` + NO exportarlo desde el barrel del contexto. `Subscriber` no sale de ahí: vive en `event_driven`.
 
 ### 4. Build & distribución
 
@@ -138,7 +138,8 @@ Para cambios grandes (migraciones, refactors masivos, auditorías) se usa **orqu
 
 **Documentación de ingeniería** (`docs/` — arquitectura viva):
 
-- [`docs/architecture-core.md`](docs/architecture-core.md) — capa core: casi-ORM, Entity + event sourcing, repositorios base, EventBus, ProcessQueue, Cron, AppShell. Diagramas de componentes + secuencia.
+- [`docs/architecture-aggregate.md`](docs/architecture-aggregate.md) — agregado, evento, checks, hooks, relaciones y `DocumentRepository`. Diagramas de cómo interactúan.
+- [`docs/architecture-core.md`](docs/architecture-core.md) — cola, cron, AppShell y el resto del runtime.
 - [`docs/architecture-telemetry.md`](docs/architecture-telemetry.md) — telemetría (OTel + Loki): pipeline, delivery, retención. Diagramas de componentes + secuencia.
 - [`docs/architecture-consumer.md`](docs/architecture-consumer.md) — arquitectura sugerida para apps consumidoras: adapters, services (use cases/workflows), ui, subscribers.
 - [`docs/GOTCHAS.md`](docs/GOTCHAS.md) — trampas de dependencias, UI y runtime (síntoma → causa → fix). **Léelo si algo "raro" pasa.**

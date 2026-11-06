@@ -1,8 +1,8 @@
-import { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
 import {
   PrintImageRequestedEvent,
   WebViewMessageReceivedEvent,
 } from "@sincpro/mobile/domain/events";
+import { Subscriber } from "@sincpro/mobile/event_driven";
 import { DomainValidationError } from "@sincpro/mobile/exceptions";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers";
 import { webViewService } from "@sincpro/mobile/services/webview.service";

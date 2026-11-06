@@ -2,15 +2,15 @@ import {
   type DomainEvent,
   type DomainEventClass,
   type EventData,
-} from "@sincpro/mobile/domain/event_sourcing/domain_event";
-import { type IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing/integration_event";
-import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
+} from "@sincpro/mobile/domain/events/domain_event";
+import { IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
+import { ECommonRepository } from "@sincpro/mobile/domain/repositories/catalog";
 import { DomainValidationError } from "@sincpro/mobile/exceptions";
 import { mapped, resolveEntity } from "@sincpro/mobile/infrastructure/database";
 import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
 import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
-import { EventBus } from "@sincpro/mobile/infrastructure/workers";
 
+import { heldEntities, relations } from "./relations";
 import { IValueObject, ValueObject } from "./value_object";
 
 export enum ERemoteState {
@@ -29,50 +29,31 @@ export interface IRemote {
   remotePayload(): any;
 }
 
-export interface IEventSourced {
-  addDomainEvent<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-    payload?: EventData<InstanceType<C>>,
-  ): string;
-  addDomainEventWithEntity<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-  ): string;
-  getDomainEvents(): readonly IntegrationEvent[];
-  clearDomainEvents(): void;
-  publishAllDomainEvents(): Promise<void>;
-  publishAllDomainEventsSync(): Promise<void>;
-  publishDomainEvent<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-    payload: EventData<InstanceType<C>>,
-  ): Promise<void>;
-  publishDomainEventSync<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-    payload: EventData<InstanceType<C>>,
-  ): Promise<void>;
-  publishDomainEventWithEntity<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-  ): Promise<void>;
-  publishDomainEventWithEntitySync<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-  ): Promise<void>;
-  publishEventWith<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-    selector: (entity: this) => EventData<InstanceType<C>>,
-  ): Promise<void>;
-  publishEventWithSync<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-    selector: (entity: this) => EventData<InstanceType<C>>,
-  ): Promise<void>;
-  copyDomainEventsFrom(source: Entity): void;
-}
-
-export interface IEntity extends IEventSourced, IValueObject {
+export interface IEntity extends IValueObject {
   uuid: string;
   name?: string;
   eventIds: string[];
+  createdAt: string;
+  updatedAt: string | null;
+  version: number;
+  readonly isNew: boolean;
 
   equals(other: IEntity): boolean;
   clone(): this;
+
+  record<C extends DomainEventClass<DomainEvent>>(
+    EventClass: C,
+    payload?: EventData<InstanceType<C>>,
+  ): string;
+  recordEntity<C extends DomainEventClass<DomainEvent>>(EventClass: C): string;
+  recordedEvents(): readonly DomainEvent[];
+  pullEvents(): DomainEvent[];
+  releaseDeliverable(): IntegrationEvent[];
+  restoreRecorded(events: readonly DomainEvent[]): void;
+  copyRecordedFrom(source: Entity): void;
+  replaceRecorded(events: readonly DomainEvent[]): void;
+  noteHeld(): void;
+  heldIds(field: string): readonly string[];
 }
 
 export interface IEntityRemote extends IEntity, IRemote {}
@@ -81,9 +62,13 @@ export class Entity extends ValueObject implements IEntity {
   public uuid!: string;
   public name?: string;
   public eventIds: string[] = [];
+  public createdAt: string = "";
+  public updatedAt: string | null = null;
+  public version: number = 0;
 
-  protected _domainEventsV2: IntegrationEvent[] = [];
-  protected _correlationIdV2: string | null = null;
+  protected _recordedEvents: DomainEvent[] = [];
+  protected _correlationId: string | null = null;
+  private _held: Record<string, string[]> = {};
   protected readonly REPOSITORY: string | null = null;
 
   protected constructor() {
@@ -99,8 +84,18 @@ export class Entity extends ValueObject implements IEntity {
     if (!instance.uuid) {
       instance.uuid = generateUUID();
     }
+    if (!instance.createdAt) {
+      instance.createdAt = new Date().toISOString();
+    }
+    if (typeof instance.version !== "number") {
+      instance.version = 0;
+    }
 
     return instance;
+  }
+
+  public get isNew(): boolean {
+    return this.version === 0;
   }
 
   /**
@@ -140,163 +135,96 @@ export class Entity extends ValueObject implements IEntity {
     return this.uuid === other.uuid;
   }
 
-  public addDomainEvent<C extends DomainEventClass<IntegrationEvent>>(
+  public record<C extends DomainEventClass<DomainEvent>>(
     EventClass: C,
     payload?: EventData<InstanceType<C>>,
   ): string {
     return this.stageDomainEvent(EventClass.create(payload));
   }
 
-  public addDomainEventWithEntity<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-  ): string {
+  public recordEntity<C extends DomainEventClass<DomainEvent>>(EventClass: C): string {
     return this.stageDomainEvent(
       EventClass.create({ record: this } as unknown as EventData<InstanceType<C>>),
     );
   }
 
-  private stageDomainEvent(event: IntegrationEvent): string {
-    const existingEvent = this._domainEventsV2.find((e) => e.hasSameBusinessPayload(event));
+  public recordedEvents(): readonly DomainEvent[] {
+    return this._recordedEvents.map((event) => event.clone());
+  }
+
+  public pullEvents(): DomainEvent[] {
+    const events = this._recordedEvents;
+    this._recordedEvents = [];
+    this._correlationId = null;
+    return events;
+  }
+
+  public releaseDeliverable(): IntegrationEvent[] {
+    const kept: DomainEvent[] = [];
+    const released: IntegrationEvent[] = [];
+    for (const event of this._recordedEvents) {
+      if (event instanceof IntegrationEvent) released.push(event);
+      else kept.push(event);
+    }
+    this._recordedEvents = kept;
+    if (kept.length === 0) this._correlationId = null;
+    return released;
+  }
+
+  public restoreRecorded(events: readonly DomainEvent[]): void {
+    this._recordedEvents.push(...events);
+  }
+
+  public replaceRecorded(events: readonly DomainEvent[]): void {
+    this._recordedEvents = [...events];
+  }
+
+  public copyRecordedFrom(source: Entity): void {
+    for (const event of source.recordedEvents()) {
+      this.stageDomainEvent(event.clone());
+    }
+  }
+
+  public noteHeld(): void {
+    const held: Record<string, string[]> = {};
+    for (const relation of relations(this)) {
+      held[relation.field] = heldEntities(
+        (this as unknown as Record<string, unknown>)[relation.field],
+      ).map((child) => child.uuid);
+    }
+    this._held = held;
+  }
+
+  public heldIds(field: string): readonly string[] {
+    return this._held[field] ?? [];
+  }
+
+  private stageDomainEvent(event: DomainEvent): string {
+    const existingEvent = this._recordedEvents.find((recorded) =>
+      recorded.hasSameBusinessPayload(event),
+    );
 
     if (existingEvent) {
       loggerQueueProcessor.warn(
-        `class ${this.constructor.name} - V2 Event: '${event.name}' with identical payload already exists for entity '${this.uuid}'. Skipping duplicate.`,
+        `class ${this.constructor.name} - Event '${event.name}' is already recorded for '${this.uuid}' with the same payload. Skipping.`,
       );
       return existingEvent.uuid;
     }
 
-    if (!this._correlationIdV2) {
-      this._correlationIdV2 = generateUUID();
+    if (!this._correlationId) {
+      this._correlationId = generateUUID();
     }
 
     event
       .withEntityType(this.constructor.name)
       .withAggregateId(this.uuid)
-      .withSequence(this._domainEventsV2.length + 1)
-      .applyChain(this._correlationIdV2);
+      .withSequence(this._recordedEvents.length + 1)
+      .applyChain(this._correlationId);
 
-    this._domainEventsV2.push(event);
+    this._recordedEvents.push(event);
     this.eventIds.push(event.uuid);
 
     return event.uuid;
-  }
-
-  public getDomainEvents(): readonly IntegrationEvent[] {
-    return this._domainEventsV2.map((e) => e.clone());
-  }
-
-  public copyDomainEventsFrom(source: Entity): void {
-    if (!this._correlationIdV2) {
-      this._correlationIdV2 = generateUUID();
-    }
-
-    for (const event of source.getDomainEvents()) {
-      const clonedEvent = event.clone();
-      clonedEvent
-        .withEntityType(this.constructor.name)
-        .withAggregateId(this.uuid)
-        .withSequence(this._domainEventsV2.length + 1)
-        .applyChain(this._correlationIdV2);
-
-      this._domainEventsV2.push(clonedEvent);
-      this.eventIds.push(clonedEvent.uuid);
-    }
-  }
-
-  public clearDomainEvents(): void {
-    this._domainEventsV2 = [];
-    this._correlationIdV2 = null;
-  }
-
-  public async publishAllDomainEvents(): Promise<void> {
-    const events = this._domainEventsV2;
-    if (events.length > 1) {
-      loggerQueueProcessor.info(
-        `class ${this.constructor.name} - Publishing total [${events.length}] V2 domain events for entity '${this.uuid}'`,
-      );
-    }
-
-    for (const event of events) {
-      await EventBus.publish(event);
-    }
-
-    this.clearDomainEvents();
-  }
-
-  public async publishAllDomainEventsSync(): Promise<void> {
-    const events = this._domainEventsV2;
-    if (events.length > 1) {
-      loggerQueueProcessor.info(
-        `class ${this.constructor.name} - Publishing total [${events.length}] V2 domain events for entity '${this.uuid}'`,
-      );
-    }
-
-    const errors: Error[] = [];
-    for (const event of events) {
-      try {
-        await EventBus.publishSync(event);
-      } catch (error) {
-        loggerQueueProcessor.warn(
-          `class ${this.constructor.name} - Error publishing V2 domain event '${event.name}' for entity '${this.uuid}': ${(error as Error).message}`,
-        );
-        errors.push(error as Error);
-      }
-    }
-
-    this.clearDomainEvents();
-
-    if (errors.length > 0) {
-      const errorList = errors.map((e) => `  - ${e.message}`).join("\n");
-      throw new Error(
-        `Errors occurred while publishing V2 domain events synchronously:\n${errorList}`,
-      );
-    }
-  }
-
-  public async publishDomainEvent<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-    payload: EventData<InstanceType<C>>,
-  ): Promise<void> {
-    this.addDomainEvent(EventClass, payload);
-    await this.publishAllDomainEvents();
-  }
-
-  public async publishDomainEventSync<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-    payload: EventData<InstanceType<C>>,
-  ): Promise<void> {
-    this.addDomainEvent(EventClass, payload);
-    await this.publishAllDomainEventsSync();
-  }
-
-  public async publishDomainEventWithEntity<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-  ): Promise<void> {
-    this.addDomainEventWithEntity(EventClass);
-    await this.publishAllDomainEvents();
-  }
-
-  public async publishDomainEventWithEntitySync<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-  ): Promise<void> {
-    this.addDomainEventWithEntity(EventClass);
-    await this.publishAllDomainEventsSync();
-  }
-
-  public async publishEventWith<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-    selector: (entity: this) => EventData<InstanceType<C>>,
-  ): Promise<void> {
-    this.stageDomainEvent(EventClass.create(selector(this)));
-    await this.publishAllDomainEvents();
-  }
-
-  public async publishEventWithSync<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-    selector: (entity: this) => EventData<InstanceType<C>>,
-  ): Promise<void> {
-    this.stageDomainEvent(EventClass.create(selector(this)));
-    await this.publishAllDomainEventsSync();
   }
 }
 
@@ -342,11 +270,15 @@ export class RemoteEntity extends Entity implements IRemote {
   public mergeWithRemote(data: this): void {
     const preservedUuid = this.uuid;
     const preservedEventIds = this.eventIds;
+    const preservedVersion = this.version;
+    const preservedCreatedAt = this.createdAt;
 
     Object.assign(this, data);
 
     this.uuid = preservedUuid;
     this.eventIds = preservedEventIds;
+    this.version = preservedVersion;
+    this.createdAt = preservedCreatedAt;
   }
 
   public remotePayload(): any {

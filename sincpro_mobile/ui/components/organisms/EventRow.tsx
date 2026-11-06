@@ -1,4 +1,4 @@
-import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { Display } from "@sincpro/mobile-ui/Display";
 import { Form } from "@sincpro/mobile-ui/Form";
 import { Typography } from "@sincpro/mobile-ui/Typography";

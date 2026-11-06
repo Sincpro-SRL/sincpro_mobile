@@ -1,4 +1,4 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import DeadLetterErrorBlock from "@sincpro/mobile/ui/components/molecules/DeadLetterErrorBlock";
 import { Display } from "@sincpro/mobile-ui/Display";
 import { Form } from "@sincpro/mobile-ui/Form";

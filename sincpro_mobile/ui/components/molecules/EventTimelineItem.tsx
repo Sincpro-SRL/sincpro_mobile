@@ -1,4 +1,4 @@
-import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { Display } from "@sincpro/mobile-ui/Display";
 import CopyableText from "@sincpro/mobile-ui/Display/Display.CopyableText";
 import { useTheme } from "@sincpro/mobile-ui/theme";

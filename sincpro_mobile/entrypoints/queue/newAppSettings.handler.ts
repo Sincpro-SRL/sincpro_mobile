@@ -1,6 +1,6 @@
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
-import { DomainEvent, Subscriber } from "@sincpro/mobile/domain/event_sourcing";
-import { NewAppSettingsEvent } from "@sincpro/mobile/domain/events";
+import { DomainEvent, NewAppSettingsEvent } from "@sincpro/mobile/domain/events";
+import { Subscriber } from "@sincpro/mobile/event_driven";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 
 export class NewAppSettingsSubscriber extends Subscriber {

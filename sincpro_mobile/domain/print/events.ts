@@ -1,4 +1,4 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
 
 export class PrintImageRequestedEvent extends IntegrationEvent {
   static readonly name = "common.print.v1.image_requested";

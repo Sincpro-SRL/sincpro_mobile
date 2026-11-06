@@ -3,7 +3,6 @@ import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/dom
 import { DomainEventDeadLetterRepository } from "@sincpro/mobile/adapters/repositories/domain_event_dead_letter.repository";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
 import type { IMigration } from "@sincpro/mobile/domain/database";
-import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
 import cronCheckNetworkStatus from "@sincpro/mobile/entrypoints/cron/checkNetworkStatus.cron";
 import MIGRATIONS, { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
@@ -11,6 +10,7 @@ import { ActivateDomainSubscriber } from "@sincpro/mobile/entrypoints/queue/acti
 import { NewAppSettingsSubscriber } from "@sincpro/mobile/entrypoints/queue/newAppSettings.handler";
 import { PrintImageSubscriber } from "@sincpro/mobile/entrypoints/queue/printImage.subscriber";
 import { ProcessWebViewMessageSubscriber } from "@sincpro/mobile/entrypoints/queue/processWebViewMessage.subscriber";
+import type { Subscriber } from "@sincpro/mobile/event_driven";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 
 import { DomainModule } from "./domain_module";

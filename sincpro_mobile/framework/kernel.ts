@@ -1,6 +1,6 @@
 import type { IMigration } from "@sincpro/mobile/domain/database";
-import type { Subscriber } from "@sincpro/mobile/domain/event_sourcing";
 import { repos } from "@sincpro/mobile/entrypoints/db/repositories";
+import type { Subscriber } from "@sincpro/mobile/event_driven";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 import { initializeRepositoryFacade } from "@sincpro/mobile/infrastructure/database/mapped";
 import logger, { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";

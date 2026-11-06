@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { Entity } from "../../sincpro_mobile/domain/entity/entity.ts";
-import { IntegrationEvent } from "../../sincpro_mobile/domain/event_sourcing/integration_event.ts";
+import { IntegrationEvent } from "../../sincpro_mobile/domain/events/integration_event.ts";
 import { _resetContextManager } from "../../sincpro_mobile/infrastructure/context_manager/index.ts";
 import { runWithChain } from "../../sincpro_mobile/infrastructure/event_chain.ts";
 import { interceptClass } from "../../sincpro_mobile/infrastructure/interceptor/intercept.ts";
@@ -29,11 +29,11 @@ class ShipEvent extends IntegrationEvent {
 test("an open execution is the flow; the batch id stays the dedup key", () => {
   const entity = TestEntity.make();
   runWithChain({ causationId: "exec-1", correlationId: "flow-1" }, () => {
-    entity.addDomainEvent(OrderEvent, { orderId: "a" });
-    entity.addDomainEvent(ShipEvent, { address: "b" });
+    entity.record(OrderEvent, { orderId: "a" });
+    entity.record(ShipEvent, { address: "b" });
   });
 
-  const [first, second] = entity.getDomainEvents();
+  const [first, second] = entity.recordedEvents();
   assert.equal(first.correlationId, "flow-1");
   assert.equal(second.correlationId, "flow-1");
   assert.equal(first.causationId, "exec-1");
@@ -45,10 +45,10 @@ test("an open execution is the flow; the batch id stays the dedup key", () => {
 test("clearing the batch keeps the flow and changes the dedup key", () => {
   const entity = TestEntity.make();
   runWithChain({ causationId: "exec-1", correlationId: "flow-1" }, () => {
-    entity.addDomainEvent(OrderEvent, { orderId: "a" });
-    entity.clearDomainEvents();
-    entity.addDomainEvent(OrderEvent, { orderId: "b" });
-    const next = entity.getDomainEvents()[0];
+    entity.record(OrderEvent, { orderId: "a" });
+    entity.pullEvents();
+    entity.record(OrderEvent, { orderId: "b" });
+    const next = entity.recordedEvents()[0];
     assert.equal(next.correlationId, "flow-1");
     assert.equal(next.causationId, "exec-1");
   });
@@ -57,13 +57,13 @@ test("clearing the batch keeps the flow and changes the dedup key", () => {
 test("a traced method opens one flow; a nested method is a new cause in that flow", async () => {
   class Inner {
     async record(entity: TestEntity) {
-      entity.addDomainEvent(ShipEvent, { address: "b" });
+      entity.record(ShipEvent, { address: "b" });
     }
   }
   class Outer {
     inner = new Inner();
     async record(entity: TestEntity) {
-      entity.addDomainEvent(OrderEvent, { orderId: "a" });
+      entity.record(OrderEvent, { orderId: "a" });
       await this.inner.record(entity);
     }
   }
@@ -73,7 +73,7 @@ test("a traced method opens one flow; a nested method is a new cause in that flo
   const entity = TestEntity.make();
   try {
     await new Outer().record(entity);
-    const [outer, inner] = entity.getDomainEvents();
+    const [outer, inner] = entity.recordedEvents();
     assert.equal(outer.correlationId, inner.correlationId);
     assert.notEqual(outer.causationId, inner.causationId);
     assert.equal(outer.causationId, outer.correlationId);
