@@ -1,5 +1,6 @@
 export { BluetoothDeviceSelectorModal } from "./BluetoothDeviceSelectorModal";
 export { default as DeadLetterErrorBlock } from "./DeadLetterErrorBlock";
+export { DeviceNotices } from "./DeviceNotices";
 export { default as EventTimelineItem } from "./EventTimelineItem";
 export { default as GeoPermissionCard } from "./GeoPermissionCard";
 export { default as ProcessToast } from "./ProcessToast";

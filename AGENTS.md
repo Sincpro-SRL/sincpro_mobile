@@ -139,7 +139,7 @@ Para cambios grandes (migraciones, refactors masivos, auditorías) se usa **orqu
 **Documentación de ingeniería** (`docs/` — arquitectura viva):
 
 - [`docs/architecture-aggregate.md`](docs/architecture-aggregate.md) — agregado, evento, checks, hooks, relaciones y `DocumentRepository`. Diagramas de cómo interactúan.
-- [`docs/architecture-core.md`](docs/architecture-core.md) — cola, cron, AppShell y el resto del runtime.
+- [`docs/architecture-core.md`](docs/architecture-core.md) — cola, cron, AppShell, y qué parte del cliente ya viene de `@sincpro/client-framework` (sección _The client, shared with the web_).
 - [`docs/architecture-telemetry.md`](docs/architecture-telemetry.md) — telemetría (OTel + Loki): pipeline, delivery, retención. Diagramas de componentes + secuencia.
 - [`docs/architecture-consumer.md`](docs/architecture-consumer.md) — arquitectura sugerida para apps consumidoras: adapters, services (use cases/workflows), ui, subscribers.
 - [`docs/GOTCHAS.md`](docs/GOTCHAS.md) — trampas de dependencias, UI y runtime (síntoma → causa → fix). **Léelo si algo "raro" pasa.**

@@ -4,7 +4,7 @@ import {
 } from "@react-navigation/native";
 import { createApp } from "@sincpro/mobile/framework/createApp";
 import type { DomainModule } from "@sincpro/mobile/framework/domain_module";
-import { ToastHost } from "@sincpro/mobile/infrastructure/ui/ToastHost";
+import { DeviceNotices } from "@sincpro/mobile/ui/components/molecules";
 import { type BrandingConfig, setBranding } from "@sincpro/mobile-ui";
 import { ToastProvider } from "@sincpro/mobile-ui/Feedback";
 import {
@@ -240,7 +240,7 @@ export function createAppShell(config: AppShellConfig): ComponentType {
                         </NavigationContainer>
                       </DomainSwitcherProvider>,
                     )}
-                    <ToastHost />
+                    <DeviceNotices />
                   </ToastProvider>
                 </CommonProvider>
               </KeyboardProvider>

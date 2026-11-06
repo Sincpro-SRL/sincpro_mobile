@@ -1,16 +1,12 @@
 import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
 import { DomainEventDeadLetterRepository } from "@sincpro/mobile/adapters/repositories/domain_event_dead_letter.repository";
 import { EventName, type IntegrationEvent } from "@sincpro/mobile/domain/events";
-import {
-  InternetIsDownEvent,
-  InternetIsUpEvent,
-  QueueEndEvent,
-  QueueStartEvent,
-} from "@sincpro/mobile/domain/events";
+import { InternetIsDownEvent, InternetIsUpEvent } from "@sincpro/mobile/domain/events";
 import { Subscriber } from "@sincpro/mobile/event_driven";
 import { DomainNetworkError, RepeatableFailure } from "@sincpro/mobile/exceptions";
 import { runWithChain } from "@sincpro/mobile/infrastructure/event_chain";
 import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
+import { declaresUi, publishActivity } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 
 export const PROCESS_WORKER_MAX_ATTEMPTS = 1;
@@ -25,12 +21,16 @@ export class EventBus {
   private static subscribers = new Map<string, Subscriber[]>();
 
   private static isDraining = false;
+  private static connectivityReady = false;
   private static intervalId: ReturnType<typeof setTimeout> | null = null;
   private static internetConnected = true;
   private static consecutiveFailures = 0;
   private static currentInterval = EventBus.INTERVAL_MS;
 
   static initConnectivityListeners(): void {
+    if (this.connectivityReady) return;
+    this.connectivityReady = true;
+
     UIEventBus.on(InternetIsDownEvent.name, () => {
       this.internetConnected = false;
       this.consecutiveFailures++;
@@ -128,7 +128,7 @@ export class EventBus {
   }
 
   /**
-   * Validates event, logs start, emits START.
+   * Logs the start and publishes a running activity when a subscriber exists.
    * Returns false if no subscribers (caller should return early).
    */
   private static preProcess(event: IntegrationEvent): boolean {
@@ -141,13 +141,7 @@ export class EventBus {
       `EVENT=${event.name} uuid=${event.uuid} payload=${event.asJSON()}`,
     );
 
-    const queueStartEvent = QueueStartEvent.create();
-    UIEventBus.emit(queueStartEvent.name, {
-      event: event.name,
-      label: event.label,
-      attempts: event.attempts,
-      attemptLimit: EventBus.MAX_ATTEMPTS,
-    });
+    if (hasSubscribers) this.publishQueue(event, "running");
 
     if (!hasSubscribers) {
       loggerQueueProcessor.warn(
@@ -159,7 +153,7 @@ export class EventBus {
   }
 
   /**
-   * Handles persistence, emits event and END, logs result.
+   * Handles persistence, emits the event for screens, publishes the activity, logs result.
    * If errors is empty -> success, otherwise -> failure + dead letter + throws.
    * @throws Error if there are any errors
    */
@@ -183,14 +177,7 @@ export class EventBus {
     }
 
     UIEventBus.emit(event.name, event);
-    UIEventBus.emit(QueueEndEvent.name, {
-      event: event.name,
-      label: event.label,
-      success,
-      attempts: event.attempts,
-      attemptLimit: EventBus.MAX_ATTEMPTS,
-      error: errorMessage,
-    });
+    this.publishQueue(event, success ? "succeeded" : "failed", errorMessage);
 
     if (!success) {
       throw new Error(errorMessage);
@@ -209,7 +196,6 @@ export class EventBus {
         await subscriber.process(typedEvent);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        errors.push(errorMessage);
         loggerQueueProcessor.warn(`EVENT=${event.name} - Subscriber failed: ${errorMessage}`);
 
         if (err instanceof DomainNetworkError || err instanceof RepeatableFailure) {
@@ -324,6 +310,7 @@ export class EventBus {
       if (err instanceof RepeatableFailure) {
         event.retry();
         await DomainEventRepository.save(event);
+        this.publishQueue(event, "idle");
       }
       throw err;
     }
@@ -362,6 +349,7 @@ export class EventBus {
         if (err instanceof RepeatableFailure) {
           current.retry();
           await DomainEventRepository.save(current);
+          this.publishQueue(current, "idle");
           break;
         }
       }
@@ -378,5 +366,20 @@ export class EventBus {
     } catch (error) {
       loggerQueueProcessor.warn("Failed to clear ProcessWorker queue:", error);
     }
+  }
+
+  private static publishQueue(
+    event: IntegrationEvent,
+    status: "running" | "succeeded" | "failed" | "idle",
+    detail?: string,
+  ): void {
+    publishActivity({
+      channel: "queue",
+      name: event.name,
+      label: event.label,
+      detail,
+      status,
+      ui: declaresUi(event),
+    });
   }
 }

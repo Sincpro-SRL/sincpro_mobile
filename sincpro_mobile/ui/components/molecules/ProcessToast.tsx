@@ -1,55 +1,73 @@
-import { useCommon } from "@sincpro/mobile/entrypoints/ui/common_provider";
+import { useActivity } from "@sincpro/mobile/ui/activity/useActivity";
 import { useToast } from "@sincpro/mobile-ui/Feedback";
 import { useEffect, useRef } from "react";
 
 const MAX_ERROR_LEN = 150;
+const QUEUE_MIN_VISIBLE_MS = 1200;
 
-/**
- * Bridges the framework's queue/cron activity state (from CommonProvider) to the
- * design-system Toast: a persistent `loading` toast while a queue/cron task runs, and a
- * `danger` toast on failure. Renders nothing — the toast UI is owned by the DS
- * `ToastProvider` (mounted in AppShell), so this must live inside it.
- */
 function ProcessToast() {
-  const { currentActivity, lastError, isProcessing } = useCommon();
+  const { queue, crons, failure } = useActivity();
   const toast = useToast();
   const loadingIdRef = useRef<string | null>(null);
   const shownErrorRef = useRef<string | null>(null);
+  const startedAtRef = useRef<number | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const progress = queue ?? crons[0];
 
   useEffect(() => {
-    const showLoading = isProcessing && !lastError;
-    if (showLoading) {
-      const label = currentActivity?.label ?? "Sincronizando...";
-      if (loadingIdRef.current) {
-        toast.update(loadingIdRef.current, { message: label, variant: "loading" });
-      } else {
-        loadingIdRef.current = toast.loading(label);
-      }
-    } else if (loadingIdRef.current) {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+
+    const hideLoading = () => {
+      if (!loadingIdRef.current) return;
       toast.hide(loadingIdRef.current);
       loadingIdRef.current = null;
+      startedAtRef.current = null;
+    };
+
+    if (progress && !failure) {
+      if (startedAtRef.current == null) startedAtRef.current = Date.now();
+      if (loadingIdRef.current) {
+        toast.update(loadingIdRef.current, { message: progress.label, variant: "loading" });
+      } else {
+        loadingIdRef.current = toast.loading(progress.label);
+      }
+      return;
     }
-  }, [isProcessing, lastError, currentActivity, toast]);
+
+    if (!loadingIdRef.current) return;
+
+    const elapsed = startedAtRef.current
+      ? Date.now() - startedAtRef.current
+      : QUEUE_MIN_VISIBLE_MS;
+    const wait = failure ? 0 : Math.max(0, QUEUE_MIN_VISIBLE_MS - elapsed);
+    hideTimerRef.current = setTimeout(hideLoading, wait);
+
+    return () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    };
+  }, [progress, failure, toast]);
 
   useEffect(() => {
-    if (!lastError) {
+    if (!failure || failure.channel === "device") {
       shownErrorRef.current = null;
       return;
     }
-    const key = `${lastError.id}:${lastError.error ?? ""}`;
-    if (shownErrorRef.current === key) {
-      return;
-    }
+    const key = failure.id;
+    if (shownErrorRef.current === key) return;
     shownErrorRef.current = key;
 
-    const raw = lastError.error;
+    const raw = failure.detail;
     const detail = raw
       ? raw.length > MAX_ERROR_LEN
         ? `${raw.slice(0, MAX_ERROR_LEN)}...`
         : raw
       : undefined;
-    toast.danger(detail ?? lastError.label, { title: `Error: ${lastError.label}` });
-  }, [lastError, toast]);
+    toast.danger(detail ?? failure.label, { title: `Error: ${failure.label}` });
+  }, [failure, toast]);
 
   return null;
 }

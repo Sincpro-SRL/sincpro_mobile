@@ -6,7 +6,8 @@ component + sequence diagrams and the rationale behind each decision.
 
 ## Architecture
 
-- [**architecture-core.md**](architecture-core.md) — the core: almost-ORM (`DBCursor`,
+- [**architecture-core.md**](architecture-core.md) — the core, and which part of the
+  client already comes from `@sincpro/client-framework`. Almost-ORM (`DBCursor`,
   `@mapped`), event-sourced entities, default repositories, `EventBus` + `QueueProcessor`,
   cron, and the AppShell → Orchestrator → Kernel boot.
 - [**architecture-telemetry.md**](architecture-telemetry.md) — telemetry (OpenTelemetry +

@@ -2,7 +2,7 @@ import { NetworkAdapter } from "@sincpro/mobile/adapters/Network.adapter";
 import { NetworkStatus } from "@sincpro/mobile/domain/connectivity";
 import { InternetIsDownEvent, InternetIsUpEvent } from "@sincpro/mobile/domain/events";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
-import { UI_NOTIFICATION_EVENT } from "@sincpro/mobile/infrastructure/ui/events";
+import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 
 export class NetworkUseCases {
@@ -15,31 +15,33 @@ export class NetworkUseCases {
     } else {
       UIEventBus.emit(InternetIsDownEvent.name, false);
     }
-    this.showToastNotification(networkStatus);
+    this.notifyOnChange(networkStatus);
     this.networkStatus = networkStatus;
     return this.networkStatus;
   }
 
-  async showToastNotification(networkStatus: NetworkStatus): Promise<void> {
-    const showToast = networkStatus.isConnected !== this.networkStatus?.isConnected;
+  private notifyOnChange(networkStatus: NetworkStatus): void {
+    const changed = networkStatus.isConnected !== this.networkStatus?.isConnected;
 
-    if (!showToast) {
+    if (!changed) {
       return;
     }
 
     if (!networkStatus.isConnected) {
-      loggerUseCases.info(`Network is up: ${networkStatus.type}`);
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "error",
-        text1: "Estas desconectado",
-        text2: "Sin conexión a internet",
+      loggerUseCases.warn(`Network is down: ${networkStatus.type}`);
+      notifyDevice({
+        name: "network.offline",
+        title: "Estas desconectado",
+        message: "Sin conexión a internet",
+        variant: "danger",
       });
     } else {
-      loggerUseCases.warn(`Network is down: ${networkStatus.type}`);
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "success",
-        text1: "Conectado",
-        text2: `Conexión a través de ${networkStatus.type}`,
+      loggerUseCases.info(`Network is up: ${networkStatus.type}`);
+      notifyDevice({
+        name: "network.online",
+        title: "Conectado",
+        message: `Conexión a través de ${networkStatus.type}`,
+        variant: "success",
       });
     }
   }

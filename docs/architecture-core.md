@@ -6,6 +6,27 @@
 > The aggregate, its checks, its hooks and its repository are specified in
 > [architecture-aggregate.md](architecture-aggregate.md).
 
+## The client, shared with the web
+
+The process a screen runs in is `@sincpro/client-framework`. The web app calls it from
+its `main`. This package is the phone shell around that same process: SQLite, the queue,
+cron, `AppShell`. It does not own a second client.
+
+| Already on `main`                                                                 | Still this package, before a release                                                                                     |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `generateUUID` is `newEntityId` (32 hex). An old id with hyphens stays a text key | `monetary.ts` still returns a `number` at the edge a screen already calls. The exact value is `toDecimal` / `discountOf` |
+| Document JSON goes through `valuesOf` / `readValues`, dropping `_` keys           | `JsonSerializerAdapter.cleanData` now normalizes with `valuesOf`. The SHA-256 and the sorted canonical form stay here    |
+| `isDay` / `dayOf` decide a calendar day. `formatDate` still draws it              | Dependency is `^0.5.0`: `screensTransport`, `reportError`, `this.span`                                                   |
+
+What is not built, in this order, and is not a release by itself:
+
+1. `configureProcess` in the app `main`, with this package's span queue wrapped by `openTelemetryTracer`. Loki stays a log client. It is not a `Tracer`.
+2. A `ContextStore`. The app keeps it (MMKV is synchronous, which the port asks). A screen that must reread when the company changes listens to `processContext`; this package does not ship a React hook for that.
+3. One `UseBoundedContext` inside a `DomainModule`. The module keeps migrations, subscribers and crons. `Feature` here still names a span with the class name. That name is minified in a release build, so contexts move one at a time.
+4. A `Transport` over SQLite, so `screensTransport` can wrap offline the way it wraps REST. That object does not exist yet.
+
+`sincpro-client check` applies to an app laid out as `domains/<context>/<layer>`, not to this shell. Distribution still calls `addDomainEvent` / `publishAllDomainEvents`, which this package no longer has. That adoption is the app's.
+
 ---
 
 ## 1. The big picture — two buses, one persistent queue
@@ -13,11 +34,11 @@
 The single most important thing to understand: there are **two event systems**, and they
 do different jobs.
 
-|              | `EventBus` (domain)                                            | `UIEventBus` (UI signals)                                                   |
-| ------------ | -------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Backing      | **SQLite** (`domain_events` table) — survives restarts         | In-memory (`mitt`) — ephemeral                                              |
-| Carries      | Business domain events (durable, at-least-once, dead-lettered) | UI/runtime signals: `QueueStart/End`, `InternetIsUp/Down`, `CRON_START/END` |
-| Failure mode | Retry → dead-letter queue                                      | Fire-and-forget, 300 ms debounce                                            |
+|              | `EventBus` (domain)                                            | `UIEventBus` (UI signals)                                                                      |
+| ------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Backing      | **SQLite** (`domain_events` table) — survives restarts         | In-memory (`mitt`) — ephemeral                                                                 |
+| Carries      | Business domain events (durable, at-least-once, dead-lettered) | Activity facts, device notices, `InternetIsUp/Down`, and the event name (screens reload on it) |
+| Failure mode | Retry → dead-letter queue                                      | Fire-and-forget. Screen listeners debounce 300 ms. Activity does not.                          |
 
 The `EventBus` **emits to** and **listens from** the `UIEventBus` (e.g. it flips offline
 on a `DomainNetworkError` and gates draining on `InternetIsUp/Down`). Business-critical
@@ -41,7 +62,7 @@ flowchart TB
         kernel["Kernel<br/>aggregates DomainModules"]
     end
 
-    uibus[["UIEventBus (in-memory)<br/>QueueStart/End · InternetIsUp/Down · CRON_*"]]
+    uibus[["UIEventBus (in-memory)<br/>activity · device notices · InternetIsUp/Down · event name"]]
 
     entity --> vo
     entity -->|reads FKs via| mapped

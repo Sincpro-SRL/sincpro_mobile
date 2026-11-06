@@ -11,8 +11,7 @@ import {
 } from "@sincpro/mobile/domain/print";
 import { ECommonSetting } from "@sincpro/mobile/domain/settings";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
-import { UI_NOTIFICATION_EVENT } from "@sincpro/mobile/infrastructure/ui/events";
-import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
+import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 import { File } from "expo-file-system";
 import * as Print from "expo-print";
 import type { RefObject } from "react";
@@ -44,7 +43,7 @@ class PrinterService {
     return getPrinterDriver().isConnected();
   }
 
-  async connect(address: string, name: string): Promise<boolean> {
+  async connect(address: string, name: string, notify = true): Promise<boolean> {
     const hasPermissions = await this.bluetooth.ensurePermissionsForPrinter();
     if (!hasPermissions) {
       return false;
@@ -61,21 +60,27 @@ class PrinterService {
 
       await this.saveSelectedPrinter(printer);
 
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "success",
-        text1: "Impresora conectada",
-        text2: `Conectado a ${name}`,
-      });
+      if (notify) {
+        notifyDevice({
+          name: "printer.connected",
+          title: "Impresora conectada",
+          message: `Conectado a ${name}`,
+          variant: "success",
+        });
+      }
 
       return true;
     } catch (error) {
       loggerUseCases.error(`Failed to connect to printer: ${name}`, error);
 
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "error",
-        text1: "Error de conexión",
-        text2: `No se pudo conectar a ${name}`,
-      });
+      if (notify) {
+        notifyDevice({
+          name: "printer.connect_failed",
+          title: "Error de conexión",
+          message: `No se pudo conectar a ${name}`,
+          variant: "danger",
+        });
+      }
 
       return false;
     }
@@ -84,10 +89,11 @@ class PrinterService {
   async disconnect(): Promise<void> {
     try {
       await getPrinterDriver().disconnect();
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "info",
-        text1: "Desconectado",
-        text2: "Impresora desconectada",
+      notifyDevice({
+        name: "printer.disconnected",
+        title: "Desconectado",
+        message: "Impresora desconectada",
+        variant: "info",
       });
     } catch (error) {
       loggerUseCases.error("Error disconnecting from printer", error);
@@ -118,10 +124,11 @@ class PrinterService {
 
   async printTestPage(): Promise<boolean> {
     if (!this.isConnected()) {
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "error",
-        text1: "Sin conexión",
-        text2: "Conecta una impresora primero",
+      notifyDevice({
+        name: "printer.not_connected",
+        title: "Sin conexión",
+        message: "Conecta una impresora primero",
+        variant: "danger",
       });
       return false;
     }
@@ -143,20 +150,22 @@ class PrinterService {
         fontSize: "small",
       });
 
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "success",
-        text1: "Impresión exitosa",
-        text2: "Página de prueba impresa",
+      notifyDevice({
+        name: "printer.test_ok",
+        title: "Impresión exitosa",
+        message: "Página de prueba impresa",
+        variant: "success",
       });
 
       return true;
     } catch (error) {
       loggerUseCases.error("Error printing test page", error);
 
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "error",
-        text1: "Error de impresión",
-        text2: "No se pudo imprimir la página de prueba",
+      notifyDevice({
+        name: "printer.test_failed",
+        title: "Error de impresión",
+        message: "No se pudo imprimir la página de prueba",
+        variant: "danger",
       });
 
       return false;
@@ -174,18 +183,13 @@ class PrinterService {
       loggerUseCases.warn("Print failed — attempting grace reconnect", firstError);
 
       const reconnected = await this.forceReconnect();
-      if (!reconnected) return false; // connect() ya notificó al usuario
+      if (!reconnected) return false;
 
       try {
         await getPrinterDriver().printImageBase64(base64Data);
         return true;
       } catch (retryError) {
         loggerUseCases.error("Print retry after reconnect also failed", retryError);
-        UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-          type: "error",
-          text1: "Error de impresión",
-          text2: "No se pudo imprimir incluso tras reconectar la impresora",
-        });
         return false;
       }
     }
@@ -204,10 +208,11 @@ class PrinterService {
 
       await getPrinterDriver().printImageBase64(imageBase64);
 
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "success",
-        text1: "Impresión enviada",
-        text2: "Documento enviado a la impresora",
+      notifyDevice({
+        name: "printer.sent",
+        title: "Impresión enviada",
+        message: "Documento enviado a la impresora",
+        variant: "success",
       });
 
       return true;
@@ -280,7 +285,7 @@ class PrinterService {
     loggerUseCases.info(
       `Grace reconnect: reconnecting to ${printer.name} (${printer.address})`,
     );
-    return this.connect(printer.address, printer.name);
+    return this.connect(printer.address, printer.name, false);
   }
 
   private async ensureConnected(): Promise<boolean> {
@@ -290,10 +295,11 @@ class PrinterService {
 
     const printer = await this.getSelectedPrinter();
     if (!printer) {
-      UIEventBus.emit(UI_NOTIFICATION_EVENT, {
-        type: "error",
-        text1: "Sin impresora",
-        text2: "Selecciona una impresora primero",
+      notifyDevice({
+        name: "printer.missing",
+        title: "Sin impresora",
+        message: "Selecciona una impresora primero",
+        variant: "danger",
       });
       return false;
     }

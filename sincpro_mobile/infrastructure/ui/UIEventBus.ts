@@ -15,7 +15,19 @@ class UIEventBusImpl {
   private subscriptions = new Map<string, Subscription>();
   private handlerIdCounter = 0;
 
-  on<T = unknown>(event: string, handler: Handler<T>): () => void {
+  on<T = unknown>(
+    event: string,
+    handler: Handler<T>,
+    options?: { debounce?: boolean },
+  ): () => void {
+    if (options?.debounce === false) {
+      const direct = handler as Handler<unknown>;
+      this.emitter.on(event, direct);
+      return () => {
+        this.emitter.off(event, direct);
+      };
+    }
+
     const handlerId = `${event}_${++this.handlerIdCounter}`;
 
     const wrappedHandler: Handler<unknown> = (payload) => {

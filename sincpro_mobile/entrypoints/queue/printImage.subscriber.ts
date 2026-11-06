@@ -10,7 +10,7 @@ export class PrintImageSubscriber extends Subscriber {
   async process(event: PrintImageRequestedEvent): Promise<void> {
     const printed = await printerService.printImageBase64(event.imageBase64);
     if (!printed) {
-      throw new DomainValidationError("Print failed — printer not connected or timed out");
+      throw new DomainValidationError("No se pudo imprimir");
     }
   }
 }

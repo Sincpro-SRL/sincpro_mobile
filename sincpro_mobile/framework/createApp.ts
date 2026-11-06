@@ -15,10 +15,10 @@ export interface AppConfig {
    */
   telemetry?: TelemetryConfig;
   /**
-   * Override display options for any cron by taskName.
-   * Useful for showing/hiding toasts on internal crons (CHECK_NETWORK, TELEMETRY_FLUSH, etc.).
+   * Override options for any cron by taskName.
+   * `ui` marks the cron for the activity toast. Silence is the default.
    * @example
-   * crons: { CHECK_NETWORK: { showToast: true, label: "Verificando conexión" } }
+   * crons: { CHECK_NETWORK: { ui: true, label: "Verificando conexión" } }
    */
   crons?: Record<string, Partial<CronWorkerOpts>>;
 }

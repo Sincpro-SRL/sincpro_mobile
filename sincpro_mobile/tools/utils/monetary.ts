@@ -1,37 +1,42 @@
-import { Decimal } from "@sincpro/client-framework";
+import { Decimal, type DecimalLike } from "@sincpro/client-framework";
 
-export function parseToMonetaryNumber(input?: string | number | null): number {
-  if (input == null) return 0;
-  const s = String(input).trim();
-  if (!/[0-9]/.test(s)) return 0;
-
-  const cleaned = s.replace(/[^0-9.-]+/g, "");
+export function toDecimal(input?: DecimalLike | null): Decimal {
+  if (input == null) return new Decimal(0);
+  if (typeof input === "number" && !Number.isFinite(input)) return new Decimal(0);
+  if (typeof input === "string") {
+    const text = input.trim();
+    if (!/[0-9]/.test(text)) return new Decimal(0);
+    try {
+      return new Decimal(text.replace(/[^0-9.-]+/g, ""));
+    } catch {
+      return new Decimal(0);
+    }
+  }
   try {
-    return Number(new Decimal(cleaned).toString());
+    return new Decimal(input);
   } catch {
-    return 0;
+    return new Decimal(0);
   }
 }
 
+export function parseToMonetaryNumber(input?: string | number | null): number {
+  return Number(toDecimal(input).toString());
+}
+
 export function formatTwoDecimals(value?: number | string | null): string {
-  const rounded = Number(new Decimal(parseToMonetaryNumber(value)).rounded(2).toString());
+  const rounded = Number(toDecimal(value).rounded(2).toString());
   return new Intl.NumberFormat("de-DE", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(rounded);
 }
 
-export function calculateDiscountedTotal(total: number, discount: number): number {
-  if (discount === 0) {
-    return 0;
-  }
+export function discountOf(total: DecimalLike, discount: DecimalLike): Decimal {
+  const rate = toDecimal(discount);
+  if (rate.isZero) return new Decimal(0);
+  return toDecimal(total).times(rate).dividedBy(100, 8);
+}
 
-  try {
-    const amount = new Decimal(parseToMonetaryNumber(total))
-      .times(discount)
-      .dividedBy(100, 8);
-    return Number(amount.toString());
-  } catch {
-    return 0;
-  }
+export function calculateDiscountedTotal(total: number, discount: number): number {
+  return Number(discountOf(total, discount).toString());
 }
