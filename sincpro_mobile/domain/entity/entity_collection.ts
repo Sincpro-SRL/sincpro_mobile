@@ -15,11 +15,6 @@ import { safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 import { type Entity, type RemoteEntity } from "./entity";
 import { ValueObject } from "./value_object";
 
-export {
-  type DocumentCriteria,
-  rowsMatching,
-} from "@sincpro/mobile/domain/database/criteria";
-
 /**
  * Type-safe, immutable collection for Entity aggregates with event sourcing support.
  * Implements IEventSourced for domain event publishing and provides functional operations.
