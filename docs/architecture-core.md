@@ -92,7 +92,7 @@ into entities — **every access, no caching**.
 | Async path serialized by a single Mutex        | SQLite is single-writer; the mutex prevents interleaved writes/corruption across the app's concurrent flows                                                   |
 | `@mapped` never caches (always re-queries)     | Always-fresh data, zero stale-cache bugs, no memory overhead — at the cost of a sync main-thread read (documented limitation: scalar/array FK only, no joins) |
 | Repository facade injected lazily at bootstrap | Breaks the circular import between entities (need repos) and repos (need entities)                                                                            |
-| UUID **v7** for ids                            | Time-ordered, so ordering events by `created_at`/`sequence` is stable                                                                                         |
+| UUID **v7** for ids                            | Minted by `@sincpro/client-framework` as 32 hex, the same key the server accepts. Time-ordered, so ordering by `id` is ordering by creation                   |
 
 ---
 

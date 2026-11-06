@@ -1,6 +1,8 @@
+import { isEntityId, momentOf, newEntityId } from "@sincpro/client-framework";
 import { convertToArray } from "@sincpro/mobile/tools/utils/collections";
 import * as Crypto from "expo-crypto";
-import { v7 as uuidv7 } from "uuid";
+
+export { isEntityId, momentOf };
 
 /**
  * Constructs a SQL placeholder string and corresponding values for use in a query based on the provided field and data.
@@ -28,8 +30,15 @@ export function getPlaceholders(field: string, data: any | any[]): [string, stri
   return [`${field} IN (${placeholders})`, values];
 }
 
-export function generateUUID(): string {
-  return uuidv7({
-    random: Crypto.getRandomBytes(16),
+function ensureRandom(): void {
+  if (typeof globalThis.crypto?.getRandomValues === "function") return;
+  Object.defineProperty(globalThis, "crypto", {
+    value: { getRandomValues: Crypto.getRandomValues },
+    configurable: true,
   });
+}
+
+export function generateUUID(): string {
+  ensureRandom();
+  return newEntityId();
 }

@@ -20,6 +20,12 @@
 - **Causa:** un service singleton resuelve repos en field-init (`private readonly x = repos.get(...)`), que corre al **importar** el módulo, **antes** de que `bootstrap()` registre los repos.
 - **Fix:** getter lazy → `private get x() { return repos.get(...); }`. (En la migración de distribution fueron 28 sitios.)
 
+### 🔴 Un id nuevo no entra en un UUID con guiones
+
+- **Síntoma:** un registro recién creado no matchea `/^[0-9a-f]{8}-/`, o partir el id por `-` devuelve un solo pedazo.
+- **Causa:** `generateUUID` es `newEntityId` de `@sincpro/client-framework`: UUID v7 en **32 hex**, la misma clave que acepta el servidor. Un id viejo con guiones sigue siendo texto válido en SQLite; no se reescribe.
+- **Fix:** no parses por guiones. `isEntityId` reconoce solo el formato nuevo. Los dos conviven como `string`.
+
 ### Eventos que "desaparecen" del barrel `@sincpro/mobile/domain`
 
 - **Síntoma:** un evento existe pero no se puede importar desde el barrel raíz del dominio.

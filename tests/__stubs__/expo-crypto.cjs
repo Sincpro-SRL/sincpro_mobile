@@ -1,6 +1,10 @@
 "use strict";
 const { randomBytes } = require("node:crypto");
 exports.getRandomBytes = (n) => new Uint8Array(randomBytes(n));
+exports.getRandomValues = (typedArray) => {
+  typedArray.set(randomBytes(typedArray.byteLength));
+  return typedArray;
+};
 exports.randomUUID = () => crypto.randomUUID();
 exports.digestStringAsync = async () => "";
 exports.CryptoDigestAlgorithm = {
