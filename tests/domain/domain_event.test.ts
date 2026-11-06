@@ -5,6 +5,7 @@ import { readEvent } from "../../sincpro_mobile/adapters/repositories/event_row.
 import { chainAfter } from "../../sincpro_mobile/domain/events/chain.ts";
 import { EEventStatus } from "../../sincpro_mobile/domain/events/domain_event.ts";
 import { IntegrationEvent } from "../../sincpro_mobile/domain/events/integration_event.ts";
+import { textOf } from "../../sincpro_mobile/domain/events/label.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal concrete events for testing
@@ -159,6 +160,23 @@ test("asJSON: the fact leaves delivery out", () => {
   assert.equal("attempts" in fact, false);
   assert.equal("errorMessage" in fact, false);
   assert.equal("uuid" in fact, false);
+});
+
+test("a class label dictionary round-trips and the string is the fallback language", () => {
+  class PaidEvent extends IntegrationEvent {
+    static readonly label = { default: "Paid", es: "Pagada", en: "Paid" };
+    public readonly name = "PaidEvent";
+    public readonly label = textOf(PaidEvent.label);
+  }
+
+  const event = PaidEvent.create();
+  assert.equal(event.label, "Pagada");
+  assert.deepEqual(event.labelText(), PaidEvent.label);
+  assert.deepEqual(JSON.parse(event.asJSON()).label, PaidEvent.label);
+
+  const loaded = PaidEvent.fromJSON(event.asJSON());
+  assert.equal(loaded.label, "Pagada");
+  assert.equal(textOf(loaded.labelText(), "en-US"), "Paid");
 });
 
 test("fromJSON: a framework body round-trips, and es is what the screen reads", () => {

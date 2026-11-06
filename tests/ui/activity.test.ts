@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { textOf } from "../../sincpro_mobile/domain/events/label.ts";
 import {
   type ActivityFact,
   activityVisible,
@@ -12,6 +13,15 @@ import {
 function fact(partial: Omit<ActivityFact, "id"> & { id?: string }): ActivityFact {
   return { id: partial.id ?? partial.name, ...partial };
 }
+
+test("a label is a string or a language dictionary", () => {
+  assert.equal(textOf("Imprimiendo..."), "Imprimiendo...");
+  const labels = { default: "Printing...", es: "Imprimiendo...", en: "Printing..." };
+  assert.equal(textOf(labels), "Imprimiendo...");
+  assert.equal(textOf(labels, "en-US"), "Printing...");
+  assert.equal(textOf(labels, "es-CR"), "Imprimiendo...");
+  assert.equal(textOf({ default: "Paid", es: "Pagada" }, "en-US"), "Paid");
+});
 
 test("an event is silent until its class sets ui", () => {
   class Quiet {}

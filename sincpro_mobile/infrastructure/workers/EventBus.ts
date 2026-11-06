@@ -376,7 +376,7 @@ export class EventBus {
     publishActivity({
       channel: "queue",
       name: event.name,
-      label: event.label,
+      label: event.labelText(),
       detail,
       status,
       ui: declaresUi(event),

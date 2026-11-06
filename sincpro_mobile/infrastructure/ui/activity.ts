@@ -1,4 +1,5 @@
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
+import { type LabelText, textOf } from "@sincpro/mobile/domain/events/label";
 import { ECommonSetting } from "@sincpro/mobile/domain/settings";
 
 import { UIEventBus } from "./UIEventBus";
@@ -14,8 +15,8 @@ export interface ActivityFact {
   id: string;
   channel: ActivityChannel;
   name: string;
-  label: string;
-  detail?: string;
+  label: LabelText;
+  detail?: LabelText;
   status: ActivityStatus;
   ui: boolean;
   variant?: "success" | "danger" | "info";
@@ -54,8 +55,8 @@ export function publishActivity(fact: Omit<ActivityFact, "id">): ActivityFact {
 
 export function notifyDevice(input: {
   name: string;
-  title: string;
-  message: string;
+  title: LabelText;
+  message: LabelText;
   variant: "success" | "danger" | "info";
 }): void {
   publishActivity({
@@ -103,7 +104,7 @@ export function activityVisible(
   if (all) return true;
   if (!fact.ui) return false;
   if (!enabled[fact.channel]) return false;
-  if (fact.channel !== "device" && fact.label.length === 0) return false;
+  if (fact.channel !== "device" && textOf(fact.label).length === 0) return false;
   return true;
 }
 

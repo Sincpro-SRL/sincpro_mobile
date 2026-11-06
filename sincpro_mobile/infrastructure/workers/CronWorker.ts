@@ -1,3 +1,4 @@
+import { type LabelText } from "@sincpro/mobile/domain/events/label";
 import { loggerCronJobs } from "@sincpro/mobile/infrastructure/logger";
 import { publishActivity } from "@sincpro/mobile/infrastructure/ui/activity";
 import * as BackgroundTask from "expo-background-task";
@@ -7,7 +8,7 @@ export type CronJob = () => Promise<void>;
 
 export interface CronWorkerOpts {
   requiresAuth?: boolean;
-  label?: string;
+  label?: LabelText;
   ui?: boolean;
 }
 
@@ -18,7 +19,7 @@ export class CronWorker {
   private registrationError?: Error;
 
   public readonly requiresAuth: boolean;
-  public label?: string;
+  public label?: LabelText;
   private ui: boolean;
 
   constructor(
