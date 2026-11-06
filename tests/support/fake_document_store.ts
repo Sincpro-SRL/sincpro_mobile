@@ -1,4 +1,5 @@
 import {
+  type ColumnValue,
   type DocumentRow,
   type DocumentStore,
 } from "../../sincpro_mobile/domain/repositories/document_store.ts";
@@ -6,6 +7,7 @@ import {
 export class FakeDocumentDatabase {
   private tables = new Map<string, Map<string, DocumentRow>>();
   private depth = 0;
+  private tail: Promise<void> = Promise.resolve();
 
   table(name: string): Map<string, DocumentRow> {
     let rows = this.tables.get(name);
@@ -16,8 +18,18 @@ export class FakeDocumentDatabase {
     return rows;
   }
 
+  inTransaction(): boolean {
+    return this.depth > 0;
+  }
+
   async transaction<T>(work: () => Promise<T>): Promise<T> {
-    if (this.depth > 0) return work();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const previous = this.tail;
+    this.tail = gate;
+    await previous;
     const backup = cloneTables(this.tables);
     this.depth += 1;
     try {
@@ -27,6 +39,7 @@ export class FakeDocumentDatabase {
       throw error;
     } finally {
       this.depth -= 1;
+      release();
     }
   }
 }
@@ -41,18 +54,48 @@ function cloneTables(
   return copy;
 }
 
+function copyRow(row: DocumentRow): DocumentRow {
+  return {
+    uuid: row.uuid,
+    version: row.version,
+    data: row.data,
+    columns: { ...row.columns },
+  };
+}
+
 export class FakeDocumentStore implements DocumentStore {
   constructor(
     private readonly database: FakeDocumentDatabase,
     private readonly table: string,
+    private readonly columnNames: readonly string[] = [],
   ) {}
 
   async read(uuid: string): Promise<DocumentRow | null> {
+    return this.readSync(uuid);
+  }
+
+  readSync(uuid: string): DocumentRow | null {
     return this.database.table(this.table).get(uuid) ?? null;
   }
 
-  async write(row: DocumentRow): Promise<void> {
-    this.database.table(this.table).set(row.uuid, row);
+  async insert(row: DocumentRow): Promise<void> {
+    const rows = this.database.table(this.table);
+    if (rows.has(row.uuid)) {
+      throw new Error(`UNIQUE constraint failed: ${this.table}.uuid`);
+    }
+    rows.set(row.uuid, copyRow(row));
+  }
+
+  async update(row: DocumentRow, expectedVersion: number): Promise<boolean> {
+    const rows = this.database.table(this.table);
+    const current = rows.get(row.uuid);
+    if (!current || current.version !== expectedVersion) return false;
+    rows.set(row.uuid, copyRow(row));
+    return true;
+  }
+
+  async upsert(row: DocumentRow): Promise<void> {
+    this.database.table(this.table).set(row.uuid, copyRow(row));
   }
 
   async remove(uuid: string): Promise<void> {
@@ -61,6 +104,25 @@ export class FakeDocumentStore implements DocumentStore {
 
   async list(): Promise<DocumentRow[]> {
     return [...this.database.table(this.table).values()];
+  }
+
+  hasColumn(name: string): boolean {
+    return this.columnNames.includes(name);
+  }
+
+  async selectBy(column: string, value: ColumnValue): Promise<DocumentRow[]> {
+    return this.selectBySync(column, value);
+  }
+
+  selectBySync(column: string, value: ColumnValue): DocumentRow[] {
+    if (!this.hasColumn(column)) throw new Error(`unknown column: ${column}`);
+    return [...this.database.table(this.table).values()].filter(
+      (row) => row.columns[column] === value,
+    );
+  }
+
+  inTransaction(): boolean {
+    return this.database.inTransaction();
   }
 
   transaction<T>(work: () => Promise<T>): Promise<T> {

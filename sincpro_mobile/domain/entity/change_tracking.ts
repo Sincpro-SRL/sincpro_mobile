@@ -11,22 +11,31 @@ export class EntityUpdated extends DomainEvent {
   public changes: Record<string, { from: string; to: string }> = {};
 }
 
-export function fieldSnapshot(entity: Entity): Record<string, string> {
+export function fieldSnapshot(
+  entity: Entity,
+  seen: Set<object> = new Set(),
+): Record<string, string> {
+  seen.add(entity);
   const snapshot: Record<string, string> = {};
   for (const key of Object.keys(entity)) {
     if (key.startsWith("_") || SKIPPED.has(key)) continue;
     const value = (entity as unknown as Record<string, unknown>)[key];
     if (typeof value === "function") continue;
-    snapshot[key] = printed(value);
+    snapshot[key] = printed(value, seen);
   }
   return snapshot;
 }
 
-function printed(value: unknown): string {
+function printed(value: unknown, seen: Set<object>): string {
   const held = heldEntities(value);
-  if (held.length > 0 || Array.isArray(value)) {
-    return held.map((one) => one.uuid).join(",");
+  if (held.length > 0) {
+    return JSON.stringify(
+      held.map((one) =>
+        seen.has(one) ? { uuid: one.uuid } : fieldSnapshot(one as Entity, seen),
+      ),
+    );
   }
+  if (Array.isArray(value)) return value.length === 0 ? "" : JSON.stringify(value);
   if (value === undefined) return "";
   return JSON.stringify(value);
 }

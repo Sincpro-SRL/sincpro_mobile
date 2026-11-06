@@ -69,9 +69,13 @@ function withDBSync<T>(fn: (db: SQLiteDatabase) => T): T {
 }
 
 export const DBCursor = {
+  inTransaction(): boolean {
+    return currentTx !== null;
+  },
+
   async transaction<T>(work: () => Promise<T>): Promise<T> {
-    if (currentTx) return work();
-    return withDB(async (db) => {
+    return dbLock.runExclusive(async () => {
+      const db = await getDatabase();
       let result!: T;
       await db.withTransactionAsync(async () => {
         currentTx = db;
