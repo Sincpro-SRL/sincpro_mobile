@@ -2,7 +2,7 @@
 
 El estado de un agregado es el documento SQLite. El evento es el hecho que ese documento registró. El repositorio es quien escribe el documento, corre las reglas y, si el evento es de integración, lo deja en la cola. No es event sourcing: no se reconstruye el estado leyendo el log. No es un broker: los suscriptores corren en el mismo proceso.
 
-Un teléfono que ya tiene las tablas no necesita una migración para esta capa. La versión y los hijos viven dentro del JSON del documento.
+Un teléfono que ya tiene las tablas de eventos no las toca. El store crea la tabla del documento si no existe: `uuid`, `version`, `data` y las columnas declaradas. No hay registro de migraciones. El padre guarda los ids de cada `@relation`; la fila del hijo está en su tabla.
 
 ## Piezas
 
@@ -21,7 +21,7 @@ Un teléfono que ya tiene las tablas no necesita una migración para esta capa. 
 | `Hook`                | `domain/repositories/hooks.ts`                   | Qué corre el repositorio alrededor de leer, guardar y borrar                        |
 | `IRepository`         | `domain/repositories/repository.ts`              | El puerto: guardar, upsert, borrar, publicar, leer                                  |
 | `DocumentRepository`  | `adapters/repositories/document.repository.ts`   | Ese puerto sobre un `DocumentStore`                                                 |
-| `SqliteDocumentStore` | `adapters/repositories/sqlite_document_store.ts` | La fila real: `uuid`, `data`, columnas declaradas                                   |
+| `SqliteDocumentStore` | `adapters/repositories/sqlite_document_store.ts` | La fila real: `uuid`, `version`, `data`, columnas declaradas                        |
 | `Outbox`              | `domain/repositories/document_store.ts`          | `save` del evento y `schedule` de la cola                                           |
 
 `StoreMode.LOCAL` guarda el documento y no encola. `StoreMode.RELAY` guarda el documento y deja cada `IntegrationEvent` en el outbox, dentro de la misma transacción.
@@ -75,7 +75,9 @@ flowchart TB
 
 ## Guardar
 
-`save` es el camino completo. `upsert` reconcilia una fila que vino de afuera: no compara versión, no corre checks, no cae a los hijos y no emite `entity.updated`. Sí corre `before_save` y `after_save`.
+`save` es el camino completo. `upsert` reconcilia una fila que vino de afuera: no compara versión, no corre checks y no emite `entity.updated`. Sí corre `before_save`, `after_save` y la misma `RelationCascade`, llamando `upsert` en el hijo.
+
+Un `save`, `upsert` o `remove` abre una sola transacción para todos los documentos de esa llamada, padre e hijos. Si el segundo falla, no queda el primero. Cada llamada tiene su propia sesión: lo que se revierte, lo que se entrega y lo que ya se está guardando no se mezclan con otra llamada. Dos guardados del mismo proceso se esperan en el store. Un hook no puede volver a escribir por el repositorio que lo está corriendo, ni abrir otra escritura mientras esa transacción sigue adentro de un hook.
 
 ```mermaid
 sequenceDiagram
@@ -87,40 +89,40 @@ sequenceDiagram
   participant Box as Outbox
 
   App->>Repo: save(entity)
-  Repo->>Repo: checks del agregado y de cada @relation
   Repo->>Hook: before_save
   Repo->>Hook: before_create o before_update
+  Repo->>Repo: checks del agregado y de cada @relation
   Repo->>Child: según RelationCascade, guarda, actualiza o borra
   Repo->>Repo: recordChanges, si hay snapshot
-  Repo->>DB: version esperada, si no upsert
+  Repo->>DB: UPDATE ... WHERE version = esperada, si no upsert
   alt la fila cambió
     Repo-->>App: StaleAggregate
   else sigue
-    Repo->>DB: version + 1 y el JSON
+    Repo->>DB: version + 1 y el JSON, relaciones como ids
     Repo->>Box: IntegrationEvent, si hay outbox
     Repo->>Hook: after_create o after_update
     Repo->>Hook: after_save
-    Repo->>Box: schedule, si deliver
+    Repo->>Box: schedule, después del commit, si deliver
   end
 ```
 
-Si `after_save` lanza, la transacción deshace la fila y el repositorio devuelve al objeto su `version`, sus tiempos y sus eventos. Un reintento no queda viejo ni pierde el hecho.
-
-Un hook no puede volver a escribir por el mismo repositorio. Eso corta el ciclo de guardar dentro de `before_save`.
+Si `after_save` lanza, la transacción deshace la fila del padre y la de los hijos, y el repositorio devuelve a cada objeto su `version`, sus tiempos, sus eventos y sus `eventIds`. Un reintento no queda viejo ni pierde el hecho.
 
 ## Leer
 
-`findById` hidrata y corre `after_read`. `findByIds`, `findAll` y `findByCriteria` hidratan cada fila (`after_read`) y después corren `after_search` una vez con la página. El filtro de `findByCriteria` corre en memoria sobre los documentos ya leídos. No hay compilador SQL.
+`findById` hidrata y corre `after_read`. `findByIds`, `findAll` y `findByCriteria` hidratan cada fila (`after_read`) y después corren `after_search` una vez con la página. El filtro de `findByCriteria` corre en memoria sobre los documentos ya leídos. No hay compilador SQL. `remoteId` y `remoteState` sí salen por columna cuando el store las tiene: `sqliteDocuments` las declara si la entidad es `RemoteEntity`.
 
-La hidratación reconstruye cada `@relation` desde el JSON anidado, anota los ids que el padre tenía y, si el agregado sigue cambios, toma el snapshot. Un `after_read` que rellena un campo entra en ese snapshot: no sale como `entity.updated` en el próximo guardado.
+La hidratación de una `@relation` lee los ids del documento y carga esas filas en el repositorio del hijo. Un JSON viejo que todavía trae el hijo embebido también se acepta. Después anota los ids que el padre tenía y, si el agregado sigue cambios, toma el snapshot. Un `after_read` que rellena un campo entra en ese snapshot: no sale como `entity.updated` en el próximo guardado.
 
-Una fila vieja sin `version` se lee como versión 1.
+`findByIdSync` y `findByIdsSync` existen para `@mapped`. No corren hooks: un getter no puede esperar.
+
+La versión que manda es la columna. Una fila vieja sin `version` se lee como versión 1.
 
 ## Eventos
 
 `record` nombra la clase una vez y deduplica por el mismo payload de negocio. El hecho queda en el agregado con `entityType`, `aggregateId`, `sequence` y la cadena de correlación.
 
-En el guardado, `releaseDeliverable` saca los `IntegrationEvent` y deja los `DomainEvent`.
+En el guardado, `releaseDeliverable` saca los `IntegrationEvent` y deja los `DomainEvent`. Los ids que salieron también salen de `eventIds`, así el documento no acumula cada hecho ya entregado. En `LOCAL` sin outbox esos hechos vuelven al agregado y sus ids también.
 
 | Modo                               | Qué pasa con el IntegrationEvent                                                                     |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -133,7 +135,7 @@ En el guardado, `releaseDeliverable` saca los `IntegrationEvent` y deja los `Dom
 
 ## Versión
 
-`version === 0` significa que esa instancia nunca se persistió (`isNew`). El guardado compara contra la fila: si no hay fila, espera 0; si hay fila, espera el número guardado. Si no coincide, `StaleAggregate`. El número nuevo es el de la fila más uno.
+`version === 0` significa que esa instancia nunca se persistió (`isNew`). El guardado compara contra la columna `version`: si no hay fila, espera 0 e inserta; si hay fila, hace `UPDATE ... WHERE uuid = ? AND version = ?`. Si no cambia ninguna fila, `StaleAggregate`. El número nuevo es el de la fila más uno. `INSERT OR REPLACE` no se usa: reemplazar la fila borra y vuelve a crear, y dos lectores pueden ganar los dos.
 
 El padre se escribe después de los hijos. Un cambio en una línea mueve la versión del pedido, así que dos lectores del mismo pedido no pueden guardar los dos.
 
@@ -155,7 +157,7 @@ flowchart LR
   order -->|"@mapped customer<br/>solo guarda customerId"| customer
 ```
 
-`@relation` está en `domain/entity/relations.ts`. La otra entidad es parte de esta: tiene fila propia y también va dentro del JSON del padre. Al leer el padre, sale de ese JSON. El hijo necesita su `DocumentRepository` registrado.
+`@relation` está en `domain/entity/relations.ts`. La otra entidad es parte de esta y tiene fila propia. El documento del padre guarda solo sus ids. Al leer el padre, esos ids se cargan de la tabla del hijo: la fila del hijo es la copia que manda. El hijo necesita su `DocumentRepository` registrado. El diff de `entity.updated` incluye los campos del hijo, no solo el id.
 
 El segundo argumento es `RelationCascade`. Si no se pasa, es `SAVE_AND_REMOVE`: guarda y borra. El editor autocompleta el resto.
 
@@ -200,7 +202,7 @@ No hay archivar. Borrar es `remove`.
 
 ## Checks y valores
 
-`@check` marca el método y la función que nombra los campos que mira. En un guardado corren todas las reglas del agregado y las de cada `@relation`, antes de escribir. El fallo es `ChecksFailed`, con la ruta (`lines.0`) cuando la regla es del hijo. Una regla que lee otro agregado no es un check: es un `before_save`, que puede usar otro repositorio.
+`@check` marca el método y la función que nombra los campos que mira. En un guardado corren todas las reglas del agregado y las de cada `@relation` después de `before_save` y de `before_create` o `before_update`, y antes de escribir. Un hook puede llenar el campo que la regla exige. El fallo es `ChecksFailed`, con la ruta (`lines.0`) cuando la regla es del hijo. Una regla que lee otro agregado no es un check: es un `before_save`, que puede leer otro repositorio.
 
 `checkWarnings(entity, touched)` corre solo las reglas cuyos campos se tocaron. Sirve mientras se edita, antes de guardar.
 

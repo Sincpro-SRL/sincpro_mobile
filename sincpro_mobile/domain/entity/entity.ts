@@ -168,11 +168,18 @@ export class Entity extends ValueObject implements IEntity {
     }
     this._recordedEvents = kept;
     if (kept.length === 0) this._correlationId = null;
+    if (released.length > 0) {
+      const gone = new Set(released.map((event) => event.uuid));
+      this.eventIds = this.eventIds.filter((id) => !gone.has(id));
+    }
     return released;
   }
 
   public restoreRecorded(events: readonly DomainEvent[]): void {
-    this._recordedEvents.push(...events);
+    for (const event of events) {
+      this._recordedEvents.push(event);
+      if (!this.eventIds.includes(event.uuid)) this.eventIds.push(event.uuid);
+    }
   }
 
   public replaceRecorded(events: readonly DomainEvent[]): void {

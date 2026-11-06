@@ -2,9 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DocumentRepository } from "../../sincpro_mobile/adapters/repositories/document.repository.ts";
-import { withChangeTracking } from "../../sincpro_mobile/domain/entity/change_tracking.ts";
+import {
+  EntityUpdated,
+  withChangeTracking,
+} from "../../sincpro_mobile/domain/entity/change_tracking.ts";
 import { check } from "../../sincpro_mobile/domain/entity/checks.ts";
-import { Entity } from "../../sincpro_mobile/domain/entity/entity.ts";
+import {
+  Entity,
+  ERemoteState,
+  RemoteEntity,
+} from "../../sincpro_mobile/domain/entity/entity.ts";
 import { relation, RelationCascade } from "../../sincpro_mobile/domain/entity/relations.ts";
 import { valueRule } from "../../sincpro_mobile/domain/entity/values.ts";
 import { IntegrationEvent } from "../../sincpro_mobile/domain/events/integration_event.ts";
@@ -82,8 +89,9 @@ class FakeOutbox implements Outbox {
   constructor(private readonly database: FakeDocumentDatabase) {}
 
   async save(event: IntegrationEvent): Promise<void> {
-    await new FakeDocumentStore(this.database, "events").write({
+    await new FakeDocumentStore(this.database, "events").upsert({
       uuid: event.uuid,
+      version: 1,
       data: event.asJSON(),
       columns: {},
     });
@@ -243,9 +251,11 @@ test("a relay save stores the event and schedules one delivery", async () => {
   const repository = notes(database, { mode: StoreMode.RELAY, outbox });
   const note = Note.make({ title: "go" });
   note.record(Placed, { title: "go" });
+  const eventId = note.eventIds[0];
   await repository.save(note, { deliver: false });
   assert.equal(outbox.scheduled, 0);
   assert.equal(note.recordedEvents().length, 0);
+  assert.equal(note.eventIds.includes(eventId), false);
   assert.equal((await new FakeDocumentStore(database, "events").list()).length, 1);
 
   repository.kick();
@@ -257,8 +267,10 @@ test("local save leaves a deliverable event on the aggregate when there is no ou
   const repository = notes(new FakeDocumentDatabase(), { mode: StoreMode.LOCAL });
   const note = Note.make();
   note.record(Placed, { title: "stay" });
+  const eventId = note.eventIds[0];
   await repository.save(note);
   assert.equal(note.recordedEvents().length, 1);
+  assert.equal(note.eventIds.includes(eventId), true);
 });
 
 test("publish is the explicit door", async () => {
@@ -448,4 +460,185 @@ test("a relation that only removes deletes the line with the order and does not 
 
   await orders.remove(order);
   assert.equal(await lines.findById(line.uuid), null);
+});
+
+test("one save of two notes rolls both back when the second fails", async () => {
+  DocumentRepository.reset();
+  let calls = 0;
+  const hooks = new Hooks().on(Note, {
+    after_save() {
+      calls += 1;
+      if (calls === 2) throw new DomainValidationError("no");
+    },
+  });
+  const repository = notes(new FakeDocumentDatabase(), { hooks });
+  const first = Note.make({ title: "a" });
+  const second = Note.make({ title: "b" });
+  await assert.rejects(() => repository.save([first, second]), DomainValidationError);
+  assert.equal(first.version, 0);
+  assert.equal(second.version, 0);
+  assert.equal((await repository.findAll()).length, 0);
+});
+
+test("two saves of different notes both persist", async () => {
+  DocumentRepository.reset();
+  const repository = notes(new FakeDocumentDatabase());
+  const first = Note.make({ title: "a" });
+  const second = Note.make({ title: "b" });
+  await Promise.all([repository.save(first), repository.save(second)]);
+  assert.equal(first.version, 1);
+  assert.equal(second.version, 1);
+  assert.equal((await repository.findAll()).length, 2);
+});
+
+test("a second repository for the same entity is refused", () => {
+  DocumentRepository.reset();
+  const database = new FakeDocumentDatabase();
+  notes(database);
+  assert.throws(() => notes(database), DomainAppError);
+});
+
+test("before_save can satisfy a check", async () => {
+  DocumentRepository.reset();
+  const hooks = new Hooks().on(Project, {
+    before_save(project: Project) {
+      project.deadline = "friday";
+    },
+  });
+  const repository = new DocumentRepository(
+    Project,
+    new FakeDocumentStore(new FakeDocumentDatabase(), "projects"),
+    { hooks },
+  );
+  const project = Project.make({ state: "confirmed" });
+  await repository.save(project);
+  assert.equal(project.version, 1);
+  assert.equal((await repository.findById(project.uuid))?.deadline, "friday");
+});
+
+test("the parent stores the line id and reads the line row", async () => {
+  DocumentRepository.reset();
+  const database = new FakeDocumentDatabase();
+  const lines = new DocumentRepository(Line, new FakeDocumentStore(database, "lines"));
+  const orders = new DocumentRepository(Order, new FakeDocumentStore(database, "orders"));
+  const line = Line.make({ amount: 5 });
+  const order = Order.make();
+  order.lines = [line];
+  await orders.save(order);
+
+  const row = await new FakeDocumentStore(database, "orders").read(order.uuid);
+  const stored = JSON.parse(row!.data) as { lines: unknown };
+  assert.deepEqual(stored.lines, [line.uuid]);
+
+  const edited = await lines.findById(line.uuid);
+  edited!.amount = 9;
+  await lines.save(edited!);
+  const loaded = await orders.findById(order.uuid);
+  assert.equal(loaded?.lines[0].amount, 9);
+});
+
+test("upsert cascades to the line", async () => {
+  DocumentRepository.reset();
+  const database = new FakeDocumentDatabase();
+  const lines = new DocumentRepository(Line, new FakeDocumentStore(database, "lines"));
+  const orders = new DocumentRepository(Order, new FakeDocumentStore(database, "orders"));
+  const line = Line.make({ amount: 1 });
+  const order = Order.make();
+  order.lines = [line];
+  await orders.save(order);
+  line.amount = 7;
+  await orders.upsert(order);
+  assert.equal((await lines.findById(line.uuid))?.amount, 7);
+});
+
+test("a failed order save rolls the line back too", async () => {
+  DocumentRepository.reset();
+  const database = new FakeDocumentDatabase();
+  const hooks = new Hooks().on(Order, {
+    after_save() {
+      throw new DomainValidationError("no");
+    },
+  });
+  const lines = new DocumentRepository(Line, new FakeDocumentStore(database, "lines"));
+  const orders = new DocumentRepository(Order, new FakeDocumentStore(database, "orders"), {
+    hooks,
+  });
+  const line = Line.make({ amount: 5 });
+  const order = Order.make();
+  order.lines = [line];
+  await assert.rejects(() => orders.save(order), DomainValidationError);
+  assert.equal(order.version, 0);
+  assert.equal(line.version, 0);
+  assert.equal(await lines.findById(line.uuid), null);
+});
+
+class TrackedOrder extends withChangeTracking(Order) {
+  static make(): TrackedOrder {
+    return TrackedOrder.obj<TrackedOrder>();
+  }
+}
+
+test("a line change is part of the order diff", async () => {
+  DocumentRepository.reset();
+  const database = new FakeDocumentDatabase();
+  new DocumentRepository(Line, new FakeDocumentStore(database, "lines"));
+  const orders = new DocumentRepository(
+    TrackedOrder,
+    new FakeDocumentStore(database, "orders"),
+  );
+  const order = TrackedOrder.make();
+  order.lines = [Line.make({ amount: 1 })];
+  await orders.save(order);
+
+  const loaded = await orders.findById(order.uuid);
+  loaded!.lines[0].amount = 9;
+  await orders.save(loaded!);
+  const event = loaded!.pullEvents()[0] as EntityUpdated;
+  assert.equal(event.name, "entity.updated");
+  assert.equal(event.changes.lines.to.includes("9"), true);
+});
+
+class Product extends RemoteEntity {
+  static make(data?: Partial<Product>): Product {
+    return Product.obj<Product>(data);
+  }
+
+  name = "";
+}
+
+test("findByRemoteId reads the remoteId column", async () => {
+  DocumentRepository.reset();
+  const database = new FakeDocumentDatabase();
+  const products = new DocumentRepository(
+    Product,
+    new FakeDocumentStore(database, "products", ["remoteId", "remoteState"]),
+    {
+      columns: (product) => ({
+        remoteId: product.remoteId ?? null,
+        remoteState: product.remoteState,
+      }),
+    },
+  );
+  const product = Product.make({ name: "milk" });
+  product.remoteId = 42;
+  await products.save(product);
+  assert.equal((await products.findByRemoteId(42))?.name, "milk");
+  assert.equal((await products.findByRemoteState(ERemoteState.PENDING)).length, 1);
+  assert.equal(products.findByRemoteIdSync(42)?.name, "milk");
+});
+
+test("a synchronous read skips hooks", async () => {
+  DocumentRepository.reset();
+  const seen: string[] = [];
+  const hooks = new Hooks().on(Note, {
+    after_read(note) {
+      seen.push(note.title);
+    },
+  });
+  const repository = notes(new FakeDocumentDatabase(), { hooks });
+  const note = Note.make({ title: "sync" });
+  await repository.save(note);
+  seen.length = 0;
+  assert.equal(repository.findByIdSync(note.uuid)?.title, "sync");
+  assert.deepEqual(seen, []);
 });

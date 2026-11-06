@@ -8,52 +8,182 @@ import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export class SqliteDocumentStore implements DocumentStore {
+  private readonly integerColumns: ReadonlySet<string>;
+  private ready: Promise<void> | null = null;
+  private syncReady = false;
+
   constructor(
     private readonly table: string,
     private readonly columnNames: readonly string[] = [],
+    integerColumns: readonly string[] = [],
   ) {
     assertIdentifier(table);
     for (const name of columnNames) assertIdentifier(name);
+    this.integerColumns = new Set(integerColumns);
   }
 
   async read(uuid: string): Promise<DocumentRow | null> {
-    const selected = ["uuid", "data", ...this.columnNames].join(", ");
+    await this.ensure();
     const row = await DBCursor.getFirstAsync<Record<string, ColumnValue>>(
-      `SELECT ${selected} FROM ${this.table} WHERE uuid = ?`,
+      `SELECT ${this.selected()} FROM ${this.table} WHERE uuid = ?`,
       uuid,
     );
     return row ? toDocument(row, this.columnNames) : null;
   }
 
-  async write(row: DocumentRow): Promise<void> {
-    const names = ["uuid", "data", ...this.columnNames];
-    const placeholders = names.map(() => "?").join(", ");
-    const values = [
-      row.uuid,
+  readSync(uuid: string): DocumentRow | null {
+    this.ensureSync();
+    const row = DBCursor.getFirstSync<Record<string, ColumnValue>>(
+      `SELECT ${this.selected()} FROM ${this.table} WHERE uuid = ?`,
+      uuid,
+    );
+    return row ? toDocument(row, this.columnNames) : null;
+  }
+
+  async insert(row: DocumentRow): Promise<void> {
+    await this.ensure();
+    const names = this.names();
+    await DBCursor.mutateDatabase(
+      `INSERT INTO ${this.table} (${names.join(", ")}) VALUES (${placeholders(names.length)})`,
+      ...this.values(row),
+    );
+  }
+
+  async update(row: DocumentRow, expectedVersion: number): Promise<boolean> {
+    await this.ensure();
+    const assignments = ["version", "data", ...this.columnNames]
+      .map((name) => `${name} = ?`)
+      .join(", ");
+    const result = await DBCursor.mutateDatabase(
+      `UPDATE ${this.table} SET ${assignments} WHERE uuid = ? AND version = ?`,
+      row.version,
       row.data,
       ...this.columnNames.map((name) => row.columns[name] ?? null),
-    ];
+      row.uuid,
+      expectedVersion,
+    );
+    return result.changes === 1;
+  }
+
+  async upsert(row: DocumentRow): Promise<void> {
+    await this.ensure();
+    const names = this.names();
+    const assignments = ["version", "data", ...this.columnNames]
+      .map((name) => `${name} = excluded.${name}`)
+      .join(", ");
     await DBCursor.mutateDatabase(
-      `INSERT OR REPLACE INTO ${this.table} (${names.join(", ")}) VALUES (${placeholders})`,
-      ...values,
+      `INSERT INTO ${this.table} (${names.join(", ")}) VALUES (${placeholders(names.length)}) ON CONFLICT(uuid) DO UPDATE SET ${assignments}`,
+      ...this.values(row),
     );
   }
 
   async remove(uuid: string): Promise<void> {
+    await this.ensure();
     await DBCursor.mutateDatabase(`DELETE FROM ${this.table} WHERE uuid = ?`, uuid);
   }
 
   async list(): Promise<DocumentRow[]> {
-    const selected = ["uuid", "data", ...this.columnNames].join(", ");
+    await this.ensure();
     const rows = await DBCursor.getAllAsync<Record<string, ColumnValue>>(
-      `SELECT ${selected} FROM ${this.table}`,
+      `SELECT ${this.selected()} FROM ${this.table}`,
     );
     return rows.map((row) => toDocument(row, this.columnNames));
+  }
+
+  hasColumn(name: string): boolean {
+    return this.columnNames.includes(name);
+  }
+
+  async selectBy(column: string, value: ColumnValue): Promise<DocumentRow[]> {
+    this.assertColumn(column);
+    await this.ensure();
+    const rows = await DBCursor.getAllAsync<Record<string, ColumnValue>>(
+      `SELECT ${this.selected()} FROM ${this.table} WHERE ${column} = ?`,
+      value,
+    );
+    return rows.map((row) => toDocument(row, this.columnNames));
+  }
+
+  selectBySync(column: string, value: ColumnValue): DocumentRow[] {
+    this.assertColumn(column);
+    this.ensureSync();
+    const rows = DBCursor.getAllSync<Record<string, ColumnValue>>(
+      `SELECT ${this.selected()} FROM ${this.table} WHERE ${column} = ?`,
+      value,
+    );
+    return rows.map((row) => toDocument(row, this.columnNames));
+  }
+
+  inTransaction(): boolean {
+    return DBCursor.inTransaction();
   }
 
   transaction<T>(work: () => Promise<T>): Promise<T> {
     return DBCursor.transaction(work);
   }
+
+  private names(): string[] {
+    return ["uuid", "version", "data", ...this.columnNames];
+  }
+
+  private selected(): string {
+    return this.names().join(", ");
+  }
+
+  private values(row: DocumentRow): ColumnValue[] {
+    return [
+      row.uuid,
+      row.version,
+      row.data,
+      ...this.columnNames.map((name) => row.columns[name] ?? null),
+    ];
+  }
+
+  private definition(): string {
+    const extras = this.columnNames
+      .map((name) => `${name} ${this.integerColumns.has(name) ? "INTEGER" : "TEXT"}`)
+      .join(", ");
+    const tail = extras ? `, ${extras}` : "";
+    return `CREATE TABLE IF NOT EXISTS ${this.table} (uuid TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL${tail})`;
+  }
+
+  private ensure(): Promise<void> {
+    if (!this.ready) {
+      this.ready = this.create().catch((error) => {
+        this.ready = null;
+        throw error;
+      });
+    }
+    return this.ready;
+  }
+
+  private async create(): Promise<void> {
+    await DBCursor.execAsync(this.definition());
+    for (const name of this.columnNames) {
+      await DBCursor.execAsync(
+        `CREATE INDEX IF NOT EXISTS idx_${this.table}_${name} ON ${this.table} (${name})`,
+      );
+    }
+  }
+
+  private ensureSync(): void {
+    if (this.syncReady) return;
+    DBCursor.mutateDatabaseSync(this.definition());
+    for (const name of this.columnNames) {
+      DBCursor.mutateDatabaseSync(
+        `CREATE INDEX IF NOT EXISTS idx_${this.table}_${name} ON ${this.table} (${name})`,
+      );
+    }
+    this.syncReady = true;
+  }
+
+  private assertColumn(name: string): void {
+    if (!this.hasColumn(name)) throw new Error(`unknown column: ${name}`);
+  }
+}
+
+function placeholders(count: number): string {
+  return Array.from({ length: count }, () => "?").join(", ");
 }
 
 function toDocument(
@@ -62,7 +192,12 @@ function toDocument(
 ): DocumentRow {
   const columns: Record<string, ColumnValue> = {};
   for (const name of columnNames) columns[name] = row[name] ?? null;
-  return { uuid: String(row.uuid), data: String(row.data), columns };
+  return {
+    uuid: String(row.uuid),
+    version: Number(row.version),
+    data: String(row.data),
+    columns,
+  };
 }
 
 function assertIdentifier(name: string): void {
