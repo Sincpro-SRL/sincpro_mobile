@@ -19,7 +19,7 @@ const STUBS = {
   "expo-modules-core": path.join(STUBS_DIR, "__empty__.cjs"),
   "expo-sqlite": path.join(STUBS_DIR, "expo-sqlite.cjs"),
   "expo-network": path.join(STUBS_DIR, "__empty__.cjs"),
-  "expo-localization": path.join(STUBS_DIR, "__empty__.cjs"),
+  "expo-localization": path.join(STUBS_DIR, "expo-localization.cjs"),
   "expo-linking": path.join(STUBS_DIR, "__empty__.cjs"),
   "expo-location": path.join(STUBS_DIR, "__empty__.cjs"),
   "expo-file-system": path.join(STUBS_DIR, "__empty__.cjs"),

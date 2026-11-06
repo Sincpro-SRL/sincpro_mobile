@@ -8,10 +8,14 @@
 import { randomBytes } from "node:crypto";
 import { mock } from "node:test";
 
-// expo-crypto: used by generateUUID (database/utils.ts → uuidv7 + getRandomBytes)
+// expo-crypto: fills crypto.getRandomValues when the engine has none (generateUUID).
 mock.module("expo-crypto", {
   namedExports: {
     getRandomBytes: (n) => randomBytes(n),
+    getRandomValues: (typedArray) => {
+      typedArray.set(randomBytes(typedArray.byteLength));
+      return typedArray;
+    },
     randomUUID: () => crypto.randomUUID(),
     digestStringAsync: async () => "",
     CryptoDigestAlgorithm: { SHA256: "SHA256", SHA1: "SHA1", MD5: "MD5" },
@@ -32,11 +36,10 @@ mock.module("expo-sqlite", {
   },
 });
 
-// expo-network, expo-localization, expo-linking, expo-location, expo-file-system
+// expo-network, expo-linking, expo-location, expo-file-system
 // — imported transitively; stub them so module resolution succeeds.
 for (const pkg of [
   "expo-network",
-  "expo-localization",
   "expo-linking",
   "expo-location",
   "expo-file-system",

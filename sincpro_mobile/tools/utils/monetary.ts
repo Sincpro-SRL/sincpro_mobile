@@ -1,4 +1,4 @@
-import { Big } from "big.js";
+import { Decimal } from "@sincpro/client-framework";
 
 export function parseToMonetaryNumber(input?: string | number | null): number {
   if (input == null) return 0;
@@ -7,20 +7,18 @@ export function parseToMonetaryNumber(input?: string | number | null): number {
 
   const cleaned = s.replace(/[^0-9.-]+/g, "");
   try {
-    return Number(new Big(cleaned).toString());
+    return Number(new Decimal(cleaned).toString());
   } catch {
     return 0;
   }
 }
 
 export function formatTwoDecimals(value?: number | string | null): string {
-  const raw = parseToMonetaryNumber(value);
-  const rounded = new Big(raw).toFixed(2);
-  const num = Number(rounded);
+  const rounded = Number(new Decimal(parseToMonetaryNumber(value)).rounded(2).toString());
   return new Intl.NumberFormat("de-DE", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(num);
+  }).format(rounded);
 }
 
 export function calculateDiscountedTotal(total: number, discount: number): number {
@@ -28,6 +26,12 @@ export function calculateDiscountedTotal(total: number, discount: number): numbe
     return 0;
   }
 
-  const result = (parseToMonetaryNumber(total) * discount) / 100;
-  return parseToMonetaryNumber(result);
+  try {
+    const amount = new Decimal(parseToMonetaryNumber(total))
+      .times(discount)
+      .dividedBy(100, 8);
+    return Number(amount.toString());
+  } catch {
+    return 0;
+  }
 }

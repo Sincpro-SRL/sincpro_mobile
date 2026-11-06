@@ -1,3 +1,4 @@
+import { dayOf, isDay } from "@sincpro/client-framework";
 import dayjs from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
@@ -67,7 +68,7 @@ export function formatDate(
 
   try {
     const rawStr = typeof input === "string" ? input : input.toISOString();
-    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(rawStr);
+    const isDateOnly = typeof input === "string" && isDay(input);
 
     // Auto-detect showTime si no se pasa explicitamente
     const effectiveShowTime =
@@ -124,10 +125,10 @@ export function formatDateWithDefaultTimezone(
 export function getCurrentDateInTimezone(timezone?: string | null): string {
   const effectiveTimezone = timezone || DEFAULT_TIMEZONE;
   try {
-    return dayjs().tz(effectiveTimezone).format("YYYY-MM-DD");
+    return dayOf(new Date().toISOString(), effectiveTimezone) ?? dayjs().format("YYYY-MM-DD");
   } catch (error) {
     console.warn("Error obteniendo fecha actual en timezone:", error);
-    return dayjs().format("YYYY-MM-DD"); // Fallback to local
+    return dayjs().format("YYYY-MM-DD");
   }
 }
 

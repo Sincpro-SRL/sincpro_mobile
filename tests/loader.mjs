@@ -18,12 +18,11 @@ const ROOT = path.resolve(fileURLToPath(import.meta.url), "../..");
 const STUBS_DIR = path.join(ROOT, "tests/__stubs__");
 
 /** Modules that have a local stub in tests/__stubs__ */
-const STUBBED = new Set(["expo-crypto", "expo-sqlite"]);
+const STUBBED = new Set(["expo-crypto", "expo-sqlite", "expo-localization"]);
 
 /** Modules that should silently resolve to an empty stub (no stub file needed) */
 const EMPTY_STUBS = new Set([
   "expo-network",
-  "expo-localization",
   "expo-linking",
   "expo-location",
   "expo-file-system",

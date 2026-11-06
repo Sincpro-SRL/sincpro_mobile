@@ -4,6 +4,16 @@ export function getRandomBytes(n: number): Uint8Array {
   return new Uint8Array(randomBytes(n));
 }
 
+export function getRandomValues<T extends ArrayBufferView>(typedArray: T): T {
+  const bytes = new Uint8Array(
+    typedArray.buffer,
+    typedArray.byteOffset,
+    typedArray.byteLength,
+  );
+  bytes.set(randomBytes(typedArray.byteLength));
+  return typedArray;
+}
+
 export function randomUUID(): string {
   return crypto.randomUUID();
 }
