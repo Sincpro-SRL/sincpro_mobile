@@ -15,6 +15,16 @@ component + sequence diagrams and the rationale behind each decision.
   consumer app: adapters, services (use cases / workflows), ui, and subscribers.
 - [**prd/PRD_01_feature-y-application-service.md**](prd/PRD_01_feature-y-application-service.md)
   — `Feature` and `ApplicationService`: a public method is a span, with no decorator.
+- [**prd/PRD_02_cadena-del-evento.md**](prd/PRD_02_cadena-del-evento.md)
+  — correlation, causation and the queue: the first cut of SP-2026-1065.
+- [**prd/PRD_03_orm-y-base-de-datos.md**](prd/PRD_03_orm-y-base-de-datos.md)
+  — SP-2026-1072. The document store: one unit of work, named migrations,
+  criteria on promoted columns.
+- [**prd/PRD_04_comunicacion-y-adapters.md**](prd/PRD_04_comunicacion-y-adapters.md)
+  — SP-2026-1068. The Odoo port, and a page download that commits with its fact.
+- [**prd/PRD_05_eventos-y-event-store.md**](prd/PRD_05_eventos-y-event-store.md)
+  — SP-2026-1065. The fact, the delivery and the chain, against the Python
+  framework.
 
 ## Reference
 
