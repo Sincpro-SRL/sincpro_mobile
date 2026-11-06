@@ -1,6 +1,7 @@
 import type { Span } from "@opentelemetry/api";
 import { ROOT_CONTEXT as OTEL_ROOT, SpanStatusCode, trace } from "@opentelemetry/api";
 import { _getContextManager } from "@sincpro/mobile/infrastructure/context_manager";
+import { EVENT_CHAIN_KEY, openChain } from "@sincpro/mobile/infrastructure/event_chain";
 import type {
   InterceptorHooks,
   MethodCall,
@@ -26,20 +27,22 @@ const _pushedMap = new WeakSet<MethodCall>();
 export function tracingHooks(tracerName: string): InterceptorHooks {
   return {
     before(call) {
+      const manager = _getContextManager();
+      let ctx = manager.active();
+      ctx = ctx.set(EVENT_CHAIN_KEY, openChain(ctx.get(EVENT_CHAIN_KEY)));
       try {
-        const manager = _getContextManager();
-        const frameworkCtx = manager.active();
-        const otelCtx = frameworkCtx.get(OTEL_CTX_KEY) ?? OTEL_ROOT;
+        const otelCtx = ctx.get(OTEL_CTX_KEY) ?? OTEL_ROOT;
         const spanName = call.className
           ? `${call.className}.${call.methodName}`
           : call.methodName;
         const span = trace.getTracer(tracerName).startSpan(spanName, undefined, otelCtx);
         _spanMap.set(call, span);
-        manager.push(frameworkCtx.set(OTEL_CTX_KEY, trace.setSpan(otelCtx, span)));
-        _pushedMap.add(call);
+        ctx = ctx.set(OTEL_CTX_KEY, trace.setSpan(otelCtx, span));
       } catch {
         _spanMap.delete(call);
       }
+      manager.push(ctx);
+      _pushedMap.add(call);
     },
 
     after(call) {

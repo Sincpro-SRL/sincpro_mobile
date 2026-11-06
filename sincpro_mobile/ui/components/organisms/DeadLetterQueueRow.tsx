@@ -1,4 +1,4 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
 import DeadLetterErrorBlock from "@sincpro/mobile/ui/components/molecules/DeadLetterErrorBlock";
 import { Display } from "@sincpro/mobile-ui/Display";
 import { Form } from "@sincpro/mobile-ui/Form";
@@ -9,8 +9,8 @@ import * as Clipboard from "expo-clipboard";
 import React, { useState } from "react";
 import { View } from "react-native";
 
-interface DeadLetterQueueRowProps extends IRowItemProps<DomainEvent> {
-  onRetry: (event: DomainEvent) => Promise<void> | void;
+interface DeadLetterQueueRowProps extends IRowItemProps<IntegrationEvent> {
+  onRetry: (event: IntegrationEvent) => Promise<void> | void;
 }
 
 function getAttemptsBadgeVariant(attempts: number): "warning" | "danger" {
@@ -27,7 +27,7 @@ function DeadLetterQueueRow({ item, onRetry }: DeadLetterQueueRowProps) {
     return null;
   }
 
-  const event = item as DomainEvent;
+  const event = item as IntegrationEvent;
 
   if (!event.name || !event.createdAt) {
     return null;

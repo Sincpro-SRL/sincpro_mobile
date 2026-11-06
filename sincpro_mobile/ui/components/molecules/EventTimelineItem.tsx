@@ -1,4 +1,4 @@
-import { DomainEvent, EEventStatus } from "@sincpro/mobile/domain/event_sourcing";
+import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
 import { Display } from "@sincpro/mobile-ui/Display";
 import CopyableText from "@sincpro/mobile-ui/Display/Display.CopyableText";
 import { useTheme } from "@sincpro/mobile-ui/theme";
@@ -28,7 +28,7 @@ function formatEventName(name: string): string {
 }
 
 interface EventTimelineItemProps {
-  event: DomainEvent;
+  event: IntegrationEvent;
   isLast?: boolean;
 }
 

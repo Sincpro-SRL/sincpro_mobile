@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { Entity } from "../../sincpro_mobile/domain/entity/entity.ts";
-import { DomainEvent } from "../../sincpro_mobile/domain/event_sourcing/domain_event.ts";
+import { IntegrationEvent } from "../../sincpro_mobile/domain/event_sourcing/integration_event.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal subclass — Entity has a protected constructor
@@ -14,13 +14,13 @@ class TestEntity extends Entity {
   }
 }
 
-class OrderEvent extends DomainEvent {
+class OrderEvent extends IntegrationEvent {
   public readonly name = "OrderEvent";
   public readonly label = "Order";
   public orderId: string = "";
 }
 
-class ShipEvent extends DomainEvent {
+class ShipEvent extends IntegrationEvent {
   public readonly name = "ShipEvent";
   public readonly label = "Ship";
   public address: string = "";
@@ -35,21 +35,23 @@ class ShipEvent extends DomainEvent {
 
 test("addDomainEvent: all events in one batch share the same correlationId", () => {
   const entity = TestEntity.make();
-  entity.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "a" });
-  entity.addDomainEvent<ShipEvent>(ShipEvent as any, { address: "123 St" });
+  entity.addDomainEvent(OrderEvent, { orderId: "a" });
+  entity.addDomainEvent(ShipEvent, { address: "123 St" });
 
   const events = entity.getDomainEvents();
   assert.equal(events.length, 2);
   const [e1, e2] = events;
   assert.ok(e1.correlationId !== null, "correlationId must be set");
   assert.equal(e1.correlationId, e2.correlationId, "batch must share one correlationId");
+  assert.equal(e1.causationId, null);
+  assert.equal(e1.entityType, "TestEntity");
 });
 
 test("addDomainEvent: sequence numbers are 1-based and monotonically increasing", () => {
   const entity = TestEntity.make();
-  entity.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "a" });
-  entity.addDomainEvent<ShipEvent>(ShipEvent as any, { address: "b" });
-  entity.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "c" });
+  entity.addDomainEvent(OrderEvent, { orderId: "a" });
+  entity.addDomainEvent(ShipEvent, { address: "b" });
+  entity.addDomainEvent(OrderEvent, { orderId: "c" });
 
   const events = entity.getDomainEvents();
   assert.deepEqual(
@@ -60,7 +62,7 @@ test("addDomainEvent: sequence numbers are 1-based and monotonically increasing"
 
 test("addDomainEvent: aggregateId equals the entity uuid", () => {
   const entity = TestEntity.make();
-  entity.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "x" });
+  entity.addDomainEvent(OrderEvent, { orderId: "x" });
 
   const [event] = entity.getDomainEvents();
   assert.equal(event.aggregateId, entity.uuid);
@@ -75,8 +77,8 @@ test("addDomainEvent: aggregateId equals the entity uuid", () => {
 
 test("addDomainEvent: duplicate business payload returns existing uuid and is not added", () => {
   const entity = TestEntity.make();
-  const id1 = entity.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "dup" });
-  const id2 = entity.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "dup" });
+  const id1 = entity.addDomainEvent(OrderEvent, { orderId: "dup" });
+  const id2 = entity.addDomainEvent(OrderEvent, { orderId: "dup" });
 
   assert.equal(id1, id2, "duplicate must return the original event uuid");
   assert.equal(entity.getDomainEvents().length, 1, "only one event must be stored");
@@ -84,8 +86,8 @@ test("addDomainEvent: duplicate business payload returns existing uuid and is no
 
 test("addDomainEvent: same event class with different payload is NOT a duplicate", () => {
   const entity = TestEntity.make();
-  entity.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "aaa" });
-  entity.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "bbb" });
+  entity.addDomainEvent(OrderEvent, { orderId: "aaa" });
+  entity.addDomainEvent(OrderEvent, { orderId: "bbb" });
   assert.equal(entity.getDomainEvents().length, 2);
 });
 
@@ -99,14 +101,14 @@ test("addDomainEvent: same event class with different payload is NOT a duplicate
 
 test("clearDomainEvents: next batch gets an independent correlationId", () => {
   const entity = TestEntity.make();
-  entity.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "first-batch" });
+  entity.addDomainEvent(OrderEvent, { orderId: "first-batch" });
   const [firstBatchEvent] = entity.getDomainEvents();
   const firstCorrelationId = firstBatchEvent.correlationId;
 
   entity.clearDomainEvents();
   assert.equal(entity.getDomainEvents().length, 0);
 
-  entity.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "second-batch" });
+  entity.addDomainEvent(OrderEvent, { orderId: "second-batch" });
   const [secondBatchEvent] = entity.getDomainEvents();
   assert.notEqual(
     secondBatchEvent.correlationId,
@@ -124,7 +126,7 @@ test("clearDomainEvents: next batch gets an independent correlationId", () => {
 
 test("getDomainEvents: returns clones — mutating a returned event does not affect entity", () => {
   const entity = TestEntity.make();
-  entity.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "abc" });
+  entity.addDomainEvent(OrderEvent, { orderId: "abc" });
 
   const [clone] = entity.getDomainEvents() as OrderEvent[];
   (clone as any).orderId = "MUTATED";
@@ -165,7 +167,7 @@ test("equals: null/undefined → false", () => {
 
 test("copyDomainEventsFrom: transplanted events carry the target entity uuid", () => {
   const source = TestEntity.make();
-  source.addDomainEvent<OrderEvent>(OrderEvent as any, { orderId: "from-source" });
+  source.addDomainEvent(OrderEvent, { orderId: "from-source" });
 
   const target = TestEntity.make();
   target.copyDomainEventsFrom(source);

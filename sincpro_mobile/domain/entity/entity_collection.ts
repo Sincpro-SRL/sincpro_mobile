@@ -3,9 +3,10 @@ import {
   rowsMatching,
 } from "@sincpro/mobile/domain/database/criteria";
 import {
-  DomainEvent,
   type DomainEventClass,
+  type EventData,
 } from "@sincpro/mobile/domain/event_sourcing/domain_event";
+import { type IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing/integration_event";
 import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
 import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers";
@@ -40,7 +41,7 @@ export class EntityCollection<T extends Entity> extends ValueObject {
   public uuid: string;
   public eventIds: string[] = [];
   private entities: T[] = [];
-  private _domainEventsV2: DomainEvent[] = [];
+  private _domainEventsV2: IntegrationEvent[] = [];
   private _correlationIdV2: string | null = null;
 
   constructor(entities: T[] = []) {
@@ -539,12 +540,24 @@ export class EntityCollection<T extends Entity> extends ValueObject {
   // V2 METHODS - DomainEvent class-based system
   // ============================================
 
-  addDomainEvent<E extends DomainEvent>(
-    EventClass: DomainEventClass<E>,
-    payload: Partial<E>,
+  addDomainEvent<C extends DomainEventClass<IntegrationEvent>>(
+    EventClass: C,
+    payload: EventData<InstanceType<C>>,
   ): string {
-    const event = EventClass.create(payload);
+    return this.stageDomainEvent(EventClass.create(payload));
+  }
 
+  addDomainEventWithEntities<C extends DomainEventClass<IntegrationEvent>>(
+    EventClass: C,
+  ): string {
+    return this.stageDomainEvent(
+      EventClass.create({
+        records: this.entities.map((e) => e.asJSON()),
+      } as unknown as EventData<InstanceType<C>>),
+    );
+  }
+
+  private stageDomainEvent(event: IntegrationEvent): string {
     const existingEvent = this._domainEventsV2.find((e) => e.hasSameBusinessPayload(event));
 
     if (existingEvent) {
@@ -559,9 +572,10 @@ export class EntityCollection<T extends Entity> extends ValueObject {
     }
 
     event
+      .withEntityType(this.constructor.name)
       .withAggregateId(this.uuid)
-      .withCorrelationId(this._correlationIdV2)
-      .withSequence(this._domainEventsV2.length + 1);
+      .withSequence(this._domainEventsV2.length + 1)
+      .applyChain(this._correlationIdV2);
 
     this._domainEventsV2.push(event);
     this.eventIds.push(event.uuid);
@@ -573,40 +587,7 @@ export class EntityCollection<T extends Entity> extends ValueObject {
     return event.uuid;
   }
 
-  addDomainEventWithEntities<E extends DomainEvent>(EventClass: DomainEventClass<E>): string {
-    const event = EventClass.create({
-      records: this.entities.map((e) => e.asJSON()),
-    } as unknown as Partial<E>);
-
-    const existingEvent = this._domainEventsV2.find((e) => e.hasSameBusinessPayload(event));
-
-    if (existingEvent) {
-      loggerQueueProcessor.warn(
-        `EntityCollection - V2 Event: '${event.name}' with identical payload already exists. Skipping duplicate.`,
-      );
-      return existingEvent.uuid;
-    }
-
-    if (!this._correlationIdV2) {
-      this._correlationIdV2 = generateUUID();
-    }
-
-    event
-      .withAggregateId(this.uuid)
-      .withCorrelationId(this._correlationIdV2)
-      .withSequence(this._domainEventsV2.length + 1);
-
-    this._domainEventsV2.push(event);
-    this.eventIds.push(event.uuid);
-
-    for (const entity of this.entities) {
-      entity.eventIds.push(event.uuid);
-    }
-
-    return event.uuid;
-  }
-
-  getDomainEvents(): readonly DomainEvent[] {
+  getDomainEvents(): readonly IntegrationEvent[] {
     return this._domainEventsV2.map((e) => e.clone());
   }
 
@@ -650,31 +631,31 @@ export class EntityCollection<T extends Entity> extends ValueObject {
     }
   }
 
-  async publishDomainEvent<E extends DomainEvent>(
-    EventClass: DomainEventClass<E>,
-    payload: Partial<E>,
+  async publishDomainEvent<C extends DomainEventClass<IntegrationEvent>>(
+    EventClass: C,
+    payload: EventData<InstanceType<C>>,
   ): Promise<void> {
     this.addDomainEvent(EventClass, payload);
     await this.publishAllDomainEvents();
   }
 
-  async publishDomainEventSync<E extends DomainEvent>(
-    EventClass: DomainEventClass<E>,
-    payload: Partial<E>,
+  async publishDomainEventSync<C extends DomainEventClass<IntegrationEvent>>(
+    EventClass: C,
+    payload: EventData<InstanceType<C>>,
   ): Promise<void> {
     this.addDomainEvent(EventClass, payload);
     await this.publishAllDomainEventsSync();
   }
 
-  async publishDomainEventWithEntities<E extends DomainEvent>(
-    EventClass: DomainEventClass<E>,
+  async publishDomainEventWithEntities<C extends DomainEventClass<IntegrationEvent>>(
+    EventClass: C,
   ): Promise<void> {
     this.addDomainEventWithEntities(EventClass);
     await this.publishAllDomainEvents();
   }
 
-  async publishDomainEventWithEntitiesSync<E extends DomainEvent>(
-    EventClass: DomainEventClass<E>,
+  async publishDomainEventWithEntitiesSync<C extends DomainEventClass<IntegrationEvent>>(
+    EventClass: C,
   ): Promise<void> {
     this.addDomainEventWithEntities(EventClass);
     await this.publishAllDomainEventsSync();
