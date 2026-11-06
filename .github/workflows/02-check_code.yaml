@@ -16,4 +16,4 @@ jobs:
     uses: Sincpro-SRL/.github/.github/workflows/02-check_code.yaml@main
     secrets: inherit
     with:
-      environments: '["22"]'
+      environments: '["26"]'

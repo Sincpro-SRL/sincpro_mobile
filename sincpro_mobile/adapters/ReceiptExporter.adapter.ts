@@ -5,6 +5,17 @@ import { RefObject } from "react";
 import { Platform, View } from "react-native";
 import { captureRef } from "react-native-view-shot";
 
+type ShotTarget = Parameters<typeof captureRef>[0];
+
+/**
+ * view-shot 6 types a target as a class instance or a host node. React Native
+ * 0.88 types `View` as a function, so the ref we already hold is the same
+ * object at runtime and a different type here.
+ */
+function shotTarget(viewRef: RefObject<View | null>): ShotTarget {
+  return viewRef as ShotTarget;
+}
+
 const DEFAULT_CONFIG = {
   RECEIPT_WIDTH_MM: 72,
   MM_TO_POINTS: 2.83464567,
@@ -37,7 +48,7 @@ async function captureViewToTmpFile(
   viewRef: RefObject<View | null>,
   quality: number,
 ): Promise<string> {
-  const tmpUri = await captureRef(viewRef, {
+  const tmpUri = await captureRef(shotTarget(viewRef), {
     format: "jpg",
     quality,
     result: "tmpfile",
@@ -99,7 +110,7 @@ async function captureViewToBase64(
   if (!viewRef.current) return null;
 
   try {
-    const base64 = await captureRef(viewRef, {
+    const base64 = await captureRef(shotTarget(viewRef), {
       format: "png",
       quality,
       result: "base64",

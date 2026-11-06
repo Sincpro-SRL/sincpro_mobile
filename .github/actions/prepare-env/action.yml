@@ -2,7 +2,7 @@ name: "Prepare Environment"
 description: "Prepares the environment based on the matrix environment value"
 inputs:
   environment:
-    description: 'The Node.js version to use (e.g., "22", "20", "18")'
+    description: 'The Node.js version to use (e.g., "26")'
     required: true
 
 runs:
