@@ -1,6 +1,6 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
 
-export class WebViewMessageReceivedEvent extends DomainEvent {
+export class WebViewMessageReceivedEvent extends IntegrationEvent {
   static readonly name = "common.webview.v1.message_received";
   static readonly label = "Procesando datos de la web";
   static readonly requiresNetwork = false;

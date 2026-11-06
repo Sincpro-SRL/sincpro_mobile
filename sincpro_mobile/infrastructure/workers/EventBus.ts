@@ -1,6 +1,10 @@
 import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
 import { DomainEventDeadLetterRepository } from "@sincpro/mobile/adapters/repositories/domain_event_dead_letter.repository";
-import { DomainEvent, EventName, Subscriber } from "@sincpro/mobile/domain/event_sourcing";
+import {
+  EventName,
+  type IntegrationEvent,
+  Subscriber,
+} from "@sincpro/mobile/domain/event_sourcing";
 import {
   InternetIsDownEvent,
   InternetIsUpEvent,
@@ -8,6 +12,7 @@ import {
   QueueStartEvent,
 } from "@sincpro/mobile/domain/events";
 import { DomainNetworkError } from "@sincpro/mobile/exceptions";
+import { runWithChain } from "@sincpro/mobile/infrastructure/event_chain";
 import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 
@@ -129,7 +134,7 @@ export class EventBus {
    * Validates event, logs start, emits START.
    * Returns false if no subscribers (caller should return early).
    */
-  private static preProcess(event: DomainEvent): boolean {
+  private static preProcess(event: IntegrationEvent): boolean {
     const hasSubscribers = this.subscribers.has(event.name);
 
     loggerQueueProcessor.info(
@@ -161,7 +166,7 @@ export class EventBus {
    * If errors is empty -> success, otherwise -> failure + dead letter + throws.
    * @throws Error if there are any errors
    */
-  private static async postProcess(event: DomainEvent, errors: string[]): Promise<void> {
+  private static async postProcess(event: IntegrationEvent, errors: string[]): Promise<void> {
     const success = errors.length === 0;
     const errorMessage = errors.join("; ") || undefined;
 
@@ -196,7 +201,7 @@ export class EventBus {
   }
 
   private static async executeSubscribers(
-    event: DomainEvent,
+    event: IntegrationEvent,
     subscriberList: Subscriber[],
   ): Promise<string[]> {
     const errors: string[] = [];
@@ -282,7 +287,8 @@ export class EventBus {
   /**
    * Publishes a DomainEvent asynchronously - enqueues for later processing.
    */
-  static async publish(event: DomainEvent): Promise<void> {
+  static async publish(event: IntegrationEvent): Promise<void> {
+    if (!event.correlationId) event.applyChain(event.uuid);
     loggerQueueProcessor.info(`EVENT=${event.name} [${event.label}] - Published ASYNC`);
     await DomainEventRepository.save(event);
     this.triggerProcessing();
@@ -293,7 +299,8 @@ export class EventBus {
    * Saves event to DB for traceability. Moves to dead letter on failure.
    * @throws Error if any subscriber fails or no subscribers registered
    */
-  static async publishSync(event: DomainEvent): Promise<void> {
+  static async publishSync(event: IntegrationEvent): Promise<void> {
+    if (!event.correlationId) event.applyChain(event.uuid);
     loggerQueueProcessor.info(`EVENT=${event.name} [${event.label}] - Published SYNC`);
 
     event.markAsProcessing();
@@ -316,22 +323,29 @@ export class EventBus {
    * Moves to dead letter queue on failure.
    */
   private static async drainAll(): Promise<void> {
-    let event: DomainEvent | null;
+    let event: IntegrationEvent | null;
 
     while ((event = await DomainEventRepository.findNextPending(this.internetConnected))) {
+      const current = event;
       try {
-        event.markAsProcessing();
-        await DomainEventRepository.save(event);
+        current.markAsProcessing();
+        await DomainEventRepository.save(current);
 
-        if (!this.preProcess(event)) {
-          await this.postProcess(event, ["No subscribers registered"]);
+        if (!this.preProcess(current)) {
+          await this.postProcess(current, ["No subscribers registered"]);
           continue;
         }
 
-        const subscriberList = this.subscribers.get(event.name)!;
-        const errors = await this.executeSubscribers(event, subscriberList);
+        const subscriberList = this.subscribers.get(current.name)!;
+        const errors = await runWithChain(
+          {
+            causationId: current.uuid,
+            correlationId: current.correlationId ?? current.uuid,
+          },
+          () => this.executeSubscribers(current, subscriberList),
+        );
 
-        await this.postProcess(event, errors);
+        await this.postProcess(current, errors);
       } catch {}
     }
   }

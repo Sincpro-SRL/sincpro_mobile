@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
 import DeadLetterQueueRow from "@sincpro/mobile/ui/components/organisms/DeadLetterQueueRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import { useEffect } from "react";
@@ -28,11 +28,11 @@ function DeadLetterQueueScreenComponent() {
       <ListViewV2.Header variant="default" />
 
       <ListViewV2.Content>
-        {(event: DomainEvent) => (
+        {(event: IntegrationEvent) => (
           <DeadLetterQueueRow
             item={event}
             onRetry={async (evt) => {
-              await retryEvent(evt as DomainEvent);
+              await retryEvent(evt as IntegrationEvent);
               setTimeout(() => {
                 void loadEvents();
               }, 5000);

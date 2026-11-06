@@ -1,4 +1,4 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
 import { deadLetterQueueUseCases } from "@sincpro/mobile/services/dead_letter_queue.service";
 import React, {
   createContext,
@@ -10,16 +10,16 @@ import React, {
 } from "react";
 
 interface IDeadLetterQueueContext {
-  events: DomainEvent[];
-  enrichedEvents: DomainEvent[];
+  events: IntegrationEvent[];
+  enrichedEvents: IntegrationEvent[];
   selectedEvents: Set<string>;
   isLoading: boolean;
   isRetrying: boolean;
   isDeleting: boolean;
   loadEvents: () => Promise<void>;
-  retryEvent: (event: DomainEvent) => Promise<void>;
+  retryEvent: (event: IntegrationEvent) => Promise<void>;
   retrySelectedEvents: () => Promise<{ success: number; failed: number }>;
-  deleteEvent: (event: DomainEvent) => Promise<void>;
+  deleteEvent: (event: IntegrationEvent) => Promise<void>;
   deleteSelectedEvents: () => Promise<{ success: number; failed: number }>;
   toggleSelection: (eventId: string) => void;
   selectAll: () => void;
@@ -35,19 +35,19 @@ interface IDeadLetterQueueContext {
 const DeadLetterQueueContext = createContext<IDeadLetterQueueContext | null>(null);
 
 export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
-  const [events, setEvents] = useState<DomainEvent[]>([]);
+  const [events, setEvents] = useState<IntegrationEvent[]>([]);
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
-  const [pagedEvents, setPagedEvents] = useState<DomainEvent[]>([]);
+  const [pagedEvents, setPagedEvents] = useState<IntegrationEvent[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const paginate = useCallback(
-    (list: DomainEvent[], nextPage: number) => {
+    (list: IntegrationEvent[], nextPage: number) => {
       const slice = list.slice(0, nextPage * pageSize);
       setPagedEvents(slice);
       setHasMore(slice.length < list.length);
@@ -69,7 +69,7 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
   }, [paginate]);
 
   const retryEvent = useCallback(
-    async (event: DomainEvent) => {
+    async (event: IntegrationEvent) => {
       setIsRetrying(true);
       try {
         await deadLetterQueueUseCases.retryFailedEvent(event);
@@ -107,7 +107,7 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
   }, [events, selectedEvents, loadEvents]);
 
   const deleteEvent = useCallback(
-    async (event: DomainEvent) => {
+    async (event: IntegrationEvent) => {
       setIsDeleting(true);
       try {
         await deadLetterQueueUseCases.deleteFailedEvent(event);

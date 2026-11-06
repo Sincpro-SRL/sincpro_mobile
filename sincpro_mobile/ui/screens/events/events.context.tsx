@@ -1,4 +1,4 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
 import { eventService } from "@sincpro/mobile/services/event.service";
 import React, {
   createContext,
@@ -12,8 +12,8 @@ import React, {
 type EventFilter = "ALL" | "FAILED" | "ACKNOWLEDGED" | "PENDING";
 
 interface IEventsContext {
-  events: DomainEvent[];
-  pagedEvents: DomainEvent[];
+  events: IntegrationEvent[];
+  pagedEvents: IntegrationEvent[];
   isLoading: boolean;
   isLoadingMore: boolean;
   isRetrying: boolean;
@@ -25,7 +25,7 @@ interface IEventsContext {
   loadEvents: () => Promise<void>;
   refreshEvents: () => Promise<void>;
   loadMore: () => Promise<void>;
-  retryEvent: (event: DomainEvent) => Promise<void>;
+  retryEvent: (event: IntegrationEvent) => Promise<void>;
 }
 
 const EventsContext = createContext<IEventsContext | null>(null);
@@ -37,7 +37,7 @@ export function EventsProvider({
   children: ReactNode;
   pageSize?: number;
 }) {
-  const [events, setEvents] = useState<DomainEvent[]>([]);
+  const [events, setEvents] = useState<IntegrationEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -93,7 +93,7 @@ export function EventsProvider({
   }, [hasMore, isLoading, isLoadingMore]);
 
   const retryEvent = useCallback(
-    async (event: DomainEvent) => {
+    async (event: IntegrationEvent) => {
       setIsRetrying(true);
       try {
         await eventService.republishSync(event);

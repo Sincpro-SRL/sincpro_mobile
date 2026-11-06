@@ -1,23 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  DomainEvent,
-  EEventStatus,
-} from "../../sincpro_mobile/domain/event_sourcing/domain_event.ts";
+import { readEvent } from "../../sincpro_mobile/adapters/repositories/event_row.ts";
+import { chainAfter } from "../../sincpro_mobile/domain/event_sourcing/chain.ts";
+import { EEventStatus } from "../../sincpro_mobile/domain/event_sourcing/domain_event.ts";
+import { IntegrationEvent } from "../../sincpro_mobile/domain/event_sourcing/integration_event.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal concrete events for testing
 // ---------------------------------------------------------------------------
 
-class OrderEvent extends DomainEvent {
+class OrderEvent extends IntegrationEvent {
   public readonly name = "OrderEvent";
   public readonly label = "Order";
   public orderId: string = "";
   public amount: number = 0;
 }
 
-class PaymentEvent extends DomainEvent {
+class PaymentEvent extends IntegrationEvent {
   public readonly name = "PaymentEvent";
   public readonly label = "Payment";
   public orderId: string = "";
@@ -130,6 +130,134 @@ test("retry: reverts to PENDING and clears errorMessage", () => {
   event.retry();
   assert.equal(event.status, EEventStatus.PENDING);
   assert.equal(event.errorMessage, null);
+});
+
+test("asJSON: the fact leaves delivery out", () => {
+  const event = OrderEvent.create({ orderId: "1", amount: 5 });
+  event
+    .withAggregateId("ent-1")
+    .withEntityType("Order")
+    .withCorrelationId("flow")
+    .withCausationId("cause")
+    .withSequence(2);
+  event.markAsFailed("timeout");
+
+  const fact = JSON.parse(event.asJSON());
+  assert.equal(fact.name, "OrderEvent");
+  assert.equal(fact.id, event.uuid);
+  assert.deepEqual(fact.label, { default: "Order" });
+  assert.equal(fact.created_at, event.createdAt);
+  assert.equal(fact.entity_type, "Order");
+  assert.equal(fact.entity_id, "ent-1");
+  assert.equal(fact.correlation_id, "flow");
+  assert.equal(fact.causation_id, "cause");
+  assert.equal(fact.entity_version, null);
+  assert.equal(fact.sequence, 2);
+  assert.equal(fact.orderId, "1");
+  assert.equal(fact.amount, 5);
+  assert.equal("status" in fact, false);
+  assert.equal("attempts" in fact, false);
+  assert.equal("errorMessage" in fact, false);
+  assert.equal("uuid" in fact, false);
+});
+
+test("fromJSON: a framework body round-trips, and es is what the screen reads", () => {
+  const body = {
+    name: "billing.invoice.v1.paid",
+    id: "0192",
+    label: { default: "Paid", es: "Pagada" },
+    created_at: "2026-11-06T05:00:00.000Z",
+    entity_type: "Invoice",
+    entity_id: "inv",
+    correlation_id: "flow",
+    causation_id: "prev",
+    entity_version: null,
+    amount: 5,
+    traceparent: "00-aa-bb-01",
+  };
+
+  const event = OrderEvent.fromJSON(body);
+  assert.equal(event.uuid, "0192");
+  assert.equal(event.label, "Pagada");
+  assert.equal(event.entityType, "Invoice");
+  assert.equal(event.aggregateId, "inv");
+  assert.equal(event.correlationId, "flow");
+  assert.equal(event.causationId, "prev");
+  assert.equal(event.amount, 5);
+  assert.equal(event.status, EEventStatus.PENDING);
+  assert.deepEqual(JSON.parse(event.asJSON()).label, body.label);
+});
+
+test("readEvent: delivery comes from the row, including a legacy blob", () => {
+  const event = OrderEvent.create({ orderId: "z", amount: 3 });
+  event.withCorrelationId("flow").withCausationId("cause").withSequence(1);
+  event.markAsProcessing();
+
+  const loaded = readEvent({
+    data: event.asJSON(),
+    status: EEventStatus.FAILED,
+    attempts: 2,
+    error_message: "down",
+    failed_at: "2026-11-06T05:00:00.000Z",
+    acknowledged_at: null,
+    sequence: 4,
+    requires_network: 1,
+  });
+  assert.equal(loaded.status, EEventStatus.FAILED);
+  assert.equal(loaded.attempts, 2);
+  assert.equal(loaded.errorMessage, "down");
+  assert.equal(loaded.sequence, 4);
+  assert.equal(loaded.requiresNetwork, true);
+  assert.equal(loaded.correlationId, "flow");
+  assert.equal((loaded as OrderEvent).orderId, "z");
+
+  const legacy = readEvent({
+    data: JSON.stringify({
+      name: "OrderEvent",
+      label: "Order",
+      uuid: "old-id",
+      createdAt: "2026-11-06T05:00:00.000Z",
+      status: EEventStatus.PROCESSING,
+      attempts: 1,
+      orderId: "old",
+    }),
+    status: EEventStatus.ACKNOWLEDGED,
+    attempts: 9,
+    error_message: null,
+    requires_network: 0,
+  });
+  assert.equal(legacy.status, EEventStatus.ACKNOWLEDGED);
+  assert.equal(legacy.attempts, 9);
+  assert.equal(legacy.uuid, "old-id");
+  assert.equal((legacy as OrderEvent).orderId, "old");
+});
+
+test("causedBy: the effect keeps the cause's flow and points at the cause", () => {
+  const cause = OrderEvent.create({ orderId: "1" });
+  cause.withCorrelationId("flow");
+  const effect = PaymentEvent.create({ orderId: "1" }).causedBy(cause);
+  assert.equal(effect.causationId, cause.uuid);
+  assert.equal(effect.correlationId, "flow");
+  assert.equal(cause.correlationId, "flow");
+});
+
+test("chainAfter: same four outcomes as the framework chain", () => {
+  assert.deepEqual(chainAfter("E1", "C", "own"), {
+    causationId: "E1",
+    correlationId: "C",
+  });
+  assert.deepEqual(chainAfter("E1", null, "own"), {
+    causationId: "E1",
+    correlationId: "E1",
+  });
+  assert.deepEqual(chainAfter(null, "C", "own"), {
+    causationId: null,
+    correlationId: "C",
+  });
+  assert.deepEqual(chainAfter(null, null, "own"), {
+    causationId: null,
+    correlationId: "own",
+  });
 });
 
 test("markAsAcknowledged: sets acknowledgedAt and status", () => {

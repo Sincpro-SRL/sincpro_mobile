@@ -1,4 +1,4 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
 import { ECommonRepository, repos } from "@sincpro/mobile/entrypoints/db";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers/EventBus";
@@ -10,7 +10,7 @@ class DeadLetterQueueUseCases {
   /**
    * Retrieves all failed events from the dead letter queue.
    */
-  async getFailedEvents(): Promise<DomainEvent[]> {
+  async getFailedEvents(): Promise<IntegrationEvent[]> {
     loggerUseCases.info("Fetching all failed events from dead letter queue");
     const deadLetterEvents = await this.repository.findAll();
     return deadLetterEvents;
@@ -19,7 +19,7 @@ class DeadLetterQueueUseCases {
   /**
    * Retrieves a specific failed event by uuid.
    */
-  async getFailedEventById(uuid: string): Promise<DomainEvent | null> {
+  async getFailedEventById(uuid: string): Promise<IntegrationEvent | null> {
     loggerUseCases.info(`Fetching failed event with uuid: ${uuid}`);
     return await this.repository.findById(uuid);
   }
@@ -28,7 +28,7 @@ class DeadLetterQueueUseCases {
    * Manually retries a failed event by re-queuing it for processing.
    * This removes the event from the dead letter queue and adds it back to the processing queue.
    */
-  async retryFailedEvent(event: DomainEvent): Promise<void> {
+  async retryFailedEvent(event: IntegrationEvent): Promise<void> {
     loggerUseCases.info(
       `Manually retrying failed event: ${event.name} (uuid: ${event.uuid})`,
     );
@@ -58,7 +58,7 @@ class DeadLetterQueueUseCases {
    * Retries multiple failed events in batch.
    */
   async retryMultipleFailedEvents(
-    events: DomainEvent[],
+    events: IntegrationEvent[],
   ): Promise<{ success: number; failed: number }> {
     loggerUseCases.info(`Batch retrying ${events.length} failed events`);
 
@@ -88,7 +88,7 @@ class DeadLetterQueueUseCases {
    * Permanently deletes a failed event from the dead letter queue.
    * Use with caution as this action cannot be undone.
    */
-  async deleteFailedEvent(event: DomainEvent): Promise<void> {
+  async deleteFailedEvent(event: IntegrationEvent): Promise<void> {
     loggerUseCases.info(
       `Permanently deleting failed event: ${event.name} (uuid: ${event.uuid})`,
     );
@@ -111,7 +111,7 @@ class DeadLetterQueueUseCases {
    * Deletes multiple failed events in batch.
    */
   async deleteMultipleFailedEvents(
-    events: DomainEvent[],
+    events: IntegrationEvent[],
   ): Promise<{ success: number; failed: number }> {
     loggerUseCases.info(`Batch deleting ${events.length} failed events`);
 

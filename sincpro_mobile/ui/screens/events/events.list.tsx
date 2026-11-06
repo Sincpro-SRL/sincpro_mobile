@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
 import EventRow from "@sincpro/mobile/ui/components/organisms/EventRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import { useEffect } from "react";
@@ -54,7 +54,7 @@ function EventsScreenComponent() {
           <EventRow
             item={event}
             onRetry={async (evt) => {
-              await retryEvent(evt as DomainEvent);
+              await retryEvent(evt as IntegrationEvent);
             }}
           />
         )}

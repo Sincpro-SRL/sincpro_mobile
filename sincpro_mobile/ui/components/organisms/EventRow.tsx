@@ -1,4 +1,4 @@
-import { DomainEvent, EEventStatus } from "@sincpro/mobile/domain/event_sourcing";
+import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
 import { Display } from "@sincpro/mobile-ui/Display";
 import { Form } from "@sincpro/mobile-ui/Form";
 import { Typography } from "@sincpro/mobile-ui/Typography";
@@ -8,8 +8,8 @@ import { useState } from "react";
 import { View } from "react-native";
 
 interface EventRowProps {
-  item: DomainEvent;
-  onRetry: (event: DomainEvent) => Promise<void> | void;
+  item: IntegrationEvent;
+  onRetry: (event: IntegrationEvent) => Promise<void> | void;
 }
 
 function EventRow({ item, onRetry }: EventRowProps) {

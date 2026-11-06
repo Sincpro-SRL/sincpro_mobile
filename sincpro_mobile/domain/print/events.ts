@@ -1,6 +1,6 @@
-import { DomainEvent } from "@sincpro/mobile/domain/event_sourcing";
+import { IntegrationEvent } from "@sincpro/mobile/domain/event_sourcing";
 
-export class PrintImageRequestedEvent extends DomainEvent {
+export class PrintImageRequestedEvent extends IntegrationEvent {
   static readonly name = "common.print.v1.image_requested";
   static readonly label = "Imprimiendo...";
   static readonly requiresNetwork = false;
