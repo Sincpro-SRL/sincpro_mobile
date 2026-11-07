@@ -158,6 +158,16 @@ function BluetoothPrinterSelector({
     checkStatus();
   }, [checkStatus]);
 
+  // El driver avisa cuando la impresora se conecta, se desconecta o se pierde el enlace
+  // (apagada o fuera de rango), así el estado mostrado no queda congelado.
+  useEffect(
+    () =>
+      printerService.onConnectionChange((connection) => {
+        setIsConnected(connection.state === "CONNECTED");
+      }),
+    [],
+  );
+
   useEffect(() => {
     onConnectionChange?.(isConnected);
   }, [isConnected, onConnectionChange]);

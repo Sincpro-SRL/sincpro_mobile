@@ -27,10 +27,24 @@ export interface PrintTextOptions {
  * (o un addon) provee una implementación concreta (p. ej. Bluetooth vía
  * @sincpro/printer-expo) y la registra con setPrinterDriver() al bootstrap.
  */
+export type PrinterConnectionState = "DISCONNECTED" | "CONNECTING" | "CONNECTED";
+
+export interface IPrinterConnection {
+  state: PrinterConnectionState;
+  address: string | null;
+  /** `link_lost`: la impresora se apagó o salió de rango estando conectada. */
+  reason?: "connected" | "user_disconnect" | "link_lost" | "connect_failed";
+}
+
 export interface IPrinterDriver {
   getPairedDevices(): BluetoothDevice[];
   getPairedPrinters(): PairedPrinter[];
+  /** iOS descubre impresoras (clásico MFi + BLE); Android devuelve las vinculadas. */
+  scanPrinters(): Promise<BluetoothDevice[]>;
   isConnected(): boolean;
+  getConnection(): IPrinterConnection;
+  /** Devuelve la función para cancelar la suscripción. */
+  onConnectionChange(listener: (connection: IPrinterConnection) => void): () => void;
   connectBluetooth(address: string, timeoutMs?: number): Promise<void>;
   disconnect(): Promise<void>;
   printText(text: string, options?: PrintTextOptions): Promise<void>;

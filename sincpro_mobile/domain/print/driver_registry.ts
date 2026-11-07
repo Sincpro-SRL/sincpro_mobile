@@ -4,7 +4,10 @@ import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 const noopDriver: IPrinterDriver = {
   getPairedDevices: () => [],
   getPairedPrinters: () => [],
+  scanPrinters: async () => [],
   isConnected: () => false,
+  getConnection: () => ({ state: "DISCONNECTED", address: null }),
+  onConnectionChange: () => () => {},
   connectBluetooth: async () => {
     loggerUseCases.warn("Printer driver no registrado: connectBluetooth ignorado");
   },
