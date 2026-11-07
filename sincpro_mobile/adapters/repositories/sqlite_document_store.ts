@@ -1,9 +1,19 @@
+import { type CompiledCriteria } from "@sincpro/mobile/domain/database/criteria_sql";
+import {
+  type ColumnDefinition,
+  missingColumns,
+} from "@sincpro/mobile/domain/database/migration_plan";
 import {
   type ColumnValue,
   type DocumentRow,
   type DocumentStore,
 } from "@sincpro/mobile/domain/repositories/document_store";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
+import {
+  addColumnStatement,
+  tableColumns,
+  tableColumnsSync,
+} from "@sincpro/mobile/infrastructure/database/schema";
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -13,7 +23,7 @@ export class SqliteDocumentStore implements DocumentStore {
   private syncReady = false;
 
   constructor(
-    private readonly table: string,
+    readonly table: string,
     private readonly columnNames: readonly string[] = [],
     integerColumns: readonly string[] = [],
   ) {
@@ -90,6 +100,26 @@ export class SqliteDocumentStore implements DocumentStore {
     return rows.map((row) => toDocument(row, this.columnNames));
   }
 
+  async selectMatching(compiled: CompiledCriteria): Promise<DocumentRow[]> {
+    await this.ensure();
+    const params: ColumnValue[] = [...compiled.params];
+    let sql = `SELECT ${this.selected()} FROM ${this.table}`;
+    if (compiled.whereSql) sql += ` WHERE ${compiled.whereSql}`;
+    if (compiled.orderSql) sql += ` ORDER BY ${compiled.orderSql}`;
+    if (compiled.limit !== undefined) {
+      sql += " LIMIT ?";
+      params.push(compiled.limit);
+    } else if (compiled.offset > 0) {
+      sql += " LIMIT -1";
+    }
+    if (compiled.offset > 0) {
+      sql += " OFFSET ?";
+      params.push(compiled.offset);
+    }
+    const rows = await DBCursor.getAllAsync<Record<string, ColumnValue>>(sql, ...params);
+    return rows.map((row) => toDocument(row, this.columnNames));
+  }
+
   hasColumn(name: string): boolean {
     return this.columnNames.includes(name);
   }
@@ -157,8 +187,28 @@ export class SqliteDocumentStore implements DocumentStore {
     return this.ready;
   }
 
+  private wanted(): ColumnDefinition[] {
+    return [
+      { name: "version", definition: "INTEGER NOT NULL DEFAULT 1" },
+      { name: "data", definition: "TEXT NOT NULL DEFAULT '{}'" },
+      ...this.columnNames.map((name) => ({
+        name,
+        definition: this.integerColumns.has(name) ? "INTEGER" : "TEXT",
+      })),
+    ];
+  }
+
   private async create(): Promise<void> {
-    await DBCursor.execAsync(this.definition());
+    const existing = await tableColumns(this.table);
+    if (existing.length === 0) {
+      await DBCursor.execAsync(this.definition());
+    } else {
+      for (const column of missingColumns(existing, this.wanted())) {
+        await DBCursor.execAsync(
+          addColumnStatement(this.table, column.name, column.definition),
+        );
+      }
+    }
     for (const name of this.columnNames) {
       await DBCursor.execAsync(
         `CREATE INDEX IF NOT EXISTS idx_${this.table}_${name} ON ${this.table} (${name})`,
@@ -168,7 +218,16 @@ export class SqliteDocumentStore implements DocumentStore {
 
   private ensureSync(): void {
     if (this.syncReady) return;
-    DBCursor.mutateDatabaseSync(this.definition());
+    const existing = tableColumnsSync(this.table);
+    if (existing.length === 0) {
+      DBCursor.mutateDatabaseSync(this.definition());
+    } else {
+      for (const column of missingColumns(existing, this.wanted())) {
+        DBCursor.mutateDatabaseSync(
+          addColumnStatement(this.table, column.name, column.definition),
+        );
+      }
+    }
     for (const name of this.columnNames) {
       DBCursor.mutateDatabaseSync(
         `CREATE INDEX IF NOT EXISTS idx_${this.table}_${name} ON ${this.table} (${name})`,

@@ -1,8 +1,14 @@
 import type { IMigration } from "@sincpro/mobile/domain/database";
+import { pendingMigrations, resetPlan } from "@sincpro/mobile/domain/database/migration_plan";
 import { repos } from "@sincpro/mobile/entrypoints/db/repositories";
 import type { Subscriber } from "@sincpro/mobile/event_driven";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 import { initializeRepositoryFacade } from "@sincpro/mobile/infrastructure/database/mapped";
+import {
+  appliedMigrationNames,
+  forgetMigrations,
+  markMigrationApplied,
+} from "@sincpro/mobile/infrastructure/database/schema";
 import logger, { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
 import type { CronWorker, CronWorkerOpts } from "@sincpro/mobile/infrastructure/workers";
 
@@ -63,9 +69,12 @@ export class Kernel {
   }
 
   async runMigrations(): Promise<void> {
-    for (const { name, migrationFn } of this.migrations()) {
+    const applied = await appliedMigrationNames();
+    for (const { name, migrationFn } of pendingMigrations(this.migrations(), applied)) {
       logger.info(`Running migration: ${name}`);
       await migrationFn();
+      await markMigrationApplied(name);
+      applied.add(name);
     }
   }
 
@@ -77,14 +86,12 @@ export class Kernel {
 
   async restartDatabase(): Promise<void> {
     loggerRepositories.warn("Restarting database");
-    const persisted = this.persistedTables();
-    const tablesToDrop = this.migrations().filter(
-      (migration) => !persisted.includes(migration.name),
-    );
-    for (const { name } of tablesToDrop) {
-      loggerRepositories.info(`Dropping table: ${name}`);
-      await DBCursor.execAsync(`DROP TABLE IF EXISTS ${name}`);
+    const plan = resetPlan(this.migrations(), this.persistedTables());
+    for (const table of plan.drop) {
+      loggerRepositories.info(`Dropping table: ${table}`);
+      await DBCursor.execAsync(`DROP TABLE IF EXISTS ${table}`);
     }
+    await forgetMigrations(plan.forget);
     await this.runMigrations();
   }
 }

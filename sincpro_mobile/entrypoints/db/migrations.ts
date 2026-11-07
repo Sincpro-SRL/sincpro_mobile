@@ -175,17 +175,18 @@ async function createSpansQueueTable(): Promise<void> {
   `);
 }
 
+function migration(name: string, migrationFn: () => Promise<void>): IMigration {
+  return { name, tables: [name], migrationFn };
+}
+
 const MIGRATIONS: IMigration[] = [
-  { name: DATABASE_TABLES.SETTINGS, migrationFn: createSettingsTable },
-  { name: DATABASE_TABLES.EVENT_QUEUE, migrationFn: createEventQueueTable },
-  { name: DATABASE_TABLES.DEAD_LETTER_QUEUE, migrationFn: createDeadLetterQueueTable },
-  { name: DATABASE_TABLES.DOMAIN_EVENTS, migrationFn: createDomainEventsTable },
-  {
-    name: DATABASE_TABLES.DOMAIN_EVENTS_DEAD_LETTER,
-    migrationFn: createDomainEventsDeadLetterTable,
-  },
-  { name: DATABASE_TABLES.TELEMETRY_QUEUE, migrationFn: createTelemetryQueueTable },
-  { name: DATABASE_TABLES.SPANS_QUEUE, migrationFn: createSpansQueueTable },
+  migration(DATABASE_TABLES.SETTINGS, createSettingsTable),
+  migration(DATABASE_TABLES.EVENT_QUEUE, createEventQueueTable),
+  migration(DATABASE_TABLES.DEAD_LETTER_QUEUE, createDeadLetterQueueTable),
+  migration(DATABASE_TABLES.DOMAIN_EVENTS, createDomainEventsTable),
+  migration(DATABASE_TABLES.DOMAIN_EVENTS_DEAD_LETTER, createDomainEventsDeadLetterTable),
+  migration(DATABASE_TABLES.TELEMETRY_QUEUE, createTelemetryQueueTable),
+  migration(DATABASE_TABLES.SPANS_QUEUE, createSpansQueueTable),
 ];
 
 export default MIGRATIONS;

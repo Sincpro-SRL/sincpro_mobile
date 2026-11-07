@@ -1,7 +1,8 @@
+import { type DocumentCriteria } from "@sincpro/mobile/domain/database/criteria";
 import {
-  type DocumentCriteria,
-  rowsMatching,
-} from "@sincpro/mobile/domain/database/criteria";
+  compileCriteria,
+  type CriteriaSqlTarget,
+} from "@sincpro/mobile/domain/database/criteria_sql";
 import { isChangeTracked } from "@sincpro/mobile/domain/entity/change_tracking";
 import { assertChecks } from "@sincpro/mobile/domain/entity/checks";
 import { Entity, ERemoteState, RemoteEntity } from "@sincpro/mobile/domain/entity/entity";
@@ -163,9 +164,11 @@ export class DocumentRepository<T extends Entity> implements IRepository<
   }
 
   async findByCriteria(criteria: DocumentCriteria<T>): Promise<EntityCollection<T>> {
-    const matched = rowsMatching(await this.readAll(), criteria);
-    await this.afterSearch(matched);
-    return new EntityCollection(matched);
+    const rows = await this.store.selectMatching(compileCriteria(criteria, this.sqlTarget()));
+    const found: T[] = [];
+    for (const row of rows) found.push(await this.hydrate(row));
+    await this.afterSearch(found);
+    return new EntityCollection(found);
   }
 
   async findByRemoteId(remoteId: number): Promise<T | null> {
@@ -528,6 +531,21 @@ export class DocumentRepository<T extends Entity> implements IRepository<
 
   private hooksOf(entity: T): Hook[] {
     return this.options.hooks?.of(entity) ?? [];
+  }
+
+  private sqlTarget(): CriteriaSqlTarget {
+    return {
+      table: this.store.table,
+      column: (field) =>
+        field === "uuid" || field === "version" || this.store.hasColumn(field),
+      relation: (name) => {
+        const declared = relations(Object.create(this.type.prototype)).find(
+          (item) => item.field === name,
+        );
+        if (!declared) return undefined;
+        return this.repositoryFor(declared.type).sqlTarget();
+      },
+    };
   }
 
   private repositoryFor(type: Function): DocumentRepository<Entity> {

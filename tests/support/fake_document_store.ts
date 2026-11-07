@@ -1,4 +1,8 @@
 import {
+  type CompiledCriteria,
+  rowsFor,
+} from "../../sincpro_mobile/domain/database/criteria_sql.ts";
+import {
   type ColumnValue,
   type DocumentRow,
   type DocumentStore,
@@ -66,7 +70,7 @@ function copyRow(row: DocumentRow): DocumentRow {
 export class FakeDocumentStore implements DocumentStore {
   constructor(
     private readonly database: FakeDocumentDatabase,
-    private readonly table: string,
+    readonly table: string,
     private readonly columnNames: readonly string[] = [],
   ) {}
 
@@ -104,6 +108,12 @@ export class FakeDocumentStore implements DocumentStore {
 
   async list(): Promise<DocumentRow[]> {
     return [...this.database.table(this.table).values()];
+  }
+
+  async selectMatching(compiled: CompiledCriteria): Promise<DocumentRow[]> {
+    return rowsFor(compiled, [...this.database.table(this.table).values()], (name) => [
+      ...this.database.table(name).values(),
+    ]);
   }
 
   hasColumn(name: string): boolean {

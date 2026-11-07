@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { criteria, selection } from "@sincpro/criteria";
+
 import { DocumentRepository } from "../../sincpro_mobile/adapters/repositories/document.repository.ts";
 import {
   EntityUpdated,
@@ -641,4 +643,65 @@ test("a synchronous read skips hooks", async () => {
   seen.length = 0;
   assert.equal(repository.findByIdSync(note.uuid)?.title, "sync");
   assert.deepEqual(seen, []);
+});
+
+test("findByCriteria reads a field stored in the document JSON", async () => {
+  DocumentRepository.reset();
+  const repository = notes(new FakeDocumentDatabase());
+  await repository.save(Note.make({ title: "Acme 3101" }));
+  await repository.save(Note.make({ title: "Other" }));
+
+  const found = await repository.findByCriteria(
+    criteria<Note>().selection(["title", "like", "3101"]),
+  );
+
+  assert.deepEqual(
+    found.toArray().map((note) => note.title),
+    ["Acme 3101"],
+  );
+});
+
+test("findByCriteria crosses a relation whose ids live in the JSON", async () => {
+  DocumentRepository.reset();
+  const database = new FakeDocumentDatabase();
+  new DocumentRepository(Line, new FakeDocumentStore(database, "lines"));
+  const orders = new DocumentRepository(Order, new FakeDocumentStore(database, "orders"));
+  const large = Line.make({ amount: 12 });
+  const small = Line.make({ amount: 1 });
+  await orders.save(Order.make({ lines: [large] }));
+  await orders.save(Order.make({ lines: [small] }));
+
+  const found = await orders.findByCriteria(
+    criteria<Order>().selection({
+      through: "lines",
+      selection: { field: "amount", operator: ">", value: 10 },
+    }),
+  );
+
+  assert.equal(found.length, 1);
+  assert.equal(found.toArray()[0].lines[0].amount, 12);
+});
+
+test("findByCriteria keeps a promoted column and a JSON field in one question", async () => {
+  DocumentRepository.reset();
+  const database = new FakeDocumentDatabase();
+  const repository = new DocumentRepository(
+    Note,
+    new FakeDocumentStore(database, "notes", ["title"]),
+    { columns: (note) => ({ title: note.title }) },
+  );
+  await repository.save(Note.make({ title: "Posted", name: "north" }));
+  await repository.save(Note.make({ title: "Draft", name: "north" }));
+
+  const found = await repository.findByCriteria(
+    criteria<Note>().selection(
+      ["title", "=", "Posted"],
+      selection.any(["name", "like", "north"]),
+    ),
+  );
+
+  assert.deepEqual(
+    found.toArray().map((note) => note.title),
+    ["Posted"],
+  );
 });

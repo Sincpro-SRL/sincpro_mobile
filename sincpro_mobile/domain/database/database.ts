@@ -15,4 +15,5 @@ export interface ITable {
 export interface IMigration {
   name: string;
   migrationFn: () => Promise<void>;
+  tables?: readonly string[];
 }
