@@ -168,7 +168,7 @@ export function resolveEntity(
  */
 export function mapped(repositoryKey: string, foreignKey: string, remote: boolean = false) {
   return function (target: any, propertyKey: string, descriptor?: PropertyDescriptor) {
-    loggerRepositories.warn(
+    loggerRepositories.debug(
       `[Mapped] Setting up mapped relation for ${target.constructor.name}.${propertyKey} ` +
         `using repository "${repositoryKey}" and foreign key "${foreignKey}"`,
     );
