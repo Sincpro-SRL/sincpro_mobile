@@ -19,16 +19,16 @@ export function toDecimal(input?: DecimalLike | null): Decimal {
   }
 }
 
-export function parseToMonetaryNumber(input?: string | number | null): number {
-  return Number(toDecimal(input).toString());
+export function parseToMonetaryNumber(input?: DecimalLike | null): Decimal {
+  return toDecimal(input);
 }
 
-export function formatTwoDecimals(value?: number | string | null): string {
-  const rounded = Number(toDecimal(value).rounded(2).toString());
-  return new Intl.NumberFormat("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(rounded);
+export function formatTwoDecimals(value?: DecimalLike | null): string {
+  const text = toDecimal(value).rounded(2).toString();
+  const negative = text.startsWith("-");
+  const [whole, fraction = "00"] = (negative ? text.slice(1) : text).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${negative ? "-" : ""}${grouped},${fraction}`;
 }
 
 export function discountOf(total: DecimalLike, discount: DecimalLike): Decimal {
@@ -37,6 +37,6 @@ export function discountOf(total: DecimalLike, discount: DecimalLike): Decimal {
   return toDecimal(total).times(rate).dividedBy(100, 8);
 }
 
-export function calculateDiscountedTotal(total: number, discount: number): number {
-  return Number(discountOf(total, discount).toString());
+export function calculateDiscountedTotal(total: DecimalLike, discount: DecimalLike): Decimal {
+  return discountOf(total, discount);
 }
