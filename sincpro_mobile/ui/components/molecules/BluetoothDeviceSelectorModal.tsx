@@ -103,8 +103,7 @@ function BluetoothDeviceSelectorModal({
       const hasPermission = await bluetoothService.ensurePermissionsForPrinter();
       if (!hasPermission) return;
 
-      const pairedDevices = await printerService.getPairedDevices();
-      setDevices(pairedDevices);
+      setDevices(await printerService.scanPrinters());
     } finally {
       setLoading(false);
     }

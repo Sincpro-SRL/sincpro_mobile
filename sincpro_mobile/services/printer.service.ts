@@ -4,6 +4,7 @@ import {
   type BluetoothDevice,
   getPrinterDriver,
   hasPrinterDriver,
+  type IPrinterConnection,
   type IPrinterDriver,
   type ISelectedPrinter,
   type PairedPrinter,
@@ -39,8 +40,20 @@ class PrinterService {
     return getPrinterDriver().getPairedPrinters();
   }
 
+  scanPrinters(): Promise<BluetoothDevice[]> {
+    return getPrinterDriver().scanPrinters();
+  }
+
   isConnected(): boolean {
     return getPrinterDriver().isConnected();
+  }
+
+  getConnection(): IPrinterConnection {
+    return getPrinterDriver().getConnection();
+  }
+
+  onConnectionChange(listener: (connection: IPrinterConnection) => void): () => void {
+    return getPrinterDriver().onConnectionChange(listener);
   }
 
   async connect(address: string, name: string, notify = true): Promise<boolean> {
