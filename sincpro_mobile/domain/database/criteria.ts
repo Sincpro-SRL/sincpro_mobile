@@ -24,8 +24,14 @@ export type DocumentCriteria<T> = Criteria<T> | CriteriaBuilder<T> | Expression<
  * a filter with no page returns every match. A grouping is not a list of
  * documents, so it is refused.
  */
+export function criteriaOf<T>(asked: DocumentCriteria<T>): Criteria<T> {
+  if (asked instanceof CriteriaBuilder) return asked.value;
+  if (isExpression(asked)) return { selection: asked };
+  return asked;
+}
+
 export function rowsMatching<T>(rows: readonly T[], asked: DocumentCriteria<T>): T[] {
-  const criteria = asCriteria(asked);
+  const criteria = criteriaOf(asked);
   if (criteria.grouping !== undefined) {
     throw new InvalidCriteria("a document collection answers a selection, not a grouping");
   }
@@ -34,12 +40,6 @@ export function rowsMatching<T>(rows: readonly T[], asked: DocumentCriteria<T>):
   const ordered = criteria.order?.length ? sortRows(matched, criteria.order) : [...matched];
   if (criteria.pagination === undefined) return ordered;
   return paginate(ordered, criteria, criteria.order ?? []).rows;
-}
-
-function asCriteria<T>(asked: DocumentCriteria<T>): Criteria<T> {
-  if (asked instanceof CriteriaBuilder) return asked.value;
-  if (isExpression(asked)) return { selection: asked };
-  return asked;
 }
 
 function isExpression<T>(asked: Criteria<T> | Expression<T>): asked is Expression<T> {
