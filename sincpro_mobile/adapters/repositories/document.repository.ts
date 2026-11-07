@@ -7,6 +7,7 @@ import { isChangeTracked } from "@sincpro/mobile/domain/entity/change_tracking";
 import { assertChecks } from "@sincpro/mobile/domain/entity/checks";
 import { Entity, ERemoteState, RemoteEntity } from "@sincpro/mobile/domain/entity/entity";
 import { EntityCollection } from "@sincpro/mobile/domain/entity/entity_collection";
+import { reconcile } from "@sincpro/mobile/domain/entity/reconcile";
 import {
   type AnyClass,
   heldEntities,
@@ -16,6 +17,10 @@ import {
   relations,
   relationWrites,
 } from "@sincpro/mobile/domain/entity/relations";
+import {
+  applyAcknowledgement,
+  takeAcceptedWrite,
+} from "@sincpro/mobile/domain/entity/remote_sync";
 import { type DomainEvent } from "@sincpro/mobile/domain/events/domain_event";
 import { type IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
 import {
@@ -203,6 +208,61 @@ export class DocumentRepository<T extends Entity> implements IRepository<
     return new EntityCollection(found);
   }
 
+  async findDirty(): Promise<EntityCollection<T>> {
+    if (!this.store.hasColumn("ackedVersion")) {
+      const found = (await this.readAll()).filter(
+        (entity) => entity instanceof RemoteEntity && entity.isDirty,
+      );
+      await this.afterSearch(found);
+      return new EntityCollection(found);
+    }
+    return this.findByCriteria({
+      selection: {
+        field: "version",
+        operator: "!=",
+        value: { $: "field", name: "ackedVersion" },
+      },
+    } as DocumentCriteria<T>);
+  }
+
+  async acknowledge(entity: T, remoteId?: number): Promise<void> {
+    if (!(entity instanceof RemoteEntity)) {
+      throw new DomainAppError("only a remote document can be acknowledged");
+    }
+    if (entity.version === 0) {
+      throw new DomainAppError("acknowledge a document after it has been saved");
+    }
+    const existing = await this.store.read(entity.uuid);
+    if (!existing || storedVersion(existing) !== entity.version) {
+      throw new StaleAggregate(
+        `${entity.constructor.name} ${entity.uuid} is at version ${existing ? storedVersion(existing) : "none"}, not ${entity.version}`,
+      );
+    }
+    applyAcknowledgement(entity, remoteId);
+    const row: DocumentRow = {
+      uuid: entity.uuid,
+      version: entity.version,
+      data: documentData(entity),
+      columns: this.columnValues(entity),
+    };
+    const written = await this.store.update(row, entity.version);
+    if (!written) {
+      throw new StaleAggregate(
+        `${entity.constructor.name} ${entity.uuid} changed while it was acknowledged`,
+      );
+    }
+    if (isChangeTracked(entity)) entity.takeSnapshot();
+  }
+
+  async pull(local: T | null, incoming: T): Promise<T> {
+    if (!(incoming instanceof RemoteEntity) || (local && !(local instanceof RemoteEntity))) {
+      throw new DomainAppError("only a remote document can be pulled");
+    }
+    const decision = reconcile(local, incoming);
+    if (decision.write !== "keep") await this.save(decision.entity as T);
+    return decision.entity as T;
+  }
+
   private async commit(
     options: { deliver?: boolean } | undefined,
     work: (session: Session) => Promise<void>,
@@ -312,6 +372,10 @@ export class DocumentRepository<T extends Entity> implements IRepository<
       );
     }
     entity.version = (previous ?? 0) + 1;
+    if (entity instanceof RemoteEntity) {
+      if (takeAcceptedWrite(entity)) entity.ackedVersion = entity.version;
+      entity.remoteState = entity.isDirty ? ERemoteState.PENDING : ERemoteState.SYNCED;
+    }
     entity.updatedAt = new Date().toISOString();
     if (!entity.createdAt) entity.createdAt = entity.updatedAt;
     const row: DocumentRow = {
@@ -356,6 +420,9 @@ export class DocumentRepository<T extends Entity> implements IRepository<
     }
     if (this.store.hasColumn("remoteState") && columns.remoteState === undefined) {
       columns.remoteState = entity.remoteState;
+    }
+    if (this.store.hasColumn("ackedVersion") && columns.ackedVersion === undefined) {
+      columns.ackedVersion = entity.ackedVersion;
     }
     return columns;
   }
@@ -431,6 +498,18 @@ export class DocumentRepository<T extends Entity> implements IRepository<
       entity.version = row.version;
     } else if (typeof parsed.version !== "number") {
       entity.version = 1;
+    }
+    if (entity instanceof RemoteEntity) {
+      const storedAck = row.columns.ackedVersion;
+      if (typeof storedAck === "number" && !Number.isNaN(storedAck)) {
+        entity.ackedVersion = storedAck;
+      } else if (
+        entity.ackedVersion === 0 &&
+        entity.remoteState === ERemoteState.SYNCED &&
+        entity.version > 0
+      ) {
+        entity.ackedVersion = entity.version;
+      }
     }
     return entity;
   }
@@ -652,9 +731,11 @@ export function sqliteDocuments<T extends Entity>(
     columns.remoteId ??= (entity) => (entity as unknown as RemoteEntity).remoteId ?? null;
     columns.remoteState ??= (entity) =>
       (entity as unknown as RemoteEntity).remoteState ?? null;
+    columns.ackedVersion ??= (entity) =>
+      (entity as unknown as RemoteEntity).ackedVersion ?? 0;
   }
   const names = Object.keys(columns);
-  const integers = names.filter((name) => name === "remoteId");
+  const integers = names.filter((name) => name === "remoteId" || name === "ackedVersion");
   const readColumns = (entity: T) => {
     const row: Record<string, ColumnValue> = {};
     for (const name of names) row[name] = columns[name](entity);

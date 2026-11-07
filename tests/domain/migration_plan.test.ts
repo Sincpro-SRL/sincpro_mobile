@@ -4,6 +4,7 @@ import test from "node:test";
 import { type IMigration } from "../../sincpro_mobile/domain/database/database.ts";
 import {
   applyMigrationStep,
+  legacyDocumentColumns,
   migrationsNewerThanApp,
   migrationTables,
   missingColumns,
@@ -115,5 +116,25 @@ test("a document table gains the columns it does not have yet", () => {
   assert.deepEqual(
     missing.map((column) => column.name),
     ["version", "name"],
+  );
+});
+
+test("a table that still says remote_id is not opened as remoteId", () => {
+  const blocked = legacyDocumentColumns(
+    "distribution_customers",
+    ["uuid", "data", "remote_id", "remote_state"],
+    ["remoteId", "remoteState", "ackedVersion"],
+  );
+  assert.equal(
+    blocked,
+    "distribution_customers has remote_id and no remoteId. Copy remote_id into remoteId in a named migration before opening this store.",
+  );
+  assert.equal(
+    legacyDocumentColumns(
+      "distribution_customers",
+      ["uuid", "data", "remoteId", "remoteState"],
+      ["remoteId", "remoteState", "ackedVersion"],
+    ),
+    null,
   );
 });

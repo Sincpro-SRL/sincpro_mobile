@@ -23,6 +23,8 @@ export interface IRemote {
   remoteId?: number;
   remoteRef?: string;
   remoteState: ERemoteState;
+  ackedVersion: number;
+  readonly isDirty: boolean;
 
   fromRemoteDTO: (data: any) => this;
   mergeWithRemote: (data: this) => void;
@@ -239,6 +241,7 @@ export class RemoteEntity extends Entity implements IRemote {
   public remoteId?: number;
   public remoteRef?: string;
   public remoteState: ERemoteState = ERemoteState.PENDING;
+  public ackedVersion: number = 0;
 
   protected constructor() {
     super();
@@ -274,10 +277,16 @@ export class RemoteEntity extends Entity implements IRemote {
     return (await resolveEntity(this.REPOSITORY, this.remoteId!, true)) as this;
   }
 
+  public get isDirty(): boolean {
+    return this.version === 0 || this.version !== this.ackedVersion;
+  }
+
   public mergeWithRemote(data: this): void {
     const preservedUuid = this.uuid;
     const preservedEventIds = this.eventIds;
     const preservedVersion = this.version;
+    const preservedAcked = this.ackedVersion;
+    const preservedState = this.remoteState;
     const preservedCreatedAt = this.createdAt;
 
     Object.assign(this, data);
@@ -285,6 +294,8 @@ export class RemoteEntity extends Entity implements IRemote {
     this.uuid = preservedUuid;
     this.eventIds = preservedEventIds;
     this.version = preservedVersion;
+    this.ackedVersion = preservedAcked;
+    this.remoteState = preservedState;
     this.createdAt = preservedCreatedAt;
   }
 

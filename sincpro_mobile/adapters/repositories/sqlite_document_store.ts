@@ -1,6 +1,7 @@
 import { type CompiledCriteria } from "@sincpro/mobile/domain/database/criteria_sql";
 import {
   type ColumnDefinition,
+  legacyDocumentColumns,
   missingColumns,
 } from "@sincpro/mobile/domain/database/migration_plan";
 import {
@@ -171,10 +172,15 @@ export class SqliteDocumentStore implements DocumentStore {
 
   private definition(): string {
     const extras = this.columnNames
-      .map((name) => `${name} ${this.integerColumns.has(name) ? "INTEGER" : "TEXT"}`)
+      .map((name) => `${name} ${this.columnDefinition(name)}`)
       .join(", ");
     const tail = extras ? `, ${extras}` : "";
     return `CREATE TABLE IF NOT EXISTS ${this.table} (uuid TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL${tail})`;
+  }
+
+  private columnDefinition(name: string): string {
+    if (name === "ackedVersion") return "INTEGER NOT NULL DEFAULT 0";
+    return this.integerColumns.has(name) ? "INTEGER" : "TEXT";
   }
 
   private ensure(): Promise<void> {
@@ -193,7 +199,7 @@ export class SqliteDocumentStore implements DocumentStore {
       { name: "data", definition: "TEXT NOT NULL DEFAULT '{}'" },
       ...this.columnNames.map((name) => ({
         name,
-        definition: this.integerColumns.has(name) ? "INTEGER" : "TEXT",
+        definition: this.columnDefinition(name),
       })),
     ];
   }
@@ -203,6 +209,7 @@ export class SqliteDocumentStore implements DocumentStore {
     if (existing.length === 0) {
       await DBCursor.execAsync(this.definition());
     } else {
+      this.refuseLegacy(existing);
       for (const column of missingColumns(existing, this.wanted())) {
         await DBCursor.execAsync(
           addColumnStatement(this.table, column.name, column.definition),
@@ -222,6 +229,7 @@ export class SqliteDocumentStore implements DocumentStore {
     if (existing.length === 0) {
       DBCursor.mutateDatabaseSync(this.definition());
     } else {
+      this.refuseLegacy(existing);
       for (const column of missingColumns(existing, this.wanted())) {
         DBCursor.mutateDatabaseSync(
           addColumnStatement(this.table, column.name, column.definition),
@@ -234,6 +242,11 @@ export class SqliteDocumentStore implements DocumentStore {
       );
     }
     this.syncReady = true;
+  }
+
+  private refuseLegacy(existing: readonly string[]): void {
+    const blocked = legacyDocumentColumns(this.table, existing, this.columnNames);
+    if (blocked) throw new Error(blocked);
   }
 
   private assertColumn(name: string): void {
