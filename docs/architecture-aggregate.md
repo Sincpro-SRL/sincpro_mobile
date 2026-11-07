@@ -110,13 +110,23 @@ Si `after_save` lanza, la transacción deshace la fila del padre y la de los hij
 
 ## Leer
 
-`findById` hidrata y corre `after_read`. `findByIds`, `findAll` y `findByCriteria` hidratan cada fila (`after_read`) y después corren `after_search` una vez con la página. `findByCriteria` traduce el criteria a SQL en ese momento: una columna declarada se compara por su nombre, y cualquier otro campo con `json_extract` sobre `data`. `today` es la fecha del reloj en su zona y `now` el mismo instante en UTC; los dos se leen una vez al compilar. Un `period` con `between` es `>= inicio AND < fin`. Una relación cruza con `EXISTS`. La colección que ya está en memoria sigue filtrando con el motor de `@sincpro/criteria`. `remoteId` y `remoteState` salen por columna cuando el store las tiene: `sqliteDocuments` las declara si la entidad es `RemoteEntity`.
+`findById` hidrata y corre `after_read`. `findByIds`, `findAll` y `findByCriteria` hidratan cada fila (`after_read`) y después corren `after_search` una vez con la página. `findByCriteria` traduce el criteria a SQL en ese momento: una columna declarada se compara por su nombre, y cualquier otro campo con `json_extract` sobre `data`. `today` es la fecha del reloj en su zona y `now` el mismo instante en UTC; los dos se leen una vez al compilar. Un `period` con `between` es `>= inicio AND < fin`. Una relación cruza con `EXISTS`. La colección que ya está en memoria sigue filtrando con el motor de `@sincpro/criteria`. `remoteId`, `remoteState` y `ackedVersion` salen por columna cuando el store las tiene: `sqliteDocuments` las declara si la entidad es `RemoteEntity`.
 
 La hidratación de una `@relation` lee los ids del documento y carga esas filas en el repositorio del hijo. Un JSON viejo que todavía trae el hijo embebido también se acepta. Después anota los ids que el padre tenía y, si el agregado sigue cambios, toma el snapshot. Un `after_read` que rellena un campo entra en ese snapshot: no sale como `entity.updated` en el próximo guardado.
 
 `findByIdSync` y `findByIdsSync` existen para `@mapped`. No corren hooks: un getter no puede esperar.
 
 La versión que manda es la columna. Una fila vieja sin `version` se lee como versión 1.
+
+## Conciliar con Odoo
+
+`version` sube en cada `save`. `ackedVersion` es la versión que Odoo ya aceptó. El documento está sucio cuando los dos números no coinciden, y también cuando todavía no se guardó (`version` 0). `findDirty` busca esa diferencia en las filas guardadas. `acknowledge` iguala `ackedVersion` a `version` sin subirla: es la respuesta de un push. No emite otro `entity.updated`.
+
+Un pull pasa por `reconcile`. Si el teléfono no tiene ese `remoteId`, el `save` siguiente deja las dos versiones iguales. Si el local está sucio, devuelve `keep` y la fila no se escribe. Si está limpio, `mergeWithRemote` cambia el cuerpo y el `save` vuelve a dejar las versiones iguales. `mergeWithRemote` conserva el `uuid`, los eventos, la `version`, `ackedVersion` y el `createdAt`.
+
+Una fila vieja que ya decía `remoteState` `SYNCED` y no tiene `ackedVersion` se lee como limpia. Una que decía `PENDING` se lee sucia.
+
+En Distribution, `mergeRemoteCustomers` hoy pisa el JSON y `pushCustomersToBackend` busca `PENDING`. Con este repositorio el servicio llama `repository.pull(local, incoming)`: guarda solo cuando el local no está sucio. El push busca `findDirty()` y, cuando Odoo devuelve el id, `repository.acknowledge(customer, remoteId)`. La pantalla sigue leyendo `remoteState`: el `save` lo deja en `PENDING` si el documento está sucio y en `SYNCED` si no. Las columnas del store son `remoteId`, `remoteState` y `ackedVersion`. La app adapta su tabla a esos nombres cuando pasa a este repositorio.
 
 ## Eventos
 
@@ -222,4 +232,4 @@ No hay archivar. Borrar es `remove`.
 
 ## Qué no es esta capa
 
-El criterio no se compila a SQL. No hay borradores ni `refuse_stale`. No hay `DocumentStore` HTTP. No hay registro de migraciones. Las apps que todavía llaman `addDomainEvent` tienen que pasar a `record` y a este repositorio. Eso es adaptación de la app, no un hueco de esta capa.
+No hay borradores ni `refuse_stale`. No hay `DocumentStore` HTTP. Las apps que todavía llaman `addDomainEvent` tienen que pasar a `record` y a este repositorio. Eso es adaptación de la app, no un hueco de esta capa.

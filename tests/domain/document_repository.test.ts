@@ -629,6 +629,99 @@ test("findByRemoteId reads the remoteId column", async () => {
   assert.equal(products.findByRemoteIdSync(42)?.name, "milk");
 });
 
+class Customer extends RemoteEntity {
+  static make(data?: Partial<Customer>): Customer {
+    return Customer.obj<Customer>(data);
+  }
+
+  city = "";
+}
+
+function customersOf(database: FakeDocumentDatabase) {
+  return new DocumentRepository(
+    Customer,
+    new FakeDocumentStore(database, "customers", ["remoteId", "remoteState", "ackedVersion"]),
+  );
+}
+
+test("a local save stays dirty until Odoo accepts that version", async () => {
+  DocumentRepository.reset();
+  const customers = customersOf(new FakeDocumentDatabase());
+  const customer = Customer.make({ city: "Oruro" });
+  await customers.save(customer);
+
+  assert.equal(customer.version, 1);
+  assert.equal(customer.ackedVersion, 0);
+  assert.equal(customer.isDirty, true);
+  assert.equal(customer.remoteState, ERemoteState.PENDING);
+
+  await customers.acknowledge(customer, 15);
+  const loaded = await customers.findById(customer.uuid);
+
+  assert.equal(customer.version, 1);
+  assert.equal(customer.ackedVersion, 1);
+  assert.equal(customer.remoteId, 15);
+  assert.equal(customer.isDirty, false);
+  assert.equal(loaded?.ackedVersion, 1);
+  assert.equal(loaded?.remoteState, ERemoteState.SYNCED);
+  assert.deepEqual(
+    (await customers.findDirty()).mapToArray((item) => item.uuid),
+    [],
+  );
+});
+
+test("a pull keeps a dirty customer and replaces a clean one", async () => {
+  DocumentRepository.reset();
+  const database = new FakeDocumentDatabase();
+  const customers = customersOf(database);
+  const dirty = Customer.make({ city: "La Paz" });
+  await customers.save(dirty);
+  const clean = await customers.pull(null, Customer.make({ city: "Sucre", remoteId: 8 }));
+
+  const kept = await customers.pull(
+    dirty,
+    Customer.make({ city: "Cochabamba", remoteId: 4 }),
+  );
+  const replaced = await customers.pull(
+    clean,
+    Customer.make({ city: "Potosí", remoteId: 8 }),
+  );
+  assert.equal(kept.city, "La Paz");
+
+  const loaded = await customers.findByRemoteId(8);
+  assert.equal(replaced.city, "Potosí");
+  assert.equal(loaded?.city, "Potosí");
+  assert.equal(loaded?.version, loaded?.ackedVersion);
+  assert.equal(loaded?.isDirty, false);
+  assert.deepEqual(
+    (await customers.findDirty()).mapToArray((item) => item.city),
+    ["La Paz"],
+  );
+});
+
+test("a synced row written before ackedVersion is not dirty", async () => {
+  DocumentRepository.reset();
+  const database = new FakeDocumentDatabase();
+  const customers = customersOf(database);
+  const uuid = "old-customer";
+  database.table("customers").set(uuid, {
+    uuid,
+    version: 4,
+    data: JSON.stringify({
+      uuid,
+      version: 4,
+      remoteId: 3,
+      remoteState: ERemoteState.SYNCED,
+      city: "Oruro",
+    }),
+    columns: { remoteId: 3, remoteState: ERemoteState.SYNCED },
+  });
+
+  const loaded = await customers.findById(uuid);
+  assert.equal(loaded?.ackedVersion, 4);
+  assert.equal(loaded?.isDirty, false);
+});
+
 test("a synchronous read skips hooks", async () => {
   DocumentRepository.reset();
   const seen: string[] = [];

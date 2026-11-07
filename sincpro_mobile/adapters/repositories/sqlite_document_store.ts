@@ -171,10 +171,15 @@ export class SqliteDocumentStore implements DocumentStore {
 
   private definition(): string {
     const extras = this.columnNames
-      .map((name) => `${name} ${this.integerColumns.has(name) ? "INTEGER" : "TEXT"}`)
+      .map((name) => `${name} ${this.columnDefinition(name)}`)
       .join(", ");
     const tail = extras ? `, ${extras}` : "";
     return `CREATE TABLE IF NOT EXISTS ${this.table} (uuid TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL${tail})`;
+  }
+
+  private columnDefinition(name: string): string {
+    if (name === "ackedVersion") return "INTEGER NOT NULL DEFAULT 0";
+    return this.integerColumns.has(name) ? "INTEGER" : "TEXT";
   }
 
   private ensure(): Promise<void> {
@@ -193,7 +198,7 @@ export class SqliteDocumentStore implements DocumentStore {
       { name: "data", definition: "TEXT NOT NULL DEFAULT '{}'" },
       ...this.columnNames.map((name) => ({
         name,
-        definition: this.integerColumns.has(name) ? "INTEGER" : "TEXT",
+        definition: this.columnDefinition(name),
       })),
     ];
   }
