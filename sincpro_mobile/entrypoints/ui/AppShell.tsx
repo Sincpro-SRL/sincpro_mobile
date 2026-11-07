@@ -20,11 +20,7 @@ import { type ComponentType, type ReactNode, useEffect, useState } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
-import {
-  initialWindowMetrics,
-  SafeAreaProvider,
-  SafeAreaView,
-} from "react-native-safe-area-context";
+import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context";
 
 import { CommonProvider } from "./common_provider";
 import { ActiveDomainApp, type DomainApp, DomainSwitcherProvider } from "./domain_switcher";
@@ -228,23 +224,21 @@ export function createAppShell(config: AppShellConfig): ComponentType {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View className="flex-1" style={themeStyle}>
           <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-            <SafeAreaView edges={["top"]} style={{ flex: 1 }}>
-              <KeyboardProvider>
-                <CommonProvider darkTheme={config.darkTheme} lightTheme={config.theme}>
-                  <ToastProvider position="top">
-                    {withProviders(
-                      providers,
-                      <DomainSwitcherProvider apps={apps} initialDomain={config.activeDomain}>
-                        <NavigationContainer theme={navTheme}>
-                          <ActiveDomainApp />
-                        </NavigationContainer>
-                      </DomainSwitcherProvider>,
-                    )}
-                    <DeviceNotices />
-                  </ToastProvider>
-                </CommonProvider>
-              </KeyboardProvider>
-            </SafeAreaView>
+            <KeyboardProvider>
+              <CommonProvider darkTheme={config.darkTheme} lightTheme={config.theme}>
+                <ToastProvider position="top">
+                  {withProviders(
+                    providers,
+                    <DomainSwitcherProvider apps={apps} initialDomain={config.activeDomain}>
+                      <NavigationContainer theme={navTheme}>
+                        <ActiveDomainApp />
+                      </NavigationContainer>
+                    </DomainSwitcherProvider>,
+                  )}
+                  <DeviceNotices />
+                </ToastProvider>
+              </CommonProvider>
+            </KeyboardProvider>
           </SafeAreaProvider>
         </View>
       </GestureHandlerRootView>

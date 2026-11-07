@@ -64,6 +64,18 @@
 
 ## UI / Expo / build nativo
 
+### Safe-area superior duplicada o franja blanca sobre un degradado
+
+- **Síntoma:** login o cabeceras tienen un margen superior extra y el degradado no llega a la barra de estado.
+- **Causa:** un `SafeAreaView` global suma su inset al que ya reserva la pantalla.
+- **Fix:** `AppShell` mantiene `SafeAreaProvider` sin padding global. Cada pantalla reserva sus bordes; `ListViewV2.Header` y `FormViewV2.Header` usan `safeArea=true` por defecto. Al embeberlos bajo una cabecera nativa o un contenedor que ya reserva el borde superior, pasar `safeArea={false}`.
+
+### Eventos / DLQ fallan al leer un campo privado de una entidad
+
+- **Síntoma:** `asJSON()` lanza un error de propiedad privada al renderizar una fila.
+- **Causa:** clonar una instancia con `Object.create` y `Object.assign` no copia sus campos `#`.
+- **Fix:** el design system entrega la instancia original a los renderers y callbacks; los metadatos de fila viven en un wrapper separado. No cambiar los campos privados del evento por propiedades enumerables: se filtrarían al payload de negocio.
+
 ### Logo/branding desaparece tras migrar (Display.Logo, HomeHeader, AuthFormView)
 
 - **Síntoma:** login/perfil/home renderizan pero **sin logo** (espacio vacío donde iba el logo).
