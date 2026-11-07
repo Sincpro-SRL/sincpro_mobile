@@ -126,7 +126,7 @@ Un pull pasa por `reconcile`. Si el teléfono no tiene ese `remoteId`, el `save`
 
 Una fila vieja que ya decía `remoteState` `SYNCED` y no tiene `ackedVersion` se lee como limpia. Una que decía `PENDING` se lee sucia.
 
-En Distribution, `mergeRemoteCustomers` hoy pisa el JSON y `pushCustomersToBackend` busca `PENDING`. Con este repositorio el servicio llama `repository.pull(local, incoming)`: guarda solo cuando el local no está sucio. El push busca `findDirty()` y, cuando Odoo devuelve el id, `repository.acknowledge(customer, remoteId)`. La pantalla sigue leyendo `remoteState`: el `save` lo deja en `PENDING` si el documento está sucio y en `SYNCED` si no. El día que una tabla de Distribution pase a este store, una migración agrega `version` y `ackedVersion`, copia `remote_id` a `remoteId` y `remote_state` a `remoteState`, y en las filas `SYNCED` deja `ackedVersion = version`. Si esa copia no está hecha, el store no abre la tabla: sigue habiendo `remote_id` y todavía no hay `remoteId`.
+En Distribution, `mergeRemoteCustomers` hoy pisa el JSON y `pushCustomersToBackend` busca `PENDING`. Con este repositorio el servicio llama `repository.pull(local, incoming)`: guarda solo cuando el local no está sucio. El push busca `findDirty()` y, cuando Odoo devuelve el id, `repository.acknowledge(customer, remoteId)`. La pantalla sigue leyendo `remoteState`: el `save` lo deja en `PENDING` si el documento está sucio y en `SYNCED` si no. Las columnas del store son `remoteId`, `remoteState` y `ackedVersion`. La app adapta su tabla a esos nombres cuando pasa a este repositorio.
 
 ## Eventos
 

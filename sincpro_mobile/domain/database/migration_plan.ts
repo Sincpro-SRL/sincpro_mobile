@@ -61,25 +61,6 @@ export function resetPlan(
   return { drop: [...drop], forget };
 }
 
-const LEGACY_REMOTE_COLUMNS: Record<string, string> = {
-  remoteId: "remote_id",
-  remoteState: "remote_state",
-};
-
-export function legacyDocumentColumns(
-  table: string,
-  existing: readonly string[],
-  wanted: readonly string[],
-): string | null {
-  const have = new Set(existing);
-  for (const name of wanted) {
-    const legacy = LEGACY_REMOTE_COLUMNS[name];
-    if (!legacy || !have.has(legacy) || have.has(name)) continue;
-    return `${table} has ${legacy} and no ${name}. Copy ${legacy} into ${name} in a named migration before opening this store.`;
-  }
-  return null;
-}
-
 export function missingColumns(
   existing: readonly string[],
   wanted: readonly ColumnDefinition[],

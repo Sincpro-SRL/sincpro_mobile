@@ -1,7 +1,6 @@
 import { type CompiledCriteria } from "@sincpro/mobile/domain/database/criteria_sql";
 import {
   type ColumnDefinition,
-  legacyDocumentColumns,
   missingColumns,
 } from "@sincpro/mobile/domain/database/migration_plan";
 import {
@@ -209,7 +208,6 @@ export class SqliteDocumentStore implements DocumentStore {
     if (existing.length === 0) {
       await DBCursor.execAsync(this.definition());
     } else {
-      this.refuseLegacy(existing);
       for (const column of missingColumns(existing, this.wanted())) {
         await DBCursor.execAsync(
           addColumnStatement(this.table, column.name, column.definition),
@@ -229,7 +227,6 @@ export class SqliteDocumentStore implements DocumentStore {
     if (existing.length === 0) {
       DBCursor.mutateDatabaseSync(this.definition());
     } else {
-      this.refuseLegacy(existing);
       for (const column of missingColumns(existing, this.wanted())) {
         DBCursor.mutateDatabaseSync(
           addColumnStatement(this.table, column.name, column.definition),
@@ -242,11 +239,6 @@ export class SqliteDocumentStore implements DocumentStore {
       );
     }
     this.syncReady = true;
-  }
-
-  private refuseLegacy(existing: readonly string[]): void {
-    const blocked = legacyDocumentColumns(this.table, existing, this.columnNames);
-    if (blocked) throw new Error(blocked);
   }
 
   private assertColumn(name: string): void {
