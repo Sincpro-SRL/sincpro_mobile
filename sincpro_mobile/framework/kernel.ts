@@ -1,5 +1,10 @@
 import type { IMigration } from "@sincpro/mobile/domain/database";
-import { pendingMigrations, resetPlan } from "@sincpro/mobile/domain/database/migration_plan";
+import {
+  applyMigrationStep,
+  migrationsNewerThanApp,
+  pendingMigrations,
+  resetPlan,
+} from "@sincpro/mobile/domain/database/migration_plan";
 import { repos } from "@sincpro/mobile/entrypoints/db/repositories";
 import type { Subscriber } from "@sincpro/mobile/event_driven";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
@@ -70,11 +75,22 @@ export class Kernel {
 
   async runMigrations(): Promise<void> {
     const applied = await appliedMigrationNames();
-    for (const { name, migrationFn } of pendingMigrations(this.migrations(), applied)) {
-      logger.info(`Running migration: ${name}`);
-      await migrationFn();
-      await markMigrationApplied(name);
-      applied.add(name);
+    const migrations = this.migrations();
+    const newer = migrationsNewerThanApp(
+      applied,
+      migrations.map((migration) => migration.name),
+    );
+    if (newer.length > 0) {
+      throw new Error(`the database is newer than this app: ${newer.join(", ")}`);
+    }
+    for (const migration of pendingMigrations(migrations, applied)) {
+      logger.info(`Running migration: ${migration.name}`);
+      await applyMigrationStep(
+        migration,
+        (work) => DBCursor.transaction(work),
+        markMigrationApplied,
+      );
+      applied.add(migration.name);
     }
   }
 

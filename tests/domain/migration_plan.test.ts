@@ -3,6 +3,8 @@ import test from "node:test";
 
 import { type IMigration } from "../../sincpro_mobile/domain/database/database.ts";
 import {
+  applyMigrationStep,
+  migrationsNewerThanApp,
   migrationTables,
   missingColumns,
   pendingMigrations,
@@ -43,6 +45,62 @@ test("a name that is not a table is not dropped unless it declares one", () => {
   assert.deepEqual(migrationTables(migration("event_queue.add_status", ["event_queue"])), [
     "event_queue",
   ]);
+});
+
+test("a database from a newer app is named before this app opens it", () => {
+  assert.deepEqual(migrationsNewerThanApp(["settings", "future.column"], ["settings"]), [
+    "future.column",
+  ]);
+});
+
+test("a step commits its SQL and its name together", async () => {
+  const log: string[] = [];
+  await applyMigrationStep(
+    {
+      name: "notes",
+      migrationFn: async () => {
+        log.push("sql");
+      },
+    },
+    async (work) => {
+      log.push("begin");
+      await work();
+      log.push("commit");
+    },
+    async () => {
+      log.push("mark");
+    },
+  );
+  assert.deepEqual(log, ["begin", "sql", "mark", "commit"]);
+});
+
+test("a failed step does not mark and the transaction does not commit", async () => {
+  const log: string[] = [];
+  await assert.rejects(() =>
+    applyMigrationStep(
+      {
+        name: "notes",
+        migrationFn: async () => {
+          log.push("sql");
+          throw new Error("disk");
+        },
+      },
+      async (work) => {
+        log.push("begin");
+        try {
+          await work();
+          log.push("commit");
+        } catch (error) {
+          log.push("rollback");
+          throw error;
+        }
+      },
+      async () => {
+        log.push("mark");
+      },
+    ),
+  );
+  assert.deepEqual(log, ["begin", "sql", "rollback"]);
 });
 
 test("a document table gains the columns it does not have yet", () => {

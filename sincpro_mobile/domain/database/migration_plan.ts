@@ -12,6 +12,25 @@ export function migrationTables(migration: IMigration): string[] {
   return declared.filter((name) => IDENTIFIER.test(name));
 }
 
+export function migrationsNewerThanApp(
+  applied: Iterable<string>,
+  known: readonly string[],
+): string[] {
+  const names = new Set(known);
+  return [...applied].filter((name) => !names.has(name)).sort();
+}
+
+export async function applyMigrationStep(
+  migration: IMigration,
+  transaction: (work: () => Promise<void>) => Promise<void>,
+  mark: (name: string) => Promise<void>,
+): Promise<void> {
+  await transaction(async () => {
+    await migration.migrationFn();
+    await mark(migration.name);
+  });
+}
+
 export function pendingMigrations(
   migrations: readonly IMigration[],
   applied: ReadonlySet<string>,

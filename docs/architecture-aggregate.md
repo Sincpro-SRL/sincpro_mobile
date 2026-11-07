@@ -2,7 +2,7 @@
 
 El estado de un agregado es el documento SQLite. El evento es el hecho que ese documento registró. El repositorio es quien escribe el documento, corre las reglas y, si el evento es de integración, lo deja en la cola. No es event sourcing: no se reconstruye el estado leyendo el log. No es un broker: los suscriptores corren en el mismo proceso.
 
-Un teléfono que ya tiene las tablas de eventos no las tira. El store crea la tabla del documento si no existe, y si ya existe agrega `version`, `data` o una columna declarada que falte. Las migraciones de infraestructura corren una vez, anotadas por nombre en `schema_migrations`; un wipe olvida solo los nombres de las tablas que borró y las vuelve a correr. El padre guarda los ids de cada `@relation`; la fila del hijo está en su tabla.
+Un teléfono que ya tiene las tablas de eventos no las tira. El store crea la tabla del documento si no existe, y si ya existe agrega `version`, `data` o una columna declarada que falte. Las migraciones de infraestructura corren una vez, anotadas por nombre en `schema_migrations`. El SQL y el nombre se confirman en la misma transacción: si el paso se corta, no queda ninguno de los dos. Una base que ya tiene un nombre que esta app no conoce no se abre. Un wipe olvida solo los nombres de las tablas que borró y las vuelve a correr. El padre guarda los ids de cada `@relation`; la fila del hijo está en su tabla.
 
 ## Piezas
 

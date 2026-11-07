@@ -207,8 +207,10 @@ feeds the `InternetIsUp/Down` signals that gate the EventBus and the telemetry f
 - **`BaseModule`** (`key="COMMON"`, `shared`) — always on; provides the base repositories,
   migrations, the system subscribers, and `CHECK_NETWORK`. It marks `telemetry_queue` + `spans_queue`
   as `persistOnReset` so telemetry generated during logout still ships.
-- **`Kernel`** — aggregates modules (shared-first), merges their hooks, runs migrations,
-  and `restartDatabase()` (drops all but `persistOnReset` tables on logout-with-wipe).
+- **`Kernel`** — aggregates modules (shared-first), merges their hooks, and runs migrations.
+  Each migration commits its SQL and its name in one transaction. A database that already
+  has a name this app does not know does not open. `restartDatabase()` drops all but
+  `persistOnReset` tables on logout-with-wipe.
 - **`Orchestrator`** — the runtime brain: `bootstrap()`, `authenticateSession()`, runtime
   `enableDomain/disableDomain` (mutex-serialized), and an AppState watcher that re-reconciles
   queue + cron whenever the app foregrounds.
