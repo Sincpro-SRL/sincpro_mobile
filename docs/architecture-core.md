@@ -12,11 +12,12 @@ The process a screen runs in is `@sincpro/client-framework`. The web app calls i
 its `main`. This package is the phone shell around that same process: SQLite, the queue,
 cron, `AppShell`. It does not own a second client.
 
-| Already on `main`                                                                 | Still this package, before a release                                                                                     |
-| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `generateUUID` is `newEntityId` (32 hex). An old id with hyphens stays a text key | `monetary.ts` still returns a `number` at the edge a screen already calls. The exact value is `toDecimal` / `discountOf` |
-| Document JSON goes through `valuesOf` / `readValues`, dropping `_` keys           | `JsonSerializerAdapter.cleanData` now normalizes with `valuesOf`. The SHA-256 and the sorted canonical form stay here    |
-| `isDay` / `dayOf` decide a calendar day. `formatDate` still draws it              | Dependency is `^0.5.0`: `screensTransport`, `reportError`, `this.span`                                                   |
+| Already on `main`                                                                 | Still this package, before a release                                         |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `generateUUID` is `newEntityId` (32 hex). An old id with hyphens stays a text key | A screen shows money with `formatTwoDecimals`, from the rounded decimal text |
+| Document JSON and `cleanData` go through `valuesOf` / `readValues`                | The SHA-256 and the sorted canonical form stay here                          |
+| `isDay` / `dayOf` decide a calendar day. `formatDate` still draws it              | Dependency is `^0.6.0`: `screensTransport`, `reportError`, `this.span`       |
+| `toDecimal`, `discountOf` and `calculateDiscountedTotal` answer a `Decimal`       | `dayjs` stays for drawing a date. It does not decide what a day is           |
 
 What is not built, in this order, and is not a release by itself:
 

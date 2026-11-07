@@ -67,10 +67,12 @@ test("money and a decimal travel as text, and a discount is not a float", () => 
   });
 
   assert.equal(toDecimal("1.2300").toString(), "1.2300");
-  assert.equal(parseToMonetaryNumber("1.2300"), 1.23);
+  assert.equal(parseToMonetaryNumber("1.2300").toString(), "1.2300");
   assert.equal(formatTwoDecimals(10.1), "10,10");
+  assert.equal(formatTwoDecimals(new Decimal("0.1").plus("0.2")), "0,30");
+  assert.equal(formatTwoDecimals("1234.5"), "1.234,50");
   assert.equal(discountOf("0.10", 20).toString(), "0.02000000");
-  assert.equal(calculateDiscountedTotal(0.1, 20), 0.02);
+  assert.equal(calculateDiscountedTotal("0.10", 20).toString(), "0.02000000");
 
   const cleaned = JsonSerializerAdapter.cleanData({
     day: "2026-03-12",
