@@ -3,14 +3,15 @@ import Sheet from "@sincpro/mobile-ui/Dialog/Sheet";
 import { Display } from "@sincpro/mobile-ui/Display";
 import KeyboardForm from "@sincpro/mobile-ui/Form/Form.KeyboardForm";
 import { Navigation } from "@sincpro/mobile-ui/Navigation";
+import { Pressable } from "@sincpro/mobile-ui/primitives/Pressable";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { type CriteriaGroup, describeCriteria } from "@sincpro/mobile-ui/utils/criteria";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
+import FilterBuilder from "@sincpro/mobile-ui/widgets/FilterBuilder";
 import { type ReactNode, useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { TextInput, View } from "react-native";
 
-import { CriteriaEditor } from "./criteria-editor";
 import {
   countConditions,
   emptyCriteria,
@@ -132,6 +133,9 @@ function CustomFilter({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
+  // While a condition is half-edited, Limpiar/Aplicar stay hidden: the builder
+  // saves or cancels it first, so a draft never applies an unvalidated condition.
+  const [editing, setEditing] = useState(false);
   const summary = describeCriteria(value, EVENT_FIELDS);
 
   const apply = () => {
@@ -168,19 +172,26 @@ function CustomFilter({
         visible={open}
       >
         <KeyboardForm contentContainerStyle={{ paddingBottom: 16 }}>
-          <CriteriaEditor fields={EVENT_FIELDS} onChange={setDraft} value={draft} />
-          <View className="flex-row gap-3 pt-2">
-            <View className="flex-1">
-              <Actions.Button
-                onPress={() => setDraft(emptyCriteria())}
-                title="Limpiar"
-                variant="secondary"
-              />
+          <FilterBuilder
+            fields={EVENT_FIELDS}
+            onChange={setDraft}
+            onEditingChange={setEditing}
+            value={draft}
+          />
+          {editing ? null : (
+            <View className="flex-row gap-3 pt-2">
+              <View className="flex-1">
+                <Actions.Button
+                  onPress={() => setDraft(emptyCriteria())}
+                  title="Limpiar"
+                  variant="secondary"
+                />
+              </View>
+              <View className="flex-1">
+                <Actions.Button onPress={apply} title="Aplicar" />
+              </View>
             </View>
-            <View className="flex-1">
-              <Actions.Button onPress={apply} title="Aplicar" />
-            </View>
-          </View>
+          )}
         </KeyboardForm>
       </Sheet>
     </>

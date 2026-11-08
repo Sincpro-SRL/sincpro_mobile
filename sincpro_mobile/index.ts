@@ -1,19 +1,25 @@
 export { EBuiltinCron } from "@sincpro/mobile/entrypoints/cron/EBuiltinCron";
-export type { AppShellConfig } from "@sincpro/mobile/entrypoints/ui/AppShell";
-export { createAppShell } from "@sincpro/mobile/entrypoints/ui/AppShell";
+export type {
+  AppShellConfig,
+  AppShellDefinition,
+} from "@sincpro/mobile/entrypoints/ui/AppShell";
+export { AppShell, defineAppShell } from "@sincpro/mobile/entrypoints/ui/AppShell";
 export type { TimezoneLocale } from "@sincpro/mobile/entrypoints/ui/common_provider";
 export { CommonProvider, useCommon } from "@sincpro/mobile/entrypoints/ui/common_provider";
-export type { DomainApp } from "@sincpro/mobile/entrypoints/ui/domain_switcher";
+export type {
+  DomainEntry,
+  DomainSwitcherValue,
+} from "@sincpro/mobile/entrypoints/ui/domain_switcher";
 export {
-  ActiveDomainApp,
   DomainSwitcherProvider,
   useDomainSwitcher,
 } from "@sincpro/mobile/entrypoints/ui/domain_switcher";
 export type { DeepPartial, ThemeTokens } from "@sincpro/mobile/entrypoints/ui/theme";
 export { createTheme } from "@sincpro/mobile/entrypoints/ui/theme";
+export { defineBackgroundCrons } from "@sincpro/mobile/framework/background";
 export { BaseModule, baseModule } from "@sincpro/mobile/framework/base_module";
 export type { AppConfig } from "@sincpro/mobile/framework/createApp";
-export { createApp } from "@sincpro/mobile/framework/createApp";
+export { createApp, createKernel, startApp } from "@sincpro/mobile/framework/createApp";
 export { DomainModule } from "@sincpro/mobile/framework/domain_module";
 export { ApplicationService, Feature } from "@sincpro/mobile/framework/feature";
 export { Kernel } from "@sincpro/mobile/framework/kernel";
@@ -21,6 +27,7 @@ export { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 export { installGlobalErrorHandler } from "@sincpro/mobile/infrastructure/ui/errorHandler";
 
 // Observability — opt-in, tree-shakeable
+export { Debug } from "@sincpro/mobile/infrastructure/debug";
 export type {
   InterceptorHooks,
   MethodCall,
@@ -32,9 +39,22 @@ export {
 } from "@sincpro/mobile/infrastructure/interceptor/intercept";
 export type { Logger } from "@sincpro/mobile/infrastructure/interceptor/logging_hooks";
 export { loggingHooks } from "@sincpro/mobile/infrastructure/interceptor/logging_hooks";
+export {
+  DEFAULT_ENABLED_LOGS,
+  EApplicationLogger,
+  getEnabledLoggers,
+  isConsoleDebug,
+  isLoggerEnabled,
+  resetEnabledLoggers,
+  setConsoleDebug,
+  setEnabledLoggers,
+  setLoggerEnabled,
+  subscribeLoggerConfig,
+} from "@sincpro/mobile/infrastructure/logger";
 export type {
   LokiAuth,
   LokiConfig,
   TelemetryConfig,
 } from "@sincpro/mobile/infrastructure/telemetry";
 export { initTelemetry } from "@sincpro/mobile/infrastructure/telemetry";
+export type { ActivityVisibility } from "@sincpro/mobile/infrastructure/ui/activity";

@@ -1,4 +1,5 @@
 import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/events";
+import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import {
   eventStatusBadge,
   eventStatusLabel,
@@ -7,12 +8,13 @@ import { Actions } from "@sincpro/mobile-ui/Actions";
 import Sheet from "@sincpro/mobile-ui/Dialog/Sheet";
 import type { IconName } from "@sincpro/mobile-ui/Display";
 import { Display } from "@sincpro/mobile-ui/Display";
+import { Pressable } from "@sincpro/mobile-ui/primitives/Pressable";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import JsonPreview from "@sincpro/mobile-ui/widgets/JSONViewer";
 import * as Clipboard from "expo-clipboard";
-import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { View } from "react-native";
 
 interface EventActionSheetProps {
   event: IntegrationEvent | null;
@@ -67,10 +69,18 @@ export function EventActionSheet({
   const [showPayload, setShowPayload] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach(clearTimeout);
+  }, []);
 
   if (!event) return null;
 
-  const payload = event.asJSON(true);
+  const later = (run: () => void, ms: number) => {
+    timers.current.push(setTimeout(run, ms));
+  };
   const attempts = event.attempts ?? 0;
   const failed = event.status === EEventStatus.FAILED;
   const actionLabel = failed ? "Reintentar" : retryLabel;
@@ -84,17 +94,18 @@ export function EventActionSheet({
   const retry = async () => {
     if (!onRetry || sending) return;
     setSending(true);
-    try {
-      await onRetry(event);
-    } finally {
-      setTimeout(() => setSending(false), 1200);
-    }
+    return withCleanup(
+      async () => {
+        await onRetry(event);
+      },
+      () => later(() => setSending(false), 1200),
+    );
   };
 
   const copyPayload = () => {
-    void Clipboard.setStringAsync(payload);
+    void Clipboard.setStringAsync(event.asJSON(true));
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    later(() => setCopied(false), 1500);
   };
 
   return (
@@ -172,7 +183,7 @@ export function EventActionSheet({
 
         {showPayload ? (
           <View className="rounded-xl bg-bg-muted p-2">
-            <JsonPreview selectedJson={payload} />
+            <JsonPreview selectedJson={event.asJSON(true)} />
           </View>
         ) : null}
       </View>

@@ -1,2 +1,8 @@
-export { CronJob, CronWorker, CronWorkerOpts } from "./CronWorker";
+export {
+  BACKGROUND_MIN_INTERVAL,
+  CronJob,
+  CronWorker,
+  CronWorkerOpts,
+  defineBackgroundTask,
+} from "./CronWorker";
 export { EventBus, EventName } from "./EventBus";

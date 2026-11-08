@@ -5,9 +5,10 @@ import { InternetIsDownEvent, InternetIsUpEvent } from "@sincpro/mobile/domain/e
 import { Subscriber } from "@sincpro/mobile/event_driven";
 import { DomainNetworkError, RepeatableFailure } from "@sincpro/mobile/exceptions";
 import { runWithChain } from "@sincpro/mobile/infrastructure/event_chain";
-import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
+import { isConsoleDebug, loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
 import { declaresUi, publishActivity } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
+import { AppState } from "react-native";
 
 export const PROCESS_WORKER_MAX_ATTEMPTS = 1;
 export { EventName };
@@ -21,11 +22,36 @@ export class EventBus {
   private static subscribers = new Map<string, Subscriber[]>();
 
   private static isDraining = false;
+  private static running = false;
   private static connectivityReady = false;
+  private static lifecycleReady = false;
   private static intervalId: ReturnType<typeof setTimeout> | null = null;
   private static internetConnected = true;
   private static consecutiveFailures = 0;
   private static currentInterval = EventBus.INTERVAL_MS;
+
+  /**
+   * The safety-net poll only runs in the foreground. `publish` still drains at
+   * once, and coming back to the foreground drains anything left behind.
+   */
+  private static initLifecycleListener(): void {
+    if (this.lifecycleReady || !AppState?.addEventListener) return;
+    this.lifecycleReady = true;
+    AppState.addEventListener("change", (state) => {
+      if (!this.running) return;
+      if (state === "active") {
+        this.restartPolling();
+        void this.triggerProcessing();
+        return;
+      }
+      if (state === "background") this.pausePolling();
+    });
+  }
+
+  private static pausePolling(): void {
+    if (this.intervalId) clearInterval(this.intervalId);
+    this.intervalId = null;
+  }
 
   static initConnectivityListeners(): void {
     if (this.connectivityReady) return;
@@ -62,6 +88,7 @@ export class EventBus {
   }
 
   private static restartPolling(): void {
+    if (!this.running) return;
     if (this.intervalId) {
       clearInterval(this.intervalId);
     }
@@ -91,6 +118,8 @@ export class EventBus {
 
   static start(): void {
     this.initConnectivityListeners();
+    this.initLifecycleListener();
+    this.running = true;
     if (this.intervalId) return;
 
     this.currentInterval = this.INTERVAL_MS;
@@ -100,8 +129,8 @@ export class EventBus {
   }
 
   static stop(): void {
-    if (this.intervalId) clearInterval(this.intervalId);
-    this.intervalId = null;
+    this.running = false;
+    this.pausePolling();
     loggerQueueProcessor.info("ProcessWorker polling stopped");
   }
 
@@ -137,9 +166,11 @@ export class EventBus {
     loggerQueueProcessor.info(
       `EVENT=${event.name} [${event.label}] (attempt ${event.attempts}/${EventBus.MAX_ATTEMPTS}) - STARTED`,
     );
-    loggerQueueProcessor.debug(
-      `EVENT=${event.name} uuid=${event.uuid} payload=${event.asJSON()}`,
-    );
+    if (isConsoleDebug()) {
+      loggerQueueProcessor.debug(
+        `EVENT=${event.name} uuid=${event.uuid} payload=${event.asJSON()}`,
+      );
+    }
 
     if (hasSubscribers) this.publishQueue(event, "running");
 

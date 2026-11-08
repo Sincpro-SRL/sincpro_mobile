@@ -176,6 +176,26 @@ class DomainEventRepositoryImpl {
     );
   }
 
+  /** Newest first, bounded in SQL so the list never loads the whole history. */
+  async findRecent(limit: number): Promise<IntegrationEvent[]> {
+    const rows = await DBCursor.getAllAsync<EventRow>(
+      `SELECT ${STORED_COLUMNS} FROM ${this.table}
+       ORDER BY created_at DESC
+       LIMIT ?`,
+      limit,
+    );
+    return rows.map((row) => readEvent(row));
+  }
+
+  /** Retention: acknowledged events older than `cutoff` (ISO) are history, not work. */
+  async removeAcknowledgedBefore(cutoff: string): Promise<void> {
+    await DBCursor.mutateDatabase(
+      `DELETE FROM ${this.table} WHERE status = ? AND created_at < ?`,
+      EEventStatus.ACKNOWLEDGED,
+      cutoff,
+    );
+  }
+
   async removeAcknowledged(): Promise<void> {
     await DBCursor.mutateDatabase(
       `DELETE FROM ${this.table} WHERE status = ?`,

@@ -47,6 +47,27 @@ test("a fact without ui stays out of the toast unless the reader asks for all", 
   assert.equal(activityVisible(hidden, { ...enabled, queue: false }, true), true);
 });
 
+test("debug mode shows labeled facts without a ui flag", () => {
+  const enabled = { queue: true, cron: true, device: true };
+  const labeled = fact({
+    channel: "queue",
+    name: "odoo.auth.v2.logged_in",
+    label: "Usuario autenticado en Odoo",
+    status: "running",
+    ui: false,
+  });
+  const blank = fact({
+    channel: "queue",
+    name: "common.webview.v1.message_received",
+    label: "",
+    status: "running",
+    ui: false,
+  });
+
+  assert.equal(activityVisible(labeled, enabled, "debug"), true);
+  assert.equal(activityVisible(blank, enabled, "debug"), false);
+});
+
 test("a channel setting mutes declared facts and an empty label stays hidden", () => {
   const enabled = { queue: false, cron: true, device: true };
   const declared = fact({

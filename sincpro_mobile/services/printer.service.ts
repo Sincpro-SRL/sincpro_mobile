@@ -10,9 +10,12 @@ import {
   type PairedPrinter,
   setPrinterDriver,
 } from "@sincpro/mobile/domain/print";
+import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/print/events";
 import { ECommonSetting } from "@sincpro/mobile/domain/settings";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { holdPrintImage } from "@sincpro/mobile/infrastructure/print/pending_images";
 import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
+import { EventBus } from "@sincpro/mobile/infrastructure/workers";
 import { File } from "expo-file-system";
 import * as Print from "expo-print";
 import type { RefObject } from "react";
@@ -183,6 +186,22 @@ class PrinterService {
 
       return false;
     }
+  }
+
+  async enqueuePrintImage(input: {
+    imageBase64: string;
+    width: number;
+    height: number;
+    title: string;
+  }): Promise<void> {
+    const event = PrintImageRequestedEvent.create({
+      imageBase64: "",
+      width: input.width,
+      height: input.height,
+      title: input.title,
+    });
+    holdPrintImage(event.uuid, input.imageBase64);
+    await EventBus.publish(event);
   }
 
   async printImageBase64(base64Data: string): Promise<boolean> {

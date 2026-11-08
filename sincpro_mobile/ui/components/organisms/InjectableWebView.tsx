@@ -191,6 +191,7 @@ function InjectableWebView({
   const bottomInset = useBottomInset();
   const finalScript = webViewService.combineScripts(scripts, injectedJavaScript);
   const [isLoading, setIsLoading] = useState(true);
+  const stuckAttemptsRef = useRef(0);
 
   function handleMessage(event: WebViewMessageEvent) {
     onMessage?.(event);
@@ -210,10 +211,16 @@ function InjectableWebView({
     }
 
     loadingTimeoutRef.current = setTimeout(() => {
-      if (isLoadingRef.current && webViewRef.current) {
-        loggerUseCases.warn("WebView stuck loading for 15s, attempting reload");
-        webViewRef.current.reload();
+      if (!isLoadingRef.current || !webViewRef.current) return;
+      if (stuckAttemptsRef.current >= maxRetries) {
+        isLoadingRef.current = false;
+        setIsLoading(false);
+        loggerUseCases.warn(`WebView stuck loading, stopped after ${maxRetries} reloads`);
+        return;
       }
+      stuckAttemptsRef.current += 1;
+      loggerUseCases.warn("WebView stuck loading for 15s, attempting reload");
+      webViewRef.current.reload();
     }, 15000);
 
     onLoadStart?.();
@@ -229,6 +236,7 @@ function InjectableWebView({
     }
 
     setRetryCount(0);
+    stuckAttemptsRef.current = 0;
     onLoadEnd?.();
   }
 
@@ -253,6 +261,10 @@ function InjectableWebView({
       onError?.(error);
     }
   }
+
+  useEffect(() => {
+    stuckAttemptsRef.current = 0;
+  }, [url]);
 
   const prevReloadKeyRef = useRef(reloadKey);
   const prevHardRefreshKeyRef = useRef(hardRefreshKey);
@@ -291,6 +303,7 @@ function InjectableWebView({
       >
         <WebView
           allowsBackForwardNavigationGestures={true}
+          androidLayerType="hardware"
           cacheEnabled={true}
           cacheMode={cacheMode}
           domStorageEnabled={true}

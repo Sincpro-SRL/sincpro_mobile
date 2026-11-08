@@ -83,7 +83,7 @@ function EventList({
     >
       <EventListHeader list={list} />
       <ListViewV2.Content>
-        {(event) => <EventRow item={event as IntegrationEvent} onRetry={() => undefined} />}
+        {(event) => <EventRow item={event as IntegrationEvent} onOpen={() => undefined} />}
       </ListViewV2.Content>
     </ListViewV2.Root>
   );
@@ -329,7 +329,7 @@ export const VidaDelPedido: Story = {
             event={event}
             isLast={index === life.length - 1}
             key={event.uuid}
-            onRetry={() => undefined}
+            onOpen={() => undefined}
           />
         ))}
       </View>
@@ -349,7 +349,7 @@ export const ColaMuerta: Story = {
           errorMessage: "Tiempo de espera agotado",
           sequence: 1,
         })}
-        onRetry={() => undefined}
+        onOpen={() => undefined}
       />
       <DeadLetterQueueRow
         item={sampleEvent({
@@ -361,7 +361,7 @@ export const ColaMuerta: Story = {
           requiresNetwork: true,
           sequence: 8,
         })}
-        onRetry={() => undefined}
+        onOpen={() => undefined}
       />
     </View>
   ),

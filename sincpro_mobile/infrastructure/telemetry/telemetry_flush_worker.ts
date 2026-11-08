@@ -76,11 +76,16 @@ export class TelemetryFlushWorker {
     if (intervalMin > 0) {
       this.cron = new CronWorker(
         EBuiltinCron.TELEMETRY_FLUSH,
-        () => this.flush.run({ resetBackoff: true }),
+        () => this.flushNow(),
         intervalMin,
       );
       this.cron.start().catch(() => {});
     }
+  }
+
+  /** Drains both queues now, without waiting for the current backoff window. */
+  flushNow(): Promise<void> {
+    return this.flush.run({ resetBackoff: true });
   }
 
   async stop(): Promise<void> {

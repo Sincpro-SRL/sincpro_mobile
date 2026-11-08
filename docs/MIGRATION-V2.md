@@ -1,0 +1,100 @@
+# Migración a `@sincpro/mobile` 2.0
+
+2.0 acompaña a `@sincpro/mobile-ui` 4.0. Corrige la lentitud y los congelamientos de 1.x:
+overlays por fila, `Pressable` de RN con `className`, listas que se repintaban enteras,
+trabajo en segundo plano innecesario y un log de eventos que crecía sin límite.
+
+## Requisito
+
+`@sincpro/mobile-ui` `^4`. El `AppShell` monta los hosts del DS: `OverlayHost`,
+`KeyboardToolbarHost`, Toast y las variables de tema estables. Una app que usa `AppShell`
+no tiene que agregar nada. Pendiente de publicar el DS 4: ver B8 en
+`PLAN_EJECUCION_UI_CORE.md`.
+
+## El host es dueño del router
+
+`createAppShell(config)` devolvía un componente que montaba su propio `NavigationContainer` y un
+stack por dominio (`ui` + `activeDomain`). En 2.0 el framework no monta navegadores ni depende de
+react-navigation:
+
+```tsx
+// Módulo del root layout (scope global, nunca dentro de un componente)
+export const shell = defineAppShell({
+  domains: [odooModule, ticketsModule],
+  theme: TICKETS_THEME,
+  darkTheme: TICKETS_DARK_THEME,
+  providers: [ConfirmationProvider, ProcessToastProvider],
+});
+
+// Expo Router — app/_layout.tsx
+export default function RootLayout() {
+  return (
+    <AppShell shell={shell}>
+      <Stack screenOptions={{ headerShown: false }} />
+    </AppShell>
+  );
+}
+
+// react-navigation directo (tickets hoy) — App.tsx
+export default function App() {
+  return (
+    <AppShell shell={shell}>
+      <NavigationContainer theme={navTheme}>
+        <AppRoutes />
+      </NavigationContainer>
+    </AppShell>
+  );
+}
+```
+
+- `defineAppShell` aplica tema, branding y fuentes, retiene el splash nativo y define los crons de fondo. Por eso va en el scope del módulo.
+- `<AppShell>` monta los children **después** de que la base está lista: pantallas y providers pueden usar repositorios desde su primer render.
+- Si el arranque falla, muestra una pantalla con "Reintentar" en vez de quedarse en blanco o en el splash. Un error de render queda en un `ErrorBoundary` raíz.
+- Si las fuentes de marca fallan, la app sigue con las del DS (antes el splash quedaba para siempre).
+- El color de fondo del navegador (`navTheme`) pasa a ser del host.
+
+## Cambios que rompen
+
+| Antes (1.x)                                                                                         | 2.0                                                                                                                                                                            |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `EventRow`, `DeadLetterQueueRow` y `EventTimelineItem` aceptaban `onRetry` y abrían su propia sheet | Exigen `onOpen(event)`. La pantalla monta **una** `EventActionSheet`                                                                                                           |
+| `eventService.listAllEvents()` cargaba toda la tabla                                                | `eventService.listRecentEvents(limit = 500)`: `ORDER BY created_at DESC LIMIT ?`                                                                                               |
+| El historial de eventos crecía sin límite                                                           | `createApp` poda los eventos `ACKNOWLEDGED` con más de `AppConfig.eventRetentionDays` días (7 por defecto), sin bloquear el arranque. Los pendientes y fallidos nunca se tocan |
+| `setBranding` se importaba desde la raíz del DS                                                     | `@sincpro/mobile-ui/branding` (no carga todo el DS al arrancar)                                                                                                                |
+| `EventsScreen`, `DeadLetterQueueList` y `DatabaseList` volvían con `useNavigation().goBack()`       | Reciben `onBack?: () => void`; el host decide cómo volver (`router.back`, `navigation.goBack`). Sin `onBack` no hay botón atrás                                                |
+| `createAppShell({ ui, activeDomain, ... })` → componente                                            | `defineAppShell(config)` en el scope del módulo + `<AppShell shell>{router}</AppShell>`; sin `ui` ni navegador propio                                                          |
+| `activeDomain`                                                                                      | `initialDomain` (por defecto, el primer dominio) y `onDomainChange(key)` para que el host navegue                                                                              |
+| `useDomainSwitcher()` → `{ activeDomain, setActiveDomain, apps }`                                   | `{ activeDomain, domains, switchTo }`; `domains` = `{ key, name }[]`                                                                                                           |
+| `ActiveDomainApp`, `DomainApp`                                                                      | Eliminados: el host decide qué rutas muestra cada dominio                                                                                                                      |
+| Peers `@react-navigation/native`, `@react-navigation/native-stack`, `react-native-screens`          | Eliminados: el framework no navega                                                                                                                                             |
+| Peer `react-native-toast-message`                                                                   | Eliminado: nada lo usa                                                                                                                                                         |
+
+## Comportamiento nuevo, sin cambio de API
+
+- **EventBus:**
+  - El polling de respaldo (800 ms) se pausa con la app en segundo plano y drena al volver. `publish()` sigue drenando al instante.
+  - Un `InternetIsUp` ya no reinicia el polling de un bus detenido.
+  - El payload del log de debug solo se serializa con el debug activo.
+- **Providers raíz:**
+  - Al volver a primer plano, `CommonProvider` relee el permiso de ubicación sin re-renderizar a todos los consumidores.
+  - `DomainSwitcherProvider` y `DatabaseProvider` memoizan su valor.
+- **Crons de fondo (15 min o más):**
+  - `defineAppShell` define su tarea del SO mientras carga el bundle, así que corren también con la app cerrada; antes se definían en `start()` y el SO no las encontraba.
+  - Cada ejecución en segundo plano prepara la base (`kernel.bootstrap()`, una vez por contexto JS).
+  - El flush de telemetría de fondo (`TELEMETRY_FLUSH`, 15 min por defecto) también se define al cargar: con la app cerrada prepara la base, arranca la telemetría sin volver a registrarse y vacía las colas.
+  - Nuevas APIs: `createKernel(config)` (sin IO), `startApp(kernel, options)`, `defineBackgroundCrons(kernel, { telemetry })`, `runBackgroundTelemetryFlush(config)` y la opción `initTelemetry(config, { scheduleBackground })`. `createApp(config)` sigue igual y las usa.
+  - `Kernel.cronsByKey()` lee los crons de cada módulo una sola vez, así que `crons` de `AppConfig` configura las mismas instancias que arranca el orquestador.
+- **Impresión:** la imagen viaja en memoria y no en `domain_events`. Se guardan como máximo 5 pendientes.
+- **Componentes:** los 9 que usaban el `Pressable` de RN con `className` pasan al primitivo del DS.
+- **Build:** la capa React (`ui/**`, `entrypoints/ui/**`) se publica compilada con React Compiler.
+
+## Para quien escribe pantallas
+
+Las reglas de rendimiento del DS aplican igual (ver `@sincpro/mobile-ui/docs/MIGRATION-V4.md`, §8):
+
+- filas puras con `memo`;
+- renderer con `useCallback`;
+- una sheet por pantalla;
+- nada de `Modal` para overlays;
+- nada de `Pressable` de RN con `className`;
+- no leer getters `@mapped` dentro del render de una lista: hacen una consulta síncrona a SQLite en cada acceso.

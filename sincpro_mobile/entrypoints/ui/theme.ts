@@ -4,7 +4,7 @@ import { type DeepPartial, extendTheme, type ThemeTokens } from "@sincpro/mobile
  * Build a fully-typed theme from a partial override object.
  * Starts from the DS base theme and deep-merges your tokens on top.
  *
- *   createAppShell({
+ *   defineAppShell({
  *     theme: createTheme({ primary: "#FF6600", bg: { page: "#F5F5F5" } }),
  *     darkTheme: createTheme({ bg: { page: "#0A0A0A" }, primary: "#F5F5F5" }),
  *     ...

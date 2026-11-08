@@ -1,14 +1,16 @@
 import { BluetoothDevice } from "@sincpro/mobile/domain/print";
 import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
 import { printerService } from "@sincpro/mobile/services/printer.service";
+import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
 import { Actions } from "@sincpro/mobile-ui/Actions";
 import Sheet from "@sincpro/mobile-ui/Dialog/Sheet";
 import { Display } from "@sincpro/mobile-ui/Display";
+import { Pressable } from "@sincpro/mobile-ui/primitives/Pressable";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 
 interface BluetoothDeviceSelectorModalProps {
   visible: boolean;
@@ -30,9 +32,7 @@ function DeviceRow({ device, onSelect, isSelected }: DeviceRowProps) {
       accessibilityState={{ selected: isSelected }}
       className="flex-row items-center border-b border-border-default py-3"
       onPress={onSelect}
-      style={({ pressed }) => ({
-        backgroundColor: pressed || isSelected ? theme.bg.muted : "transparent",
-      })}
+      style={{ backgroundColor: isSelected ? theme.bg.muted : "transparent" }}
     >
       <PrinterIcon
         color={device.isPrinter ? theme.success : theme.text.secondary}
@@ -90,14 +90,15 @@ function BluetoothDeviceSelectorModal({
 
   const loadDevices = useCallback(async () => {
     setLoading(true);
-    try {
-      const hasPermission = await bluetoothService.ensurePermissionsForPrinter();
-      if (!hasPermission) return;
+    return withCleanup(
+      async () => {
+        const hasPermission = await bluetoothService.ensurePermissionsForPrinter();
+        if (!hasPermission) return;
 
-      setDevices(await printerService.scanPrinters());
-    } finally {
-      setLoading(false);
-    }
+        setDevices(await printerService.scanPrinters());
+      },
+      () => setLoading(false),
+    );
   }, []);
 
   useEffect(() => {
@@ -110,19 +111,20 @@ function BluetoothDeviceSelectorModal({
     if (!selectedDevice) return;
 
     setConnecting(true);
-    try {
-      const success = await printerService.connect(
-        selectedDevice.address,
-        selectedDevice.name || "Impresora",
-      );
+    return withCleanup(
+      async () => {
+        const success = await printerService.connect(
+          selectedDevice.address,
+          selectedDevice.name || "Impresora",
+        );
 
-      if (success) {
-        onSelect(selectedDevice);
-        onClose();
-      }
-    } finally {
-      setConnecting(false);
-    }
+        if (success) {
+          onSelect(selectedDevice);
+          onClose();
+        }
+      },
+      () => setConnecting(false),
+    );
   }
 
   const printers = devices.filter((d) => d.isPrinter);

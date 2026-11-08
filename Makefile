@@ -28,11 +28,12 @@ format:
 	@make typecheck
 
 build:
-	@echo "🏗️  Compilando $(PACKAGE) -> dist (tsc + tsc-alias)..."
+	@echo "🏗️  Compilando $(PACKAGE) -> dist (tsc, React Compiler en la capa UI, tsc-alias)..."
 	@rm -rf dist
 	@npx tsc -p tsconfig.build.json
+	@node scripts/build-react.mjs
 	@npx tsc-alias -p tsconfig.build.json
-	@echo "✓ Build listo en ./dist (JS + .d.ts, alias @ resuelto a relativo)"
+	@echo "✓ Build listo en ./dist (JS + .d.ts, capa React con React Compiler, alias @ resuelto a relativo)"
 
 test:
 	@echo "🧪 Running tests..."

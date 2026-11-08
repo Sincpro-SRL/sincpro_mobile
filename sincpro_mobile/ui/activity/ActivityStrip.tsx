@@ -21,7 +21,7 @@ export function ActivityStrip({
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const failed = tone === "failed";
-  const color = failed ? theme.danger : theme.text.secondary;
+  const color = failed ? theme.danger : theme.text.primary;
 
   const line = (
     <Pressable
@@ -30,8 +30,14 @@ export function ActivityStrip({
       onPress={() => setOpen((value) => !value)}
     >
       <View
-        className="flex-row items-center gap-1.5 rounded-full bg-bg-muted px-2.5"
-        style={{ minHeight: 28, maxWidth: 210 }}
+        className="flex-row items-center gap-1.5 rounded-full px-2.5"
+        style={{
+          minHeight: 28,
+          maxWidth: 210,
+          backgroundColor: theme.bg.card,
+          borderWidth: 1,
+          borderColor: failed ? theme.danger : theme.border.default,
+        }}
       >
         <Display.Icon color={color} name={failed ? "error" : "sync"} size={14} />
         <Typography.Text
@@ -60,8 +66,15 @@ export function ActivityStrip({
 
   return (
     <View
+      collapsable={false}
       pointerEvents="box-none"
-      style={{ position: "absolute", top: insets.top + 14, right: 60, zIndex: 40 }}
+      style={{
+        position: "absolute",
+        top: insets.top + 8,
+        right: 56,
+        zIndex: 1000,
+        elevation: 24,
+      }}
     >
       {line}
     </View>

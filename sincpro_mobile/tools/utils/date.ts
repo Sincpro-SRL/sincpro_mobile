@@ -1,4 +1,5 @@
 import { dayOf, isDay } from "@sincpro/client-framework";
+import { dateTimeFormat } from "@sincpro/mobile/tools/utils/intl";
 import dayjs from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
@@ -93,7 +94,7 @@ export function formatDate(
       formatOptions.minute = "2-digit";
     }
 
-    return new Intl.DateTimeFormat(usedLocale, formatOptions).format(dateInZone);
+    return dateTimeFormat(usedLocale, formatOptions).format(dateInZone);
   } catch (error) {
     console.warn("Error formateando fecha:", error);
     return "Error de formateo";

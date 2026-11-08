@@ -101,9 +101,9 @@ function EventBrowser({
       <ListViewV2.Content>
         {(event) =>
           failedOnly ? (
-            <DeadLetterQueueRow item={event as IntegrationEvent} onRetry={() => undefined} />
+            <DeadLetterQueueRow item={event as IntegrationEvent} onOpen={() => undefined} />
           ) : (
-            <EventRow item={event as IntegrationEvent} onRetry={() => undefined} />
+            <EventRow item={event as IntegrationEvent} onOpen={() => undefined} />
           )
         }
       </ListViewV2.Content>
@@ -201,7 +201,7 @@ export const LineaDeTiempo: Story = {
           event={event}
           isLast={index === EVENTS.length - 1}
           key={event.uuid}
-          onRetry={() => undefined}
+          onOpen={() => undefined}
         />
       ))}
     </View>

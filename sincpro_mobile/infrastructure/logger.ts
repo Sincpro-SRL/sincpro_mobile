@@ -76,10 +76,32 @@ export const IS_PRODUCTION = false;
  */
 export const LOG_LEVEL = ELogLevel.INFO;
 
+// Console INFO and DEBUG follow the in-app debug switch. ERROR and WARN always print.
+// Remote shipping does not read this flag.
+let consoleDebug = false;
+
+type LoggerListener = () => void;
+const loggerListeners = new Set<LoggerListener>();
+
+function notifyLoggerListeners(): void {
+  for (const listener of loggerListeners) listener();
+}
+
+export function setConsoleDebug(enabled: boolean): void {
+  if (consoleDebug === enabled) return;
+  consoleDebug = enabled;
+  notifyLoggerListeners();
+}
+
+export function isConsoleDebug(): boolean {
+  return consoleDebug;
+}
+
 /**
- * Configuration for enabling or disabling logs for specific application contexts.
+ * Default console contexts. Noisy layers (Odoo HTTP, adapters, repos) stay off
+ * until a host turns them on through the Debug API.
  */
-export const ENABLED_LOGS: Record<EApplicationLogger, boolean> = {
+export const DEFAULT_ENABLED_LOGS: Record<EApplicationLogger, boolean> = {
   [EApplicationLogger.GLOBAL]: true,
   [EApplicationLogger.ODOO_CLIENT]: false,
   [EApplicationLogger.ADAPTER]: false,
@@ -88,6 +110,51 @@ export const ENABLED_LOGS: Record<EApplicationLogger, boolean> = {
   [EApplicationLogger.QUEUE_PROCESSOR]: true,
   [EApplicationLogger.CRON_JOBS]: true,
 };
+
+/**
+ * Mutable console/Loki-INFO mask per application context.
+ * Prefer `setLoggerEnabled` / `Debug.loggers` over writing this object directly.
+ */
+export const ENABLED_LOGS: Record<EApplicationLogger, boolean> = {
+  ...DEFAULT_ENABLED_LOGS,
+};
+
+export function getEnabledLoggers(): Record<EApplicationLogger, boolean> {
+  return { ...ENABLED_LOGS };
+}
+
+export function isLoggerEnabled(context: EApplicationLogger): boolean {
+  return ENABLED_LOGS[context];
+}
+
+export function setLoggerEnabled(context: EApplicationLogger, enabled: boolean): void {
+  if (ENABLED_LOGS[context] === enabled) return;
+  ENABLED_LOGS[context] = enabled;
+  notifyLoggerListeners();
+}
+
+export function setEnabledLoggers(patch: Partial<Record<EApplicationLogger, boolean>>): void {
+  let changed = false;
+  for (const context of Object.values(EApplicationLogger)) {
+    const next = patch[context];
+    if (next === undefined || ENABLED_LOGS[context] === next) continue;
+    ENABLED_LOGS[context] = next;
+    changed = true;
+  }
+  if (changed) notifyLoggerListeners();
+}
+
+export function resetEnabledLoggers(): void {
+  setEnabledLoggers(DEFAULT_ENABLED_LOGS);
+}
+
+/** Notify when the master debug switch or any logger context changes. */
+export function subscribeLoggerConfig(listener: LoggerListener): () => void {
+  loggerListeners.add(listener);
+  return () => {
+    loggerListeners.delete(listener);
+  };
+}
 
 class BaseLogger implements ILogger {
   protected readonly context: EApplicationLogger;
@@ -129,6 +196,7 @@ class BaseLogger implements ILogger {
   protected shouldLog(level: ELogLevel): boolean {
     if (IS_PRODUCTION) return false;
     if (level === ELogLevel.ERROR || level === ELogLevel.WARN) return true;
+    if (!consoleDebug) return false;
     if (level === ELogLevel.DEBUG && (LOG_LEVEL as ELogLevel) !== ELogLevel.DEBUG)
       return false;
     if (!ENABLED_LOGS[this.context]) return false;

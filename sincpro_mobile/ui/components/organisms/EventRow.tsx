@@ -4,21 +4,21 @@ import {
   eventStatusIcon,
   eventStatusLabel,
 } from "@sincpro/mobile/ui/components/molecules/event-status";
-import { EventActionSheet } from "@sincpro/mobile/ui/components/organisms/EventActionSheet";
 import { Display } from "@sincpro/mobile-ui/Display";
+import { Pressable } from "@sincpro/mobile-ui/primitives/Pressable";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
-import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { memo } from "react";
+import { View } from "react-native";
 
 interface EventRowProps {
   item: IntegrationEvent;
-  onRetry: (event: IntegrationEvent) => Promise<void> | void;
+  /** The screen owns the one action sheet; a row never mounts an overlay. */
+  onOpen: (event: IntegrationEvent) => void;
 }
 
-function EventRow({ item, onRetry }: EventRowProps) {
+function EventRow({ item, onOpen }: EventRowProps) {
   const theme = useTheme();
-  const [open, setOpen] = useState(false);
 
   if (!item) return null;
 
@@ -30,7 +30,7 @@ function EventRow({ item, onRetry }: EventRowProps) {
         accessibilityHint="Abre las acciones del evento"
         accessibilityRole="button"
         className="flex-row items-center gap-2 px-4 py-2"
-        onPress={() => setOpen(true)}
+        onPress={() => onOpen(item)}
       >
         <Display.Icon
           color={failed ? theme.danger : theme.text.secondary}
@@ -54,14 +54,8 @@ function EventRow({ item, onRetry }: EventRowProps) {
           variant={eventStatusBadge(item.status)}
         />
       </Pressable>
-      <EventActionSheet
-        event={item}
-        onClose={() => setOpen(false)}
-        onRetry={onRetry}
-        visible={open}
-      />
     </View>
   );
 }
 
-export default EventRow;
+export default memo(EventRow);

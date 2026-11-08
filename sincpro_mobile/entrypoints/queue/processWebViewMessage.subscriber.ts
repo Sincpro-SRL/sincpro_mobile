@@ -1,10 +1,6 @@
-import {
-  PrintImageRequestedEvent,
-  WebViewMessageReceivedEvent,
-} from "@sincpro/mobile/domain/events";
+import { WebViewMessageReceivedEvent } from "@sincpro/mobile/domain/events";
 import { Subscriber } from "@sincpro/mobile/event_driven";
-import { DomainValidationError } from "@sincpro/mobile/exceptions";
-import { EventBus } from "@sincpro/mobile/infrastructure/workers";
+import { printerService } from "@sincpro/mobile/services/printer.service";
 import { webViewService } from "@sincpro/mobile/services/webview.service";
 
 export class ProcessWebViewMessageSubscriber extends Subscriber {
@@ -14,19 +10,13 @@ export class ProcessWebViewMessageSubscriber extends Subscriber {
   async process(event: WebViewMessageReceivedEvent): Promise<void> {
     const parsed = webViewService.parseMessage(event.raw);
 
-    if (!parsed) {
-      throw new DomainValidationError("Invalid WebView message format");
-    }
+    if (!parsed || !webViewService.isPrintImage(parsed)) return;
 
-    if (webViewService.isPrintImage(parsed)) {
-      await EventBus.publishSync(
-        PrintImageRequestedEvent.create({
-          imageBase64: parsed.image,
-          width: parsed.width,
-          height: parsed.height,
-          title: parsed.metadata.title,
-        }),
-      );
-    }
+    await printerService.enqueuePrintImage({
+      imageBase64: parsed.image,
+      width: parsed.width,
+      height: parsed.height,
+      title: parsed.metadata.title,
+    });
   }
 }
