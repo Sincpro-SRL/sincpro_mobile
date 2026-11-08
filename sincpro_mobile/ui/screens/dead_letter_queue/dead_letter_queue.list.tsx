@@ -1,6 +1,8 @@
 import { useNavigation } from "@react-navigation/native";
 import { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import DeadLetterQueueRow from "@sincpro/mobile/ui/components/organisms/DeadLetterQueueRow";
+import { EventListHeader } from "@sincpro/mobile/ui/events/event-query-controls";
+import { useEventQuery } from "@sincpro/mobile/ui/events/use-event-query";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import { useEffect } from "react";
 
@@ -8,7 +10,8 @@ import { DeadLetterQueueProvider, useDeadLetterQueue } from "./dead_letter_queue
 
 function DeadLetterQueueScreenComponent() {
   const navigation = useNavigation();
-  const { enrichedEvents, isLoading, loadEvents, retryEvent } = useDeadLetterQueue();
+  const { events, isLoading, loadEvents, retryEvent } = useDeadLetterQueue();
+  const list = useEventQuery(events);
 
   useEffect(() => {
     loadEvents();
@@ -19,13 +22,15 @@ function DeadLetterQueueScreenComponent() {
   return (
     <ListViewV2.Root
       description="Eventos que no pudieron ser procesados"
+      hasMore={list.hasMore}
       isLoading={isLoading}
-      items={enrichedEvents}
+      items={list.visible}
       name="Eventos fallidos"
       onBack={onBack}
+      onLoadMore={list.loadMore}
       onRefresh={loadEvents}
     >
-      <ListViewV2.Header variant="default" />
+      <EventListHeader list={list} showStatus={false} />
 
       <ListViewV2.Content>
         {(event: IntegrationEvent) => (

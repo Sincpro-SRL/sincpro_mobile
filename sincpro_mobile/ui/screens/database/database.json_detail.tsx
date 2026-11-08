@@ -1,5 +1,5 @@
+import { Actions } from "@sincpro/mobile-ui/Actions";
 import { Display } from "@sincpro/mobile-ui/Display";
-import { Form } from "@sincpro/mobile-ui/Form";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { FormViewV2 } from "@sincpro/mobile-ui/views/FormViewV2";
@@ -9,7 +9,7 @@ import { View } from "react-native";
 
 import { useDatabase } from "./database.context";
 
-const Button = Form.Button;
+const Button = Actions.Button;
 const Icon = Display.Icon;
 
 function JsonDetailView() {
@@ -54,9 +54,8 @@ function JsonDetailView() {
             icon={
               <Icon
                 color={hasPreviousRow ? theme.secondary : theme.text.tertiary}
-                name="chevron-left"
+                name="back"
                 size={24}
-                type="feather"
               />
             }
             onPress={goToPreviousRow}
@@ -79,9 +78,8 @@ function JsonDetailView() {
             icon={
               <Icon
                 color={hasNextRow ? theme.secondary : theme.text.tertiary}
-                name="chevron-right"
+                name="next"
                 size={24}
-                type="feather"
               />
             }
             onPress={goToNextRow}

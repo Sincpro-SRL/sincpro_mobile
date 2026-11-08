@@ -1,151 +1,130 @@
-# AGENTS.md — Guía para agentes de IA (Sincpro Mobile)
+# AGENTS.md — Sincpro Mobile
 
-> **Lee esto primero.** Este archivo es **idéntico en todos los repos `sincpro_mobile*`**.
-> Está escrito para que un agente entienda el ecosistema, los patrones y las trampas en **una sola lectura**.
-> Si vas a editar código, sigue [Patrones](#patrones) y [Convenciones](#convenciones), y verifica con `make verify-format`.
+Este archivo es idéntico en los cuatro repos del stack. Define la dirección del
+próximo major: Expo SDK 58, sin implementaciones ni aliases de compatibilidad.
 
-## Orientación en 30 segundos
+## Ecosistema y capas
 
-- Es un **framework móvil** (React Native / Expo) repartido en un **ecosistema de paquetes npm**, no un monolito.
-- Arquitectura: **DDD + Hexagonal + Event-Driven + offline-first** (SQLite). Composición **module-driven**: cada negocio es un `DomainModule`; la app los compone con `createAppShell`.
-- Cada repo es **independiente** (su propio git, su propio `package.json`). Las apps consumen los paquetes del framework **desde el registry de npm**, no por links locales.
-- El código fuente vive en un subfolder con el nombre del repo (ej. `sincpro_mobile/`, `sincpro_mobile_distribution/`); el `package.json` y configs están en la **raíz**.
-- Imports siempre por **alias de paquete** (`@sincpro/mobile/...`), nunca rutas relativas largas al cruzar capas.
+Cada repo tiene su propio git y package.json; la fuente vive en el subfolder con
+el nombre del repo. Los hosts consumen paquetes publicados en npm, nunca
+`file:`, `link:`, tarballs o links locales.
 
-## Mapa del ecosistema
+| Paquete                  | Responsabilidad                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------- |
+| `@sincpro/mobile-ui`     | Design system presentacional, sin router ni dominios.                               |
+| `@sincpro/mobile`        | DDD, infraestructura offline-first, bootstrap, providers y pantallas del framework. |
+| `@sincpro/mobile-odoo`   | Integración Odoo opcional; servicios, sesión y pantallas reutilizables.             |
+| `sincpro-mobile-tickets` | Host: rutas, navegación, identidad y composición del negocio.                       |
 
-| Paquete (npm)                 | Alias import                     | Rol                                                                                                                                                                                                  | Publicado |
-| ----------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `@sincpro/mobile`             | `@sincpro/mobile/*`              | **Core**: infra (DB, cola/eventos, cron), patrones DDD, adapters base, `framework/` (DomainModule, createApp, orchestrator, kernel), `AppShell`, y un `ui/` propio (screens/components de framework) | `0.1.1`   |
-| `@sincpro/mobile-ui`          | `@sincpro/mobile-ui/*`           | **Design system** standalone (Typography, Display, Form, Dialog, Feedback, views, widgets, icons, theme, layouts). Sin router, sin dominios.                                                         | `0.2.1`   |
-| `@sincpro/mobile-odoo`        | `@sincpro/mobile-odoo/*`         | Integración **Odoo opcional**: `OdooClient`, auth, server, res.partner, pantallas de login/perfil/portal.                                                                                            | `0.1.0`   |
-| `sincpro-mobile-tickets`      | `@sincpro/mobile-tickets/*`      | **App** de negocio (host). Tiene impresora.                                                                                                                                                          | privado   |
-| `sincpro-mobile-distribution` | `@sincpro/mobile-distribution/*` | **App** de negocio (host): ventas, facturación, rutas. **Sin impresora**.                                                                                                                            | privado   |
+Dependencias: **apps → mobile-odoo opcional → mobile → mobile-ui**.
+El core no conoce Odoo ni las apps. Imports entre capas por alias del paquete.
 
-**Dirección de dependencias (estricta):** `apps → (mobile-odoo) → mobile → mobile-ui`.
-El core **no** conoce las apps ni Odoo; el design system **no** conoce nada de negocio.
-
-## Capas del core (`@sincpro/mobile`)
-
-```
-domain/         primitivas DDD puras (sin React, sin IO)
-  entity/         Entity, RemoteEntity, ValueObject, EntityCollection
-  events/         el hecho: DomainEvent, IntegrationEvent, chain, cola. index.ts reexporta todos los eventos
-  database/       criteria, IDatabase, IMigration
-  repositories/   IRepository, hooks, DocumentStore, catálogo ECommonRepository
-  connectivity/   network, bluetooth, geo + sus eventos (InternetIsUp/Down)
-  print/ webview/ puertos + eventos de cada contexto
-event_driven/   Subscriber (quién escucha). La cola vive en infrastructure/workers
-adapters/       implementaciones de puertos (Network, Geo, Bluetooth, Receipt, JsonSerializer, repos)
-infrastructure/ DB connector, EventBus (cola persistente + DLQ + retry), CronWorker, UIEventBus, logger
-framework/      DomainModule, createApp, kernel, orchestrator (composición module-driven)
-services/       casos de uso del framework
-ui/             screens/components del framework (events, database, dead-letter) + ProcessToast
-entrypoints/    db (RepositoriesContainer, repos), queue, ui (AppShell, CommonProvider)
+```text
+domain/          entidades, puertos y eventos puros, sin React ni IO
+event_driven/    subscribers
+adapters/        implementaciones de puertos de negocio
+infrastructure/ DB, cola persistente/DLQ/retry, cron, logger y telemetría
+services/       casos de uso y workflows
+framework/      DomainModule, createApp, kernel y composición
+ui/             pantallas/componentes del framework
+entrypoints/    registros y composición
 ```
 
-Regla de capas: `domain` no importa de `infrastructure`/`ui`; `ui` no importa de dominios de negocio. **Adapters ≠ infrastructure.**
+## Una sola dirección de UI
 
-## Patrones
+| Tema               | Contrato                                                                                |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| Navegación         | Expo Router, rutas por archivos, Stack.Protected y NativeTabs.                          |
+| Safe area          | react-native-safe-area-context; un dueño por borde.                                     |
+| Teclado            | keyboard-controller: KeyboardAwareScrollView y KeyboardToolbar.                         |
+| Barras del sistema | Un controlador en el host/AppShell: expo-status-bar + expo-system-ui.                   |
+| Sheets y selección | Una sola Sheet sobre @expo/ui/community/bottom-sheet; controles Expo actuales.          |
+| Iconos             | IconName semántico + ICON_MAP; SF Symbols en iOS y Material en Android/web.             |
+| Listas crecientes  | FlashList v2; entidades originales y metadatos separados.                               |
+| Medidas            | useWindowDimensions, nunca Dimensions.get.                                              |
+| Rendimiento        | React Compiler y reglas actuales de eslint-plugin-react-hooks.                          |
+| Estilos            | NativeWind estable compatible con el SDK probado; no migrar a RC sin verificar soporte. |
 
-### 1. Composición de app (composition root)
+No importar `@react-navigation/*` directamente, montar NavigationContainer ni
+mantener AppRoutes/navegadores propios. Si un navegador custom es necesario,
+usar `integrateWithRouter`, nunca `withLayoutContext`.
 
-Cada app tiene `entrypoints/main.tsx` que define su `DomainModule` y llama a `createAppShell`:
+Solo el host define rutas/hrefs y traduce callbacks a navegación. Las librerías
+exportan pantallas con `onBack`/acciones, no conocen los nombres de ruta del host.
+`app/` contiene únicamente archivos de ruta/layout; componentes, servicios,
+contexts y tipos viven fuera.
 
-```tsx
-export class XModule extends DomainModule {
-  readonly key = "X";
-  readonly name = "X";
-  override repositories(): Record<string, object> {
-    return XRepositoryRegistry;
-  }
-  override migrations(): IMigration[] {
-    return XMigrations;
-  }
-  override subscribers(): Subscriber[] {
-    return XSubscribers;
-  }
-  override crons(): CronWorker[] {
-    return XCronJobs;
-  }
-}
-export function createXApp(): ComponentType {
-  return createAppShell({
-    theme: createTheme(X_THEME),
-    domains: [odooModule, xModule], // Odoo es opcional: no lo pases si no lo usás
-    ui: { [xModule.key]: XApp },
-    activeDomain: xModule.key,
-    providers: [ConfirmationProvider, ProcessToastProvider],
-  });
-}
-```
+## AppShell y sesión
 
-### 2. Repos: registro en runtime → **getters lazy, NUNCA field-init** 🔴
+AppShell recibe configuración de módulos, tema, fuentes y providers, y renderiza
+`children` desde el layout raíz del host. No decide qué UI de dominio mostrar,
+no monta un navegador y no aplica SafeAreaView global.
 
-Los repositorios se registran en `bootstrap()` (runtime), DESPUÉS de que los módulos se importan. Por eso un service singleton **no puede** resolver repos en la inicialización de campos:
+DomainModule conserva registros de repositorios, migraciones, subscribers y
+crons. Un selector de dominio emite callbacks; el mapa dominio → ruta es del host.
+
+Separar restauración inicial de sesión de la carga de login/logout. Mantener
+el Stack montado con rutas protegidas y una carga visible. Un fallo debe
+registrarse y ofrecer recuperación, no producir una pantalla blanca.
+
+Los providers/efectos que usan DB esperan al bootstrap. Un singleton nunca
+resuelve repos en field-init; usar getters lazy:
 
 ```ts
-// ❌ ROMPE al arrancar ("Repository not found"): corre en import, antes de bootstrap()
-private readonly repository = repos.get(EXRepository.PRODUCT);
-
-// ✅ getter lazy: resuelve en el primer uso, después de bootstrap()
-private get repository() { return repos.get(EXRepository.PRODUCT); }
+private get repository() {
+  return repos.get(EXRepository.PRODUCT);
+}
 ```
 
-Esto **no lo detecta el typecheck** — solo se ve al arrancar la app. Ver [GOTCHAS](docs/GOTCHAS.md).
+## Bordes, teclado y overlays
 
-### 3. Eventos: `domain/events/index.ts` es el punto único de export
+- Con header propio, ese header reserva top; el Stack nativo no muestra otro.
+- NativeTabs reserva bottom; no sumar otro inset inferior en el contenedor.
+- En standalone/auth, reservar explícitamente los bordes sin otro dueño.
+- Container/ScrollContainer usan laterales por defecto; AuthContainer coordina
+  sus cuatro bordes, header y contenido.
+- Respetar el ajuste nativo del primer ScrollView en NativeTabs iOS.
+- Expo Router ya provee los insets web: no añadir otro SafeAreaProvider allí.
+- Un solo scroll consciente del teclado por formulario. Toolbar para varios
+  campos; input enfocado y CTA permanecen visibles.
+- No usar KeyboardAvoidingView ni StatusBar de RN en componentes de UI.
+- Modal de RN solo para contenido de pantalla completa, con atrás/insets
+  verificados. Selección y edición van en controles Expo o la Sheet única.
+- Guardar comunica éxito y cierra solo después de completar la operación.
 
-Un evento **vive** en su contexto (`connectivity/events.ts`, `print/events.ts`…) pero se **exporta** solo vía `domain/events/index.ts`. Los barrels de contexto **no** re-exportan sus eventos (colisión de `export *` → TypeScript los elimina del barrel raíz en silencio). Evento nuevo → archivo en su contexto + `export *` en `domain/events/index.ts` + NO exportarlo desde el barrel del contexto. `Subscriber` no sale de ahí: vive en `event_driven`.
+## Tipos, eventos y dependencias
 
-### 4. Build & distribución
+- Enums regulares, nunca const enum: Babel/Metro debe conservarlos en runtime.
+- Eventos definidos en su contexto y exportados solo desde
+  `domain/events/index.ts`; no duplicar sus exports en barrels de contexto.
+- No clonar entidades para añadir metadatos de UI. Un clon por prototype/
+  Object.assign pierde campos privados `#`; pasar siempre la instancia original.
+- Refs nativos con TextInputInstance/ViewInstance/ScrollViewInstance. Sin opt-out
+  react-native-legacy-deep-imports ni APIs/deep imports eliminados.
+- Usar solo APIs Expo UI no deprecadas; RNHostView Android usa modifiers.
+- Peers nativos acotados a lo probado y devDependencies alineadas. Expo UI,
+  expo-symbols y FlashList son obligatorios cuando el catálogo los importa.
+- Instalar paquetes nativos con `npx expo install`; la fuente de versiones es
+  `node_modules/expo/bundledNativeModules.json`.
+- Mantener NativeWind v4 con `^4.2.7` mientras v5 no tenga soporte SDK 58 probado.
+- No ignorar warnings para presentar una migración como resuelta.
 
-`tsc → dist/` + `tsc-alias` (reescribe alias `@/...` a relativo). El `package.json` usa el campo **`exports`** para mapear subpaths a `./dist/*`. Los paquetes del framework son **`peerDependencies`** en libs (una sola copia en la app, evita duplicar identidad de tipos) + `devDependencies` para build local.
+## Calidad y releases
 
-### 5. Las apps consumen del **registry**, no `file:`
+Todo pasa por el Makefile: `make format` durante desarrollo, `make verify-format`
+como gate, `make test` y `make build` en librerías. UI incluye types/stories y
+prueba visual con `make storybook-android`. No modificar workflows de release.
 
-Apps host declaran `@sincpro/mobile*` con su versión publicada en `dependencies` **y** `resolutions` (yarn). Nada de `file:../...` (rompe CI y duplica copias). Ver [GOTCHAS](docs/GOTCHAS.md).
+Una modernización incompatible sale como major, sin shims ni exports viejos.
+La versión la define el release; no editar version manualmente.
+Integrar en orden UI → core → Odoo → host, verificando cada publicación con
+`npm view <paquete> version` antes de actualizar el consumidor.
 
-### 6. Enums: usa `enum` regular, **no `const enum`** 🔴
+Tickets usa tema automático, expo-system-ui, React Compiler, typedRoutes,
+web.output estático y scheme explícito. Probar deep links sin doble decoding
+y Android release con R8 activo; nunca desactivar R8 para ocultar un fallo.
 
-`const enum` no sobrevive a Babel/Metro entre módulos → valores `undefined` en runtime (rutas en blanco, etc.). Siempre `enum` regular. Aplica también a los enums que el core publica.
-
-## Guardrails (workflow obligatorio)
-
-Todo pasa por el **Makefile**. A propósito hay **solo dos comandos de calidad** (no `check`/`lint`/`format-check` sueltos — el CI/CD está atado a estos dos):
-
-| Comando                       | Qué hace                                                                                                                                                         |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make format`                 | **Dev (mutante)**: `eslint --fix` (incluye orden de imports) + `prettier --write` + `typecheck`. Auto-arregla todo. Corré esto mientras trabajás.                |
-| `make verify-format`          | **Gate de CI**: corre `format` y **falla si quedó algo sin formatear/commitear**. En un solo comando cubre lint + formato + tipos. Es lo que valida el pipeline. |
-| `make build`                  | `tsc -p tsconfig.build.json` + `tsc-alias` → `dist/` (solo libs)                                                                                                 |
-| `make android` / `make start` | correr la app (solo apps)                                                                                                                                        |
-
-`lint` y `typecheck` están **plegados dentro de `format`** — no hay targets sueltos para ellos. Antes de dar algo por terminado: `make verify-format`. **`tsc 0 errores` NO garantiza que arranque** — ver patrón #2 y #6.
-
-## Enfoque basado en agentes (dev + CI/CD)
-
-Para cambios grandes (migraciones, refactors masivos, auditorías) se usa **orquestación multi-agente** (estilo "fork"): el agente principal hace el setup secuencial (scaffold, copia, remapeo mecánico) **inline**, y luego **fan-out** de un sub-agente por unidad de trabajo (archivo/subdominio) en paralelo, seguido de un `make verify-format`. Ejemplo real: la migración de `distribution` (287 archivos) bajó de 385→0 errores combinando remapeo mecánico inline + 11 agentes en paralelo arreglando tipos por archivo. El mismo patrón aplica en CI/CD para validar/arreglar a escala.
-
-## Convenciones
-
-- **Sin comentarios ni docstrings** en el código (salvo que el archivo ya tenga ese estilo). Sin código muerto.
-- Imitá el estilo del código circundante (naming, densidad, idioms).
-- `prettier` printWidth 94; orden de imports por `simple-import-sort` (lo aplica `make format`).
-- No hardcodees tokens/secrets: los repos son **públicos**; usá `$NPM_TOKEN` / `secrets.NPM_TOKEN`.
-
-## Para profundizar
-
-**Documentación de ingeniería** (`docs/` — arquitectura viva):
-
-- [`docs/architecture-aggregate.md`](docs/architecture-aggregate.md) — agregado, evento, checks, hooks, relaciones y `DocumentRepository`. Diagramas de cómo interactúan.
-- [`docs/architecture-core.md`](docs/architecture-core.md) — cola, cron, AppShell, y qué parte del cliente ya viene de `@sincpro/client-framework` (sección _The client, shared with the web_).
-- [`docs/architecture-telemetry.md`](docs/architecture-telemetry.md) — telemetría (OTel + Loki): pipeline, delivery, retención. Diagramas de componentes + secuencia.
-- [`docs/architecture-consumer.md`](docs/architecture-consumer.md) — arquitectura sugerida para apps consumidoras: adapters, services (use cases/workflows), ui, subscribers.
-- [`docs/GOTCHAS.md`](docs/GOTCHAS.md) — trampas de dependencias, UI y runtime (síntoma → causa → fix). **Léelo si algo "raro" pasa.**
-
-**Análisis / planes históricos** (`docs/analysis/` — contexto, no documentación viva):
-
-- [`docs/analysis/FRAMEWORK_ROADMAP.md`](docs/analysis/FRAMEWORK_ROADMAP.md) — plan progresivo histórico de la plataforma core (fases FF0-FF6). Referencia, no estado actual.
-
-- `README.md` — visión de producto, filosofía y resumen de arquitectura.
+No declarar validada una pantalla, credencial, hardware o plataforma sin probarla.
+Mantener documentación relacionada, tests y evidencia visual de cambios de UX.
+Sin comentarios redundantes/código muerto; imitar estilos existentes.
+No hardcodear tokens ni secretos. Usar variables de entorno/secrets del pipeline.

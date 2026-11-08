@@ -3,8 +3,8 @@ import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
 import { printerService } from "@sincpro/mobile/services/printer.service";
 import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
 import { BluetoothDeviceSelectorModal } from "@sincpro/mobile/ui/components/molecules/BluetoothDeviceSelectorModal";
+import { Actions } from "@sincpro/mobile-ui/Actions";
 import { Display } from "@sincpro/mobile-ui/Display";
-import { Form } from "@sincpro/mobile-ui/Form";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useCallback, useEffect, useState } from "react";
@@ -39,7 +39,7 @@ function PermissionRequired({
       <Typography.Text className={statusTextVariants({ granted: false })}>
         Permiso de Bluetooth requerido
       </Typography.Text>
-      <Form.Button
+      <Actions.Button
         loading={loading}
         onPress={onRequestPermission}
         size="small"
@@ -66,7 +66,7 @@ function PrinterInfo({
   onChangePrinter: () => void;
 }) {
   return (
-    <View className="mt-2 bg-bg-muted rounded-lg p-3">
+    <View className="mt-3">
       <Typography.Text className="text-text-primary" semibold>
         {printer.name}
       </Typography.Text>
@@ -76,7 +76,7 @@ function PrinterInfo({
 
       <View className="flex-row gap-2 mt-2">
         {!isConnected ? (
-          <Form.Button
+          <Actions.Button
             loading={loading}
             onPress={onConnect}
             size="small"
@@ -84,7 +84,7 @@ function PrinterInfo({
             variant="cta"
           />
         ) : (
-          <Form.Button
+          <Actions.Button
             loading={loading}
             onPress={onTestPrint}
             size="small"
@@ -92,7 +92,7 @@ function PrinterInfo({
             variant="secondary"
           />
         )}
-        <Form.Button
+        <Actions.Button
           onPress={onChangePrinter}
           size="small"
           title="Cambiar"
@@ -118,7 +118,7 @@ function NoPrinterSelected({
   onSelectPrinter: () => void;
 }) {
   return (
-    <Form.Button
+    <Actions.Button
       loading={loading}
       onPress={onSelectPrinter}
       size="small"
@@ -302,12 +302,7 @@ function BluetoothPrinterSelector({
   return (
     <Display.Card className="my-2.5">
       <View className="flex-row items-start">
-        <Display.Icon
-          color={granted ? theme.success : theme.danger}
-          customIcon={PrinterIcon}
-          size={35}
-          type="custom"
-        />
+        <PrinterIcon color={granted ? theme.success : theme.danger} size={24} />
         <View className="ml-2.5 flex-1">
           <Typography.Text className="text-base mb-1" semibold>
             Impresora Bluetooth

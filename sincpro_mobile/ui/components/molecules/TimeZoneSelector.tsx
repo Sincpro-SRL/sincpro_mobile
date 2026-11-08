@@ -1,5 +1,6 @@
-import { Display, Form } from "@sincpro/mobile-ui/index";
-import { theme } from "@sincpro/mobile-ui/theme/useTheme";
+import { Actions } from "@sincpro/mobile-ui/Actions";
+import { Display } from "@sincpro/mobile-ui/Display";
+import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useState } from "react";
 import { View } from "react-native";
@@ -13,6 +14,7 @@ interface TimeZoneSelectorProps {
 }
 
 export function TimeZoneSelector({ onSelect, timezone }: TimeZoneSelectorProps) {
+  const theme = useTheme();
   const [currentTimezone, setCurrentTimezone] = useState(timezone);
   const [selectorVisible, setSelectorVisible] = useState(false);
 
@@ -21,57 +23,35 @@ export function TimeZoneSelector({ onSelect, timezone }: TimeZoneSelectorProps) 
     onSelect?.(tz);
   }
 
-  const displayTimezone = currentTimezone
-    ? currentTimezone.replace(/_/g, " ").replace("America/", "")
-    : "No configurada";
+  const displayTimezone = currentTimezone?.replace(/_/g, " ").replace("America/", "");
 
   return (
-    <Display.Card className="my-2.5">
-      <View className="flex-row items-start">
+    <Display.Card className="my-2">
+      <View className="flex-row items-center gap-3">
         <Display.Icon
           color={currentTimezone ? theme.info : theme.text.tertiary}
-          name="schedule"
-          size={35}
-          type="material"
+          name="time"
+          size={24}
         />
-        <View className="ml-2.5 flex-1">
-          <Typography.Text className="text-base mb-1" semibold>
-            Zona Horaria
+        <View className="min-w-0 flex-1">
+          <Typography.Text semibold>Zona horaria</Typography.Text>
+          <Typography.Text className="text-text-secondary" variant="bodySmall">
+            {currentTimezone ? displayTimezone : "Sin configurar"}
           </Typography.Text>
-
           {currentTimezone ? (
-            <View className="mt-2 bg-bg-card rounded-lg p-3">
-              <Typography.Text className="text-text-primary" semibold>
-                {displayTimezone}
-              </Typography.Text>
-              <Typography.Text className="text-text-tertiary text-xs">
-                {currentTimezone}
-              </Typography.Text>
-
-              <View className="flex-row gap-2 mt-2">
-                <Form.Button
-                  onPress={() => setSelectorVisible(true)}
-                  size="small"
-                  title="Cambiar"
-                  variant="outline"
-                />
-              </View>
-            </View>
-          ) : (
-            <>
-              <Typography.Text className="text-text-secondary mb-2">
-                Selecciona una zona horaria
-              </Typography.Text>
-              <Form.Button
-                onPress={() => setSelectorVisible(true)}
-                size="small"
-                title="Seleccionar Zona Horaria"
-                variant="cta"
-              />
-            </>
-          )}
+            <Typography.Text className="text-text-tertiary" variant="caption">
+              {currentTimezone}
+            </Typography.Text>
+          ) : null}
         </View>
       </View>
+      <Actions.Button
+        className="mt-3"
+        onPress={() => setSelectorVisible(true)}
+        size="small"
+        title={currentTimezone ? "Cambiar" : "Seleccionar"}
+        variant={currentTimezone ? "outline" : "cta"}
+      />
 
       <TimeZoneSelectorModal
         currentTimezone={currentTimezone}

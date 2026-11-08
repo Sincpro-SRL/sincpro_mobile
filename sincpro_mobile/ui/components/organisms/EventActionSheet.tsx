@@ -1,0 +1,181 @@
+import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/events";
+import {
+  eventStatusBadge,
+  eventStatusLabel,
+} from "@sincpro/mobile/ui/components/molecules/event-status";
+import { Actions } from "@sincpro/mobile-ui/Actions";
+import Sheet from "@sincpro/mobile-ui/Dialog/Sheet";
+import type { IconName } from "@sincpro/mobile-ui/Display";
+import { Display } from "@sincpro/mobile-ui/Display";
+import { useTheme } from "@sincpro/mobile-ui/theme";
+import { Typography } from "@sincpro/mobile-ui/Typography";
+import JsonPreview from "@sincpro/mobile-ui/widgets/JSONViewer";
+import * as Clipboard from "expo-clipboard";
+import { useState } from "react";
+import { Pressable, View } from "react-native";
+
+interface EventActionSheetProps {
+  event: IntegrationEvent | null;
+  visible: boolean;
+  onClose: () => void;
+  onRetry?: (event: IntegrationEvent) => Promise<void> | void;
+  retryLabel?: string;
+}
+
+function ActionRow({
+  icon,
+  label,
+  onPress,
+  trailing,
+  last = false,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  trailing?: IconName;
+  last?: boolean;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      className={
+        last
+          ? "flex-row items-center gap-3 px-3"
+          : "flex-row items-center gap-3 border-b border-border-light px-3"
+      }
+      onPress={onPress}
+      style={{ minHeight: 48 }}
+    >
+      <Display.Icon color={theme.icon.secondary} name={icon} size={20} />
+      <Typography.Text className="flex-1">{label}</Typography.Text>
+      {trailing ? (
+        <Display.Icon color={theme.icon.tertiary} name={trailing} size={16} />
+      ) : null}
+    </Pressable>
+  );
+}
+
+export function EventActionSheet({
+  event,
+  visible,
+  onClose,
+  onRetry,
+  retryLabel = "Re-disparar",
+}: EventActionSheetProps) {
+  const theme = useTheme();
+  const [showPayload, setShowPayload] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  if (!event) return null;
+
+  const payload = event.asJSON(true);
+  const attempts = event.attempts ?? 0;
+  const failed = event.status === EEventStatus.FAILED;
+  const actionLabel = failed ? "Reintentar" : retryLabel;
+
+  const close = () => {
+    setShowPayload(false);
+    setCopied(false);
+    onClose();
+  };
+
+  const retry = async () => {
+    if (!onRetry || sending) return;
+    setSending(true);
+    try {
+      await onRetry(event);
+    } finally {
+      setTimeout(() => setSending(false), 1200);
+    }
+  };
+
+  const copyPayload = () => {
+    void Clipboard.setStringAsync(payload);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <Sheet
+      footer={
+        onRetry ? (
+          <Actions.Button
+            disabled={sending}
+            icon={
+              <Display.Icon
+                color={failed ? theme.text.onAccent : theme.text.primary}
+                name="sync"
+                size={18}
+              />
+            }
+            loading={sending}
+            onPress={() => {
+              void retry();
+            }}
+            title={sending ? "Reenviando…" : actionLabel}
+            variant={failed ? "cta" : "secondary"}
+          />
+        ) : undefined
+      }
+      onClose={close}
+      scrollable
+      snapPoints={["48%", "88%"]}
+      title={event.label || event.name}
+      visible={visible}
+    >
+      <View className="gap-3 pb-2">
+        <View className="flex-row items-center justify-between gap-3">
+          <Display.Badge
+            label={eventStatusLabel(event.status)}
+            variant={eventStatusBadge(event.status)}
+          />
+          <Display.Date showTime textVariant="caption" value={event.createdAt} />
+        </View>
+        <Display.CopyableText value={event.name} />
+        <View className="flex-row flex-wrap gap-x-3">
+          <Typography.Text className="text-text-tertiary" variant="caption">
+            {attempts === 1 ? "1 intento" : `${attempts} intentos`}
+          </Typography.Text>
+          {event.sequence > 0 ? (
+            <Typography.Text className="text-text-tertiary" variant="caption">
+              {`Secuencia ${event.sequence}`}
+            </Typography.Text>
+          ) : null}
+          {event.requiresNetwork ? (
+            <Typography.Text className="text-text-tertiary" variant="caption">
+              Espera red
+            </Typography.Text>
+          ) : null}
+        </View>
+        {event.errorMessage ? (
+          <Typography.Text className="text-danger" variant="bodySmall">
+            {event.errorMessage}
+          </Typography.Text>
+        ) : null}
+
+        <View className="overflow-hidden rounded-xl bg-bg-muted">
+          <ActionRow
+            icon="document"
+            label={showPayload ? "Ocultar payload" : "Ver payload"}
+            onPress={() => setShowPayload((value) => !value)}
+            trailing={showPayload ? "collapse" : "expand"}
+          />
+          <ActionRow
+            icon={copied ? "success" : "copy"}
+            label={copied ? "Copiado" : "Copiar payload"}
+            last
+            onPress={copyPayload}
+          />
+        </View>
+
+        {showPayload ? (
+          <View className="rounded-xl bg-bg-muted p-2">
+            <JsonPreview selectedJson={payload} />
+          </View>
+        ) : null}
+      </View>
+    </Sheet>
+  );
+}

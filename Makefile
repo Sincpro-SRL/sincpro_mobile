@@ -38,7 +38,7 @@ test:
 	@echo "🧪 Running tests..."
 	@node --require ./tests/cjs-stubs.cjs --import tsx --import ./tests/loader.mjs --test "tests/**/*.test.ts"
 
-verify-format: format doctor
+verify-format: format doctor storybook-check
 	@if ! git diff --quiet; then \
 	  echo >&2 "✘ El formateo ha modificado archivos. Por favor agrégalos al commit."; \
 	  git --no-pager diff --name-only HEAD -- >&2; \
@@ -78,4 +78,11 @@ clean:
 	@rm -rf dist node_modules
 	@echo "✓ Cleaned"
 
-.PHONY: prepare-environment init format typecheck doctor build test verify-format update-version publish deploy clean
+storybook:
+	npx patch-package
+	npx expo start -c
+
+storybook-check:
+	npx tsc -p tsconfig.stories.json --noEmit
+
+.PHONY: prepare-environment init format typecheck doctor build test verify-format update-version publish deploy clean storybook storybook-check

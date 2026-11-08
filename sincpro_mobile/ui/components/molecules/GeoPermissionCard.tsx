@@ -1,18 +1,8 @@
+import { Actions } from "@sincpro/mobile-ui/Actions";
 import { Display } from "@sincpro/mobile-ui/Display";
-import { Form } from "@sincpro/mobile-ui/Form";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { View } from "react-native";
-import { tv } from "tailwind-variants";
-
-const statusTextVariants = tv({
-  variants: {
-    granted: {
-      true: "text-success",
-      false: "text-danger",
-    },
-  },
-});
 
 interface GeoPermissionCardProps {
   title: string;
@@ -28,35 +18,36 @@ function GeoPermissionCard({
   hasPermission,
 }: GeoPermissionCardProps) {
   const theme = useTheme();
-  const granted = hasPermission !== undefined ? hasPermission : false;
+  const granted = hasPermission === true;
 
   return (
-    <Display.Card className="my-2.5">
-      <View className="flex-row items-start">
+    <Display.Card className="my-2">
+      <View className="flex-row items-center gap-3">
         <Display.Icon
           color={granted ? theme.success : theme.danger}
-          name={granted ? "check-circle" : "location-off"}
-          size={35}
-          type="material"
+          name={granted ? "success" : "location-disabled"}
+          size={24}
         />
-        <View className="ml-2.5 flex-1">
-          <Typography.Text className="text-base mb-1" semibold>
-            {title}
+        <View className="min-w-0 flex-1">
+          <Typography.Text semibold>{title}</Typography.Text>
+          <Typography.Text
+            className={granted ? "text-success" : "text-danger"}
+            variant="bodySmall"
+          >
+            {granted ? "Permiso activo" : "Permiso inactivo"}
           </Typography.Text>
-          <Typography.Text className={statusTextVariants({ granted })}>
-            {granted ? "Permiso activo." : "Permiso inactivo."}
-          </Typography.Text>
-          {!granted && (
-            <Form.Button
-              loading={loading}
-              onPress={handleRequestPermission}
-              size="small"
-              title={"Abrir Configuración"}
-              variant="cta"
-            />
-          )}
         </View>
       </View>
+      {!granted ? (
+        <Actions.Button
+          className="mt-3"
+          loading={loading}
+          onPress={handleRequestPermission}
+          size="small"
+          title="Abrir Configuración"
+          variant="cta"
+        />
+      ) : null}
     </Display.Card>
   );
 }

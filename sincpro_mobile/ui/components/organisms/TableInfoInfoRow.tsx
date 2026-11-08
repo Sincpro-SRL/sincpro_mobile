@@ -1,6 +1,6 @@
 import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 import { Typography } from "@sincpro/mobile-ui/Typography";
-import { TouchableOpacity, View } from "react-native";
+import { Pressable } from "react-native";
 
 export interface TableRowData {
   data: unknown;
@@ -23,39 +23,37 @@ function TableInfoRow({ item, onPress }: TableListItemProps) {
     messageId = `(${parsedData.remote_id}) `;
   }
   if (parsedData.uuid) {
-    messageId += `[${parsedData.uuid})]`;
+    messageId += `[${parsedData.uuid}]`;
   }
 
   const jsonString = safeJsonStringify(parsedData);
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.7}
-      className="bg-bg-card p-4 rounded-xl my-2 shadow-sm"
+    <Pressable
+      accessibilityRole="button"
+      className="border-b border-border-default bg-bg-card px-4 py-3"
       onPress={onPress}
     >
-      <View>
-        <Typography.Text className="mb-2" variant="caption">
-          {parsedData.name || "Sin Nombre"}
+      <Typography.Text numberOfLines={1} semibold>
+        {parsedData.name || "Sin nombre"}
+      </Typography.Text>
+      <Typography.Text className="text-text-secondary" numberOfLines={1} variant="bodySmall">
+        {messageId || "Sin identificador"}
+      </Typography.Text>
+      {parsedData.status ? (
+        <Typography.Text className="text-text-tertiary" variant="caption">
+          {String(parsedData.status)}
         </Typography.Text>
-        <Typography.Text numberOfLines={1} semibold variant="body">
-          {messageId || "Sin Identificador"}
-        </Typography.Text>
-
-        {parsedData.status && (
-          <Typography.Text variant="label">Estado: {parsedData.status}</Typography.Text>
-        )}
-
-        <Typography.Text
-          className="text-text-secondary"
-          ellipsizeMode="tail"
-          numberOfLines={2}
-          variant="bodySmall"
-        >
-          {jsonString}
-        </Typography.Text>
-      </View>
-    </TouchableOpacity>
+      ) : null}
+      <Typography.Text
+        className="text-text-tertiary"
+        ellipsizeMode="tail"
+        numberOfLines={2}
+        variant="caption"
+      >
+        {jsonString}
+      </Typography.Text>
+    </Pressable>
   );
 }
 
