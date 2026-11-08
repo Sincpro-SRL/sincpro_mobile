@@ -3,17 +3,18 @@ import {
   eventStatusIcon,
   eventStatusLabel,
 } from "@sincpro/mobile/ui/components/molecules/event-status";
-import { EventActionSheet } from "@sincpro/mobile/ui/components/organisms/EventActionSheet";
 import { Display } from "@sincpro/mobile-ui/Display";
+import { Pressable } from "@sincpro/mobile-ui/primitives/Pressable";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
-import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { memo } from "react";
+import { View } from "react-native";
 
 interface EventTimelineItemProps {
   event: IntegrationEvent;
   isLast?: boolean;
-  onRetry?: (event: IntegrationEvent) => Promise<void> | void;
+  /** The screen owns the one action sheet; an item never mounts an overlay. */
+  onOpen: (event: IntegrationEvent) => void;
 }
 
 function readableName(event: IntegrationEvent): string {
@@ -30,8 +31,7 @@ function dotColor(status: string | undefined, theme: ReturnType<typeof useTheme>
   return theme.text.tertiary;
 }
 
-function EventTimelineItem({ event, isLast = false, onRetry }: EventTimelineItemProps) {
-  const [open, setOpen] = useState(false);
+function EventTimelineItem({ event, isLast = false, onOpen }: EventTimelineItemProps) {
   const theme = useTheme();
   const color = dotColor(event.status, theme);
   const attempts = event.attempts === 1 ? "1 intento" : `${event.attempts} intentos`;
@@ -61,7 +61,7 @@ function EventTimelineItem({ event, isLast = false, onRetry }: EventTimelineItem
         accessibilityHint="Abre el detalle del evento"
         accessibilityRole="button"
         className={isLast ? "flex-1" : "flex-1 pb-5"}
-        onPress={() => setOpen(true)}
+        onPress={() => onOpen(event)}
       >
         <View className="flex-row items-center justify-between gap-3">
           <Typography.Text className="flex-1" numberOfLines={1} semibold>
@@ -79,14 +79,8 @@ function EventTimelineItem({ event, isLast = false, onRetry }: EventTimelineItem
           {`${eventStatusLabel(event.status)} · ${attempts}`}
         </Typography.Text>
       </Pressable>
-      <EventActionSheet
-        event={event}
-        onClose={() => setOpen(false)}
-        onRetry={onRetry}
-        visible={open}
-      />
     </View>
   );
 }
 
-export default EventTimelineItem;
+export default memo(EventTimelineItem);

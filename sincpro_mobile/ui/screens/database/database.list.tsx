@@ -1,4 +1,3 @@
-import { useNavigation } from "@react-navigation/native";
 import DatabaseInfoRow from "@sincpro/mobile/ui/components/organisms/DatabaseInfoRow";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import { useEffect } from "react";
@@ -7,15 +6,17 @@ import { DatabaseProvider, EDatabaseView, useDatabase } from "./database.context
 import JsonDetailView from "./database.json_detail";
 import TableRowsView from "./database.table_rows";
 
-function TablesView() {
-  const navigation = useNavigation();
+export interface DatabaseListProps {
+  /** Leaves the screen. Without it the header shows no back button. */
+  onBack?: () => void;
+}
+
+function TablesView({ onBack }: DatabaseListProps) {
   const { loadTables, isLoading, tables, selectTable } = useDatabase();
 
   useEffect(() => {
     void loadTables();
   }, [loadTables]);
-
-  const onBack = () => navigation.goBack();
 
   return (
     <ListViewV2.Root
@@ -47,12 +48,12 @@ function TablesView() {
   );
 }
 
-function DatabaseListContent() {
+function DatabaseListContent({ onBack }: DatabaseListProps) {
   const { currentView } = useDatabase();
 
   switch (currentView) {
     case EDatabaseView.TABLES_LIST:
-      return <TablesView />;
+      return <TablesView onBack={onBack} />;
 
     case EDatabaseView.TABLE_ROWS:
       return <TableRowsView />;
@@ -65,10 +66,10 @@ function DatabaseListContent() {
   }
 }
 
-export default function DatabaseList() {
+export default function DatabaseList({ onBack }: DatabaseListProps) {
   return (
     <DatabaseProvider>
-      <DatabaseListContent />
+      <DatabaseListContent onBack={onBack} />
     </DatabaseProvider>
   );
 }

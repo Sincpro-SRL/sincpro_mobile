@@ -1,12 +1,13 @@
-import {
-  DefaultTheme as NavDefaultTheme,
-  NavigationContainer,
-} from "@react-navigation/native";
-import { createApp } from "@sincpro/mobile/framework/createApp";
+import { defineBackgroundCrons } from "@sincpro/mobile/framework/background";
+import { createKernel, startApp } from "@sincpro/mobile/framework/createApp";
 import type { DomainModule } from "@sincpro/mobile/framework/domain_module";
+import type { Kernel } from "@sincpro/mobile/framework/kernel";
+import logger from "@sincpro/mobile/infrastructure/logger";
+import type { TelemetryConfig } from "@sincpro/mobile/infrastructure/telemetry";
+import { onceUntilFailure } from "@sincpro/mobile/tools/utils/once";
 import { DeviceNotices } from "@sincpro/mobile/ui/activity";
-import { type BrandingConfig, setBranding } from "@sincpro/mobile-ui";
-import { ToastProvider } from "@sincpro/mobile-ui/Feedback";
+import { type BrandingConfig, setBranding } from "@sincpro/mobile-ui/branding";
+import { ErrorBoundary, Feedback, ToastProvider } from "@sincpro/mobile-ui/Feedback";
 import {
   setActiveTheme,
   type ThemeTokens,
@@ -23,7 +24,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context";
 
 import { CommonProvider } from "./common_provider";
-import { ActiveDomainApp, type DomainApp, DomainSwitcherProvider } from "./domain_switcher";
+import { type DomainEntry, DomainSwitcherProvider } from "./domain_switcher";
 
 type ProviderComponent = ComponentType<{ children: ReactNode }>;
 
@@ -110,17 +111,13 @@ export interface AppShellConfig {
    * always included automatically — do not pass it here.
    */
   domains: DomainModule[];
+  /** Domain active on launch. Defaults to the first of `domains`. */
+  initialDomain?: string;
   /**
-   * Map of domain key → screen component. Domains without a matching entry
-   * here are bootstrapped (events, repos, crons) but have no UI — they run
-   * silently in the background. Must contain at least `ui[activeDomain]`.
+   * Called when `useDomainSwitcher().switchTo(key)` changes the domain. The host owns the
+   * routes: map the key to one here (`router.replace(...)`) or read `activeDomain`.
    */
-  ui: Record<string, ComponentType>;
-  /**
-   * Key of the domain whose UI is shown on launch. Must match one of the
-   * keys in `domains` AND have a corresponding entry in `ui`.
-   */
-  activeDomain: string;
+  onDomainChange?: (key: string) => void;
   /**
    * Additional React context providers to wrap around the app. Providers are
    * applied in array order, outermost last — i.e. the last element in the
@@ -129,6 +126,11 @@ export interface AppShellConfig {
    * Example: `[ConfirmationProvider, ProcessToastProvider]`
    */
   providers?: ProviderComponent[];
+  /**
+   * Opt-in log and trace shipping. Omit it and nothing is sent to Loki or OTLP.
+   * Started after migrations, so the telemetry tables exist.
+   */
+  telemetry?: TelemetryConfig;
   /** Light theme tokens. Defaults to the DS base theme if omitted. */
   theme?: ThemeTokens;
   /** Dark theme tokens. When provided, the system color-scheme toggle activates it. */
@@ -146,6 +148,47 @@ export interface AppShellConfig {
   splashDuration?: number;
 }
 
+/** What `defineAppShell` prepared while the bundle loaded. Pass it to `<AppShell shell>`. */
+export interface AppShellDefinition {
+  readonly config: AppShellConfig;
+  readonly kernel: Kernel;
+  readonly domains: DomainEntry[];
+  readonly initialDomain: string;
+  readonly fontFiles: Record<string, string | number>;
+  /** Starts the data layer, queue, crons and telemetry once; a failed start can retry. */
+  readonly start: () => Promise<void>;
+}
+
+/**
+ * Prepares the app while the bundle loads. Call it at module scope (root layout or
+ * App file), never inside a component:
+ * - theme, branding and fonts are set before the first render;
+ * - the native splash is held until the app is ready;
+ * - the kernel is built without IO and background crons are defined, so the OS
+ *   finds them when it wakes a closed app.
+ */
+export function defineAppShell(config: AppShellConfig): AppShellDefinition {
+  if (config.theme) setActiveTheme(config.theme);
+  if (config.branding) setBranding(config.branding);
+  if (config.brandFont?.families) configureFonts(familiesToRoles(config.brandFont.families));
+  SplashScreen.preventAutoHideAsync().catch(() => {});
+
+  const kernel = createKernel({ domains: config.domains });
+  defineBackgroundCrons(kernel, { telemetry: config.telemetry });
+  const domains = config.domains.map(({ key, name }) => ({ key, name }));
+
+  return {
+    config,
+    kernel,
+    domains,
+    initialDomain: config.initialDomain ?? domains[0]?.key ?? "",
+    fontFiles: config.brandFont?.files ?? {},
+    start: onceUntilFailure(async () => {
+      await startApp(kernel, { telemetry: config.telemetry });
+    }),
+  };
+}
+
 /** Wraps children in the provider list. reduceRight → first item = innermost wrapper. */
 function withProviders(providers: ProviderComponent[], children: ReactNode): ReactNode {
   return providers.reduceRight<ReactNode>(
@@ -154,94 +197,121 @@ function withProviders(providers: ProviderComponent[], children: ReactNode): Rea
   );
 }
 
-export function createAppShell(config: AppShellConfig): ComponentType {
-  const apps: DomainApp[] = config.domains
-    .filter((module) => Boolean(config.ui[module.key]))
-    .map((module) => ({
-      key: module.key,
-      name: module.name,
-      component: config.ui[module.key],
-    }));
-  const providers = config.providers ?? [];
+type StartStatus = "starting" | "ready" | "failed";
 
-  if (config.theme) {
-    setActiveTheme(config.theme);
-  }
-  if (config.branding) {
-    setBranding(config.branding);
-  }
-  // Wire brand font roles into the DS before first render.
-  if (config.brandFont?.families) {
-    configureFonts(familiesToRoles(config.brandFont.families));
-  }
+/** Runs `shell.start()` and exposes its status; `retry` starts it again after a failure. */
+function useStart(shell: AppShellDefinition) {
+  const [status, setStatus] = useState<StartStatus>("starting");
+  const [attempt, setAttempt] = useState(0);
 
-  return function AppShell() {
-    const [isReady, setIsReady] = useState(false);
-    const [minDurationMet, setMinDurationMet] = useState(false);
-    const [brandFontsLoaded] = useFonts(config.brandFont?.files ?? {});
-    const activeTheme = useTheme();
-    const themeStyle = vars(themeToVars(activeTheme));
-    const navTheme = {
-      ...NavDefaultTheme,
-      colors: { ...NavDefaultTheme.colors, background: activeTheme.bg.page },
-    };
-
-    useEffect(() => {
-      let active = true;
-      createApp({ domains: config.domains }).then(() => {
-        if (active) setIsReady(true);
+  useEffect(() => {
+    let active = true;
+    shell
+      .start()
+      .then(() => {
+        if (active) setStatus("ready");
+      })
+      .catch((error: unknown) => {
+        logger.error("[AppShell] The app could not start", error);
+        if (active) setStatus("failed");
       });
-      return () => {
-        active = false;
-      };
-    }, []);
+    return () => {
+      active = false;
+    };
+  }, [shell, attempt]);
 
-    useEffect(() => {
-      SplashScreen.preventAutoHideAsync().catch(() => {});
-    }, []);
+  const retry = () => {
+    setStatus("starting");
+    setAttempt((value) => value + 1);
+  };
+  return { status, retry };
+}
 
-    useEffect(() => {
-      const t = setTimeout(() => setMinDurationMet(true), config.splashDuration ?? 2000);
-      return () => clearTimeout(t);
-    }, []);
+/**
+ * Root of a Sincpro app: gestures, theme variables, safe area, keyboard, settings,
+ * toasts and the host's providers around `children`. The host owns navigation: pass its
+ * router (Expo Router `<Stack />`, or a `NavigationContainer`) as `children`.
+ *
+ * `children` mount only after the data layer is ready, so screens and providers can
+ * use repositories from their first render. A failed start shows a retry screen
+ * instead of a blank one.
+ */
+export function AppShell({
+  shell,
+  children,
+}: {
+  shell: AppShellDefinition;
+  children: ReactNode;
+}) {
+  const { config } = shell;
+  const { status, retry } = useStart(shell);
+  const [minDurationMet, setMinDurationMet] = useState(false);
+  const [fontsLoaded, fontError] = useFonts(shell.fontFiles);
+  const activeTheme = useTheme();
+  const themeStyle = vars(themeToVars(activeTheme));
+  const fontsSettled = fontsLoaded || fontError != null;
+  const showApp = status === "ready" && fontsSettled && minDurationMet;
+  const settled = showApp || status === "failed";
 
-    useEffect(() => {
-      if (brandFontsLoaded && isReady && minDurationMet) {
-        SplashScreen.hideAsync().catch(() => {});
-      }
-    }, [brandFontsLoaded, isReady, minDurationMet]);
+  useEffect(() => {
+    const timer = setTimeout(() => setMinDurationMet(true), config.splashDuration ?? 2000);
+    return () => clearTimeout(timer);
+  }, [config.splashDuration]);
 
-    if (!isReady || !brandFontsLoaded || !minDurationMet) {
-      const Splash = config.splashComponent;
-      return Splash ? (
-        <Splash />
-      ) : (
-        <View style={{ flex: 1, backgroundColor: activeTheme.bg.page }} />
-      );
-    }
+  useEffect(() => {
+    if (fontError) logger.warn("[AppShell] Brand fonts failed; using DS defaults", fontError);
+  }, [fontError]);
 
-    return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <View className="flex-1" style={themeStyle}>
-          <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+  useEffect(() => {
+    if (settled) SplashScreen.hideAsync().catch(() => {});
+  }, [settled]);
+
+  if (!settled) {
+    const Splash = config.splashComponent;
+    return Splash ? (
+      <Splash />
+    ) : (
+      <View style={{ flex: 1, backgroundColor: activeTheme.bg.page }} />
+    );
+  }
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View className="flex-1" style={themeStyle}>
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+          {status === "failed" ? (
+            <View style={{ flex: 1, backgroundColor: activeTheme.bg.page }}>
+              <Feedback.Error
+                message="No se pudo iniciar la aplicación."
+                onRetry={retry}
+                testID="app-shell-start-failed"
+              />
+            </View>
+          ) : (
             <KeyboardProvider>
               <CommonProvider darkTheme={config.darkTheme} lightTheme={config.theme}>
                 <ToastProvider position="top">
-                  {withProviders(
-                    providers,
-                    <DomainSwitcherProvider apps={apps} initialDomain={config.activeDomain}>
-                      <NavigationContainer theme={navTheme}>
-                        <ActiveDomainApp />
-                      </NavigationContainer>
-                    </DomainSwitcherProvider>,
-                  )}
+                  <ErrorBoundary
+                    onError={(error) => logger.error("[AppShell] Render failed", error)}
+                  >
+                    {withProviders(
+                      config.providers ?? [],
+                      <DomainSwitcherProvider
+                        domains={shell.domains}
+                        initialDomain={shell.initialDomain}
+                        onChange={config.onDomainChange}
+                      >
+                        {children}
+                      </DomainSwitcherProvider>,
+                    )}
+                  </ErrorBoundary>
                   <DeviceNotices />
                 </ToastProvider>
               </CommonProvider>
             </KeyboardProvider>
-          </SafeAreaProvider>
-        </View>
-      </GestureHandlerRootView>
-    );
-  };
+          )}
+        </SafeAreaProvider>
+      </View>
+    </GestureHandlerRootView>
+  );
 }

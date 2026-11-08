@@ -1,20 +1,24 @@
 import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
-import { EEventStatus, type IntegrationEvent } from "@sincpro/mobile/domain/events";
+import type { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers/EventBus";
 
+/** The events screen shows the latest window; older history stays in SQLite. */
+export const RECENT_EVENTS_LIMIT = 500;
+export const DEFAULT_EVENT_RETENTION_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 class EventService {
-  async listAllEvents(): Promise<IntegrationEvent[]> {
-    loggerUseCases.info("Fetching all events from DomainEvent repository");
-    // Ordered by created_at DESC from repository query
-    const pending = await DomainEventRepository.findByStatuses([
-      EEventStatus.PENDING,
-      EEventStatus.PROCESSING,
-      EEventStatus.ACKNOWLEDGED,
-      EEventStatus.FAILED,
-      EEventStatus.CANCELLED,
-    ]);
-    return pending;
+  async listRecentEvents(limit: number = RECENT_EVENTS_LIMIT): Promise<IntegrationEvent[]> {
+    loggerUseCases.info(`Fetching the latest ${limit} events`);
+    return DomainEventRepository.findRecent(limit);
+  }
+
+  /** Drops acknowledged events older than the retention window. */
+  async pruneHistory(retentionDays: number = DEFAULT_EVENT_RETENTION_DAYS): Promise<void> {
+    const cutoff = new Date(Date.now() - retentionDays * DAY_MS).toISOString();
+    await DomainEventRepository.removeAcknowledgedBefore(cutoff);
+    loggerUseCases.info(`Pruned acknowledged events before ${cutoff}`);
   }
 
   async republishSync(event: IntegrationEvent): Promise<void> {

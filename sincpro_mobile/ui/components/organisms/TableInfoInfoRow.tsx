@@ -1,6 +1,6 @@
 import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
+import { Pressable } from "@sincpro/mobile-ui/primitives/Pressable";
 import { Typography } from "@sincpro/mobile-ui/Typography";
-import { Pressable } from "react-native";
 
 export interface TableRowData {
   data: unknown;

@@ -101,3 +101,21 @@ test("filterEvents combines status, name and date", () => {
     [],
   );
 });
+
+test("filterEvents reads each event's text once while the user keeps typing", () => {
+  let reads = 0;
+  const event = {
+    name: "invoice.sync",
+    get label() {
+      reads += 1;
+      return "Sincronización de facturas";
+    },
+    createdAt: new Date().toISOString(),
+  };
+  for (const query of ["s", "si", "sin", "sinc", "factura", "x"]) {
+    filterEvents([event], { query });
+  }
+  assert.equal(reads, 1);
+  assert.deepEqual(filterEvents([event], { query: "SINCRONIZACION" }), [event]);
+  assert.deepEqual(filterEvents([event], { query: "facturas\ninvoice" }), []);
+});

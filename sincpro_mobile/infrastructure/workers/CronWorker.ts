@@ -6,6 +6,22 @@ import * as TaskManager from "expo-task-manager";
 
 export type CronJob = () => Promise<void>;
 
+/** Shortest interval the OS scheduler accepts; shorter crons are foreground intervals. */
+export const BACKGROUND_MIN_INTERVAL = 15;
+
+/**
+ * Defines the OS task behind a background cron. Expo needs the definition while the
+ * bundle loads: a closed app is woken by the OS, evaluates the bundle without mounting
+ * React and looks the task up by name.
+ */
+export function defineBackgroundTask(taskName: string, run: () => Promise<boolean>): void {
+  TaskManager.defineTask(taskName, async () =>
+    (await run())
+      ? BackgroundTask.BackgroundTaskResult.Success
+      : BackgroundTask.BackgroundTaskResult.Failed,
+  );
+}
+
 export interface CronWorkerOpts {
   requiresAuth?: boolean;
   label?: LabelText;
@@ -33,6 +49,16 @@ export class CronWorker {
     this.ui = opts.ui ?? false;
   }
 
+  /** Runs through the OS scheduler, also while the app is closed. */
+  get runsInBackground(): boolean {
+    return this.intervalMin >= BACKGROUND_MIN_INTERVAL;
+  }
+
+  /** One run of the job with its activity events. Resolves false when the job failed. */
+  runOnce(): Promise<boolean> {
+    return this.runWithEvents(this.job);
+  }
+
   configure(opts: Partial<CronWorkerOpts>): void {
     if (opts.label !== undefined) this.label = opts.label;
     if (opts.ui !== undefined) this.ui = opts.ui;
@@ -51,16 +77,16 @@ export class CronWorker {
 
     try {
       loggerCronJobs.info(`Schedule [every ${this.intervalMin} min]: task ${this.taskName}`);
-      if (this.intervalMin < 15) {
+      if (!this.runsInBackground) {
         this.stopFn = this.createIntervalJob(this.job, this.intervalMin);
       } else {
-        TaskManager.defineTask(this.taskName, async () => {
-          const ok = await this.runWithEvents(this.job);
-          return ok
-            ? BackgroundTask.BackgroundTaskResult.Success
-            : BackgroundTask.BackgroundTaskResult.Failed;
-        });
-
+        if (!TaskManager.isTaskDefined(this.taskName)) {
+          loggerCronJobs.warn(
+            `${this.taskName} defined after launch: it will not run while the app is closed. ` +
+              "Return it from a DomainModule so the shell defines it at load time.",
+          );
+          defineBackgroundTask(this.taskName, () => this.runOnce());
+        }
         await BackgroundTask.registerTaskAsync(this.taskName, {
           minimumInterval: this.intervalMin,
         });
@@ -88,8 +114,7 @@ export class CronWorker {
         this.stopFn = undefined;
       }
 
-      // Only attempt to unregister background tasks (>= 15 min)
-      if (this.intervalMin >= 15) {
+      if (this.runsInBackground) {
         await BackgroundTask.unregisterTaskAsync(this.taskName);
       }
 
@@ -104,7 +129,7 @@ export class CronWorker {
    * Check if the task is properly registered and functioning
    */
   isHealthy(): boolean {
-    return !this.registrationError && (this.stopFn !== undefined || this.intervalMin >= 15);
+    return !this.registrationError && (this.stopFn !== undefined || this.runsInBackground);
   }
 
   /**

@@ -39,7 +39,18 @@ let _worker: TelemetryFlushWorker | null = null;
  *
  * Call once at app startup after migrations have run (`createApp` handles this).
  */
-export async function initTelemetry(config: TelemetryConfig): Promise<void> {
+export interface InitTelemetryOptions {
+  /**
+   * Register the background flush with the OS scheduler. False when the OS itself
+   * woke the app to run that task: registering it again from there is pointless.
+   */
+  scheduleBackground?: boolean;
+}
+
+export async function initTelemetry(
+  config: TelemetryConfig,
+  { scheduleBackground = true }: InitTelemetryOptions = {},
+): Promise<void> {
   // Tear down the previous worker before re-wiring (hot-reload / config change).
   // Awaited so the old background task is unregistered before we register a new
   // one under the same task name.
@@ -97,11 +108,21 @@ export async function initTelemetry(config: TelemetryConfig): Promise<void> {
   });
 
   _worker = new TelemetryFlushWorker(flush, signal, connectivity, {
-    backgroundIntervalMin: config.flush?.backgroundIntervalMin,
+    backgroundIntervalMin: scheduleBackground ? config.flush?.backgroundIntervalMin : 0,
     onConnectivityEvents: config.flush?.onConnectivityEvents,
   });
   _worker.start();
 
   // Expose buffer pressure for health checks / dashboards.
   _registerBuffers(logQueue, spanQueue);
+}
+
+/**
+ * One delivery run for the OS background task. Reuses the pipeline the app already
+ * started in this JS context; in a context the OS woke without UI it starts telemetry
+ * first, without scheduling the background task again.
+ */
+export async function runBackgroundTelemetryFlush(config: TelemetryConfig): Promise<void> {
+  if (!_worker) await initTelemetry(config, { scheduleBackground: false });
+  await _worker?.flushNow();
 }

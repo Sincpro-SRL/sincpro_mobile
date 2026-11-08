@@ -194,6 +194,15 @@ constructor (`taskName`, `job`, `intervalMin = 15`, `requiresAuth`):
 - **`intervalMin ≥ 15`** → real OS background task via `expo-background-task` + `expo-task-manager`
   (15 min is the OS floor for background scheduling on iOS/Android).
 
+**Background tasks are defined at load time.** When the OS wakes a closed app to run a task it
+evaluates the bundle **without mounting React**: `createApp` never runs and the task is looked up
+by name. So `defineAppShell(config)` (called while the bundle loads) builds the kernel with
+`createKernel` and calls `defineBackgroundCrons(kernel)`, which defines one task per background
+cron. Each run awaits `kernel.bootstrap()` (repositories + migrations, once per JS context) before
+the job. Registering with the scheduler stays with `cron.sync`, so domain and auth gates still
+decide whether the OS calls it at all. A background cron created later (outside any
+`DomainModule`) is defined on `start()` with a warning: it works in foreground only.
+
 The **`cron`** registry mirrors `QueueProcessor`: `cron.sync(domains, auth, cronsByKey)` reconciles
 the running cron set, with the same domain + auth gates, calling `waitForIdle()` before
 unregistering. Example: `CHECK_NETWORK` runs every 2.5 min (setInterval path, no auth) and
@@ -219,19 +228,22 @@ feeds the `InternetIsUp/Down` signals that gate the EventBus and the telemetry f
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Entry as app/index
-    participant Shell as createAppShell (React)
-    participant CA as createApp
+    participant Entry as app/_layout (module scope)
+    participant Def as defineAppShell
+    participant Shell as AppShell (React)
+    participant CA as startApp
     participant K as Kernel
     participant O as Orchestrator
     participant QP as QueueProcessor
     participant CR as cron
     participant Tel as initTelemetry
 
-    Entry->>Shell: createAppShell(config)
-    Note over Shell: sync — set theme / branding / fonts, return component
-    Shell->>CA: (useEffect) createApp(domains)
-    CA->>K: new Kernel(baseModule + domains) — shared-first
+    Entry->>Def: defineAppShell(config)
+    Note over Def: sync — theme / branding / fonts, hold splash
+    Def->>K: createKernel — new Kernel(baseModule + domains), shared-first, no IO
+    Def->>Def: defineBackgroundCrons(kernel, { telemetry })
+    Entry->>Shell: <AppShell shell>{router}</AppShell>
+    Shell->>CA: (useEffect) shell.start() → startApp(kernel)
     CA->>O: configure(kernel) — all domains active, unauthenticated
     CA->>O: bootstrap()
     O->>K: bootstrap() → register repos → init facade → run migrations
@@ -239,7 +251,7 @@ sequenceDiagram
     O->>CR: sync() — start non-auth crons, e.g. CHECK_NETWORK
     O->>O: initAppStateWatcher()  (re-reconcile on foreground)
     CA->>Tel: initTelemetry(config)  (AFTER migrations — telemetry_queue exists)
-    Shell-->>Entry: splash until fonts + minDuration + ready, then render UI
+    Shell-->>Entry: splash until fonts + minDuration + ready, then the host's router (or a retry screen if start failed)
     Note over O: at login → authenticateSession() re-syncs queue+cron → requiresAuth subscribers/crons register
 ```
 

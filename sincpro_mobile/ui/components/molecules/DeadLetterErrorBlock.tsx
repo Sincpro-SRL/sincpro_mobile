@@ -1,7 +1,8 @@
 import { Display } from "@sincpro/mobile-ui/Display";
+import { Pressable } from "@sincpro/mobile-ui/primitives/Pressable";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 
 interface DeadLetterErrorBlockProps {
   errorMessage?: string | null;
@@ -22,12 +23,7 @@ function DeadLetterErrorBlock({
   const preview = truncated ? `${errorMessage.slice(0, previewChars)}…` : errorMessage;
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      className="mt-3"
-      onPress={onToggle}
-      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-    >
+    <Pressable accessibilityRole="button" className="mt-3" onPress={onToggle}>
       <View className="flex-row items-center gap-1.5">
         <Display.Icon color={theme.danger} name="error" size={16} />
         <Typography.Text className="text-danger" semibold variant="bodySmall">

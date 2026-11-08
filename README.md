@@ -42,18 +42,26 @@ class SalesModule extends DomainModule {
 
 const salesModule = new SalesModule();
 
-// 2. Wire the app shell — one call does everything
-import { createAppShell, createTheme } from "@sincpro/mobile";
+// 2. Define the shell at module scope, wrap the host's router with it
+// app/_layout.tsx
+import { AppShell, createTheme, defineAppShell } from "@sincpro/mobile";
+import { Stack } from "expo-router";
 
-export default createAppShell({
+const shell = defineAppShell({
   theme: createTheme({ accent: "#0EA5E9" }),
   domains: [salesModule],
-  ui: { [salesModule.key]: SalesScreen },
-  activeDomain: salesModule.key,
 });
+
+export default function RootLayout() {
+  return (
+    <AppShell shell={shell}>
+      <Stack screenOptions={{ headerShown: false }} />
+    </AppShell>
+  );
+}
 ```
 
-`createAppShell` runs database migrations, starts the event queue, registers cron workers, applies the theme, loads fonts, and mounts the app — all from a single configuration object.
+`defineAppShell` runs while the bundle loads: it applies the theme and fonts, holds the splash and defines background crons. `<AppShell>` runs database migrations, starts the event queue and crons, and mounts the host's router once the data layer is ready. The framework never mounts a navigator: routes belong to the host.
 
 ---
 
@@ -86,7 +94,7 @@ None of this is hard in isolation. All of it together, across iOS and Android, f
 
 AI tools can generate code faster than ever. That makes the absence of a framework _more_ dangerous, not less. When there is no shared architecture, AI-generated code is consistent only with itself — each prompt produces a different pattern, a different naming convention, a different approach to the same problem. The velocity is real. The maintenance cost is also real.
 
-With `@sincpro/mobile`, AI tools have clear patterns to follow: `DomainModule`, `createAppShell`, `Subscriber`, `CronWorker`, `Entity.addDomainEvent`. Code generated within the framework is framework-compliant by default. Human reviewers can audit it quickly. The codebase stays navigable.
+With `@sincpro/mobile`, AI tools have clear patterns to follow: `DomainModule`, `defineAppShell`, `Subscriber`, `CronWorker`, `Entity.addDomainEvent`. Code generated within the framework is framework-compliant by default. Human reviewers can audit it quickly. The codebase stays navigable.
 
 ### The Multi-Platform Bet
 
@@ -372,9 +380,13 @@ const SyncInvoicesCron = new CronWorker(
     }
   },
   15, // interval in minutes (>= 15 → background capable)
-  true, // requiresAuth — won't run if the session is unauthenticated
+  { requiresAuth: true }, // registered only while a session is authenticated
 );
 ```
+
+Return background workers from a `DomainModule.crons()`. `defineAppShell` defines their OS task
+while the bundle loads, so the task also runs when the OS wakes a closed app; each run prepares
+the database before calling the job.
 
 The `Orchestrator` starts, stops, and re-syncs workers automatically when domains are activated/deactivated or when the authentication state changes.
 
@@ -572,7 +584,7 @@ function StatusBar() {
 
 ### ✅ Domain Switcher
 
-Apps that compose multiple domains can switch the active UI at runtime without any navigation library setup. The domain that is not displayed is still running — its queue subscribers and cron workers remain active.
+Apps that compose multiple domains switch the active domain with `switchTo`. The framework keeps the state and calls `onDomainChange`; the host maps each domain to its routes. The domain that is not displayed is still running — its queue subscribers and cron workers remain active.
 
 ```tsx
 import { useDomainSwitcher } from "@sincpro/mobile";
@@ -600,7 +612,7 @@ function AppSwitcher() {
 ```tsx
 import { installGlobalErrorHandler } from "@sincpro/mobile";
 
-// Call once before createAppShell
+// Call once before defineAppShell
 installGlobalErrorHandler();
 ```
 
@@ -665,20 +677,25 @@ All hooks return safe empty defaults. Override only what your domain needs.
 ### Step 3 — Wire the module in the app shell
 
 ```tsx
-export function createTicketsApp(): ComponentType {
-  // Register adapters before the shell boots
-  printerService.setDriver(PrinterAdapter);
+// Register adapters before the shell boots
+printerService.setDriver(PrinterAdapter);
 
-  return createAppShell({
-    theme:        createTheme(TICKETS_THEME),
-    darkTheme:    createTheme(TICKETS_DARK_THEME),
-    brandFont:    { files: { … }, families: { … } },
-    domains:      [odooModule, ticketsModule],
-    ui:           { [ticketsModule.key]: TicketsApp },
-    activeDomain: ticketsModule.key,
-    providers:    [ConfirmationProvider, ProcessToastProvider],
-    splashComponent: TicketsSplash,
-  });
+export const ticketsShell = defineAppShell({
+  theme:        createTheme(TICKETS_THEME),
+  darkTheme:    createTheme(TICKETS_DARK_THEME),
+  brandFont:    { files: { … }, families: { … } },
+  domains:      [odooModule, ticketsModule],
+  providers:    [ConfirmationProvider, ProcessToastProvider],
+  splashComponent: TicketsSplash,
+});
+
+// app/_layout.tsx
+export default function RootLayout() {
+  return (
+    <AppShell shell={ticketsShell}>
+      <Stack screenOptions={{ headerShown: false }} />
+    </AppShell>
+  );
 }
 ```
 
@@ -690,7 +707,7 @@ sincpro_mobile_myapp/
 │   └── fonts/               ← brand typeface files (.otf / .ttf)
 ├── sincpro_mobile_myapp/
 │   ├── entrypoints/
-│   │   ├── main.tsx         ← DomainModule class + createMyApp()
+│   │   ├── main.tsx         ← DomainModule class + defineAppShell()
 │   │   ├── cron/            ← CronWorker definitions
 │   │   ├── queue/           ← Subscriber definitions
 │   │   └── ui/
@@ -702,23 +719,26 @@ sincpro_mobile_myapp/
 │   ├── application/         ← use cases
 │   └── infrastructure/      ← repositories, remote clients
 └── app/
-    └── index.tsx            ← calls createMyApp(), exports default
+    └── _layout.tsx          ← <AppShell shell={…}> around the router
 ```
 
 ---
 
 ## ⚙️ AppShell Configuration
 
-`createAppShell(config)` is the single composition root. All infrastructure wires up from this one call.
+`defineAppShell(config)` is the single composition root, called at module scope. `<AppShell shell>`
+renders it around the host's router.
 
 ```tsx
-import { createAppShell, createTheme } from "@sincpro/mobile";
+import { createTheme, defineAppShell } from "@sincpro/mobile";
 
-export default createAppShell({
+export const shell = defineAppShell({
   // ── Required ─────────────────────────────────────────────────────────────────
   domains:      [odooModule, ticketsModule],  // modules to bootstrap (order matters for shared deps)
-  ui:           { [ticketsModule.key]: TicketsApp }, // domain key → screen component
-  activeDomain: ticketsModule.key,           // which UI to show on launch
+
+  // ── Domains (the host maps each key to its routes) ───────────────────────────
+  initialDomain:  ticketsModule.key,          // default: the first domain
+  onDomainChange: (key) => router.replace(DOMAIN_ROUTES[key]),
 
   // ── Theme ────────────────────────────────────────────────────────────────────
   theme:     createTheme(TICKETS_THEME),
@@ -785,7 +805,7 @@ export const MY_THEME: ThemeTokens = {
 };
 ```
 
-Pass both `theme` and `darkTheme` to `createAppShell`. The framework switches automatically with the system color scheme. `useCommon().colorScheme` exposes the current value and `setColorScheme()` lets the user override it manually (persisted to the settings table).
+Pass both `theme` and `darkTheme` to `defineAppShell`. The framework switches automatically with the system color scheme. `useCommon().colorScheme` exposes the current value and `setColorScheme()` lets the user override it manually (persisted to the settings table).
 
 ---
 
@@ -814,7 +834,7 @@ import {
   Inter_800ExtraBold,
 } from "@expo-google-fonts/inter";
 
-createAppShell({
+defineAppShell({
   brandFont: {
     files: {
       // df — Display (brand typeface, local .otf files)
@@ -857,9 +877,20 @@ createAppShell({
 
 ## 📖 Public API
 
-### `createAppShell(config)` → `ComponentType`
+### `defineAppShell(config)` → `AppShellDefinition`
 
-Composition root. Returns a React component ready to export as the Expo entry point.
+Composition root, called at module scope. Applies theme, branding and fonts, holds the native
+splash, builds the kernel without IO and defines background crons.
+
+### `<AppShell shell={definition}>{router}</AppShell>`
+
+Root component. Mounts gestures, theme variables, safe area, keyboard, settings, toasts and the
+host's providers, then renders `children` (the host's router) once the data layer is ready. A
+failed start shows a retry screen. It never mounts a navigator.
+
+### `useDomainSwitcher()` → `{ activeDomain, domains, switchTo }`
+
+`switchTo(key)` changes the active domain and calls `onDomainChange`; the host decides the route.
 
 ### `DomainModule` (abstract class)
 
@@ -917,16 +948,9 @@ const {
 } = useCommon();
 ```
 
-### `useDomainSwitcher()` → `{ activeDomain, switchTo }`
-
-```tsx
-const { activeDomain, switchTo } = useDomainSwitcher();
-switchTo("ODOO");
-```
-
 ### `installGlobalErrorHandler()`
 
-Bridges `DomainException` to native `Alert`. Call once before `createAppShell`.
+Bridges `DomainException` to native `Alert`. Call once before `defineAppShell`.
 
 ### `baseModule` / `BaseModule`
 

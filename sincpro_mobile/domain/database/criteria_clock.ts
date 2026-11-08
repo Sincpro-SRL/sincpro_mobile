@@ -1,4 +1,5 @@
 import { InvalidCriteria, type Value } from "@sincpro/criteria";
+import { dateTimeFormat } from "@sincpro/mobile/tools/utils/intl";
 
 const UNITS = ["minutes", "hours", "days", "weeks", "months", "years"] as const;
 const GRAINS = ["day", "week", "month", "quarter", "year"] as const;
@@ -92,7 +93,7 @@ function zonedDay(clock: CriteriaClock): CalendarDay {
 function zonedWall(clock: CriteriaClock): Wall {
   let parts: Intl.DateTimeFormatPart[];
   try {
-    parts = new Intl.DateTimeFormat("en-US", {
+    parts = dateTimeFormat("en-US", {
       timeZone: clock.timeZone,
       hourCycle: "h23",
       year: "numeric",

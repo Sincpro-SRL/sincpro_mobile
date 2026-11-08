@@ -232,5 +232,12 @@ await createApp({
 });
 ```
 
+**Background flush with the app closed.** With `backgroundIntervalMin ≥ 15`, `defineAppShell`
+defines the `TELEMETRY_FLUSH` OS task while the bundle loads (`defineBackgroundCrons(kernel,
+{ telemetry })`). When the OS wakes a closed app the task prepares the database, starts telemetry
+with `scheduleBackground: false` (it does not register itself again) and drains both queues
+through `runBackgroundTelemetryFlush`. With the app open it reuses the running pipeline. An app
+that calls `createApp` without the shell only gets the foreground path.
+
 Spans are persisted to SQLite **only when `otlp` is configured**; the TracerProvider is
 registered regardless so `@Trace`/`withSpan` always work (no-op export when no destination).

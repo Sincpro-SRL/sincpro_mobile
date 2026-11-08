@@ -1,23 +1,51 @@
-import { useNavigation } from "@react-navigation/native";
 import { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import DeadLetterQueueRow from "@sincpro/mobile/ui/components/organisms/DeadLetterQueueRow";
+import { EventActionSheet } from "@sincpro/mobile/ui/components/organisms/EventActionSheet";
 import { EventListHeader } from "@sincpro/mobile/ui/events/event-query-controls";
 import { useEventQuery } from "@sincpro/mobile/ui/events/use-event-query";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { DeadLetterQueueProvider, useDeadLetterQueue } from "./dead_letter_queue.context";
 
-function DeadLetterQueueScreenComponent() {
-  const navigation = useNavigation();
+/** The retried event goes back to the queue; refresh once it had time to run. */
+const RELOAD_AFTER_RETRY_MS = 5000;
+
+export interface DeadLetterQueueListProps {
+  /** Leaves the screen. Without it the header shows no back button. */
+  onBack?: () => void;
+}
+
+function DeadLetterQueueScreenComponent({ onBack }: DeadLetterQueueListProps) {
   const { events, isLoading, loadEvents, retryEvent } = useDeadLetterQueue();
   const list = useEventQuery(events);
+  const [selected, setSelected] = useState<IntegrationEvent | null>(null);
+  const [open, setOpen] = useState(false);
+  const reload = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     loadEvents();
+    return () => clearTimeout(reload.current);
   }, [loadEvents]);
 
-  const onBack = () => navigation.goBack();
+  const openEvent = useCallback((event: IntegrationEvent) => {
+    setSelected(event);
+    setOpen(true);
+  }, []);
+  const renderEvent = useCallback(
+    (event: unknown) => (
+      <DeadLetterQueueRow item={event as IntegrationEvent} onOpen={openEvent} />
+    ),
+    [openEvent],
+  );
+  const retry = useCallback(
+    async (event: IntegrationEvent) => {
+      await retryEvent(event);
+      clearTimeout(reload.current);
+      reload.current = setTimeout(() => void loadEvents(), RELOAD_AFTER_RETRY_MS);
+    },
+    [loadEvents, retryEvent],
+  );
 
   return (
     <ListViewV2.Root
@@ -31,28 +59,22 @@ function DeadLetterQueueScreenComponent() {
       onRefresh={loadEvents}
     >
       <EventListHeader list={list} showStatus={false} />
-
-      <ListViewV2.Content>
-        {(event: IntegrationEvent) => (
-          <DeadLetterQueueRow
-            item={event}
-            onRetry={async (evt) => {
-              await retryEvent(evt as IntegrationEvent);
-              setTimeout(() => {
-                void loadEvents();
-              }, 5000);
-            }}
-          />
-        )}
-      </ListViewV2.Content>
+      <ListViewV2.Content>{renderEvent}</ListViewV2.Content>
+      <EventActionSheet
+        event={selected}
+        onClose={() => setOpen(false)}
+        onRetry={retry}
+        retryLabel="Reintentar"
+        visible={open}
+      />
     </ListViewV2.Root>
   );
 }
 
-function DeadLetterQueueList() {
+function DeadLetterQueueList({ onBack }: DeadLetterQueueListProps) {
   return (
     <DeadLetterQueueProvider>
-      <DeadLetterQueueScreenComponent />
+      <DeadLetterQueueScreenComponent onBack={onBack} />
     </DeadLetterQueueProvider>
   );
 }

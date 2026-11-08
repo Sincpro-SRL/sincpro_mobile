@@ -1,6 +1,7 @@
 import { BluetoothDevice, ISelectedPrinter } from "@sincpro/mobile/domain/print";
 import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
 import { printerService } from "@sincpro/mobile/services/printer.service";
+import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
 import { BluetoothDeviceSelectorModal } from "@sincpro/mobile/ui/components/molecules/BluetoothDeviceSelectorModal";
 import { Actions } from "@sincpro/mobile-ui/Actions";
@@ -174,36 +175,39 @@ function BluetoothPrinterSelector({
 
   async function handleRequestPermission() {
     setLoading(true);
-    try {
-      const permissions = await bluetoothService.requestPermissions();
-      setHasPermission(permissions.isGranted);
-    } finally {
-      setLoading(false);
-    }
+    return withCleanup(
+      async () => {
+        const permissions = await bluetoothService.requestPermissions();
+        setHasPermission(permissions.isGranted);
+      },
+      () => setLoading(false),
+    );
   }
 
   async function handleConnect() {
     if (!selectedPrinter) return;
 
     setLoading(true);
-    try {
-      const connected = await printerService.connect(
-        selectedPrinter.address,
-        selectedPrinter.name,
-      );
-      setIsConnected(connected);
-    } finally {
-      setLoading(false);
-    }
+    return withCleanup(
+      async () => {
+        const connected = await printerService.connect(
+          selectedPrinter.address,
+          selectedPrinter.name,
+        );
+        setIsConnected(connected);
+      },
+      () => setLoading(false),
+    );
   }
 
   async function handleTestPrint() {
     setLoading(true);
-    try {
-      await printerService.printTestPage();
-    } finally {
-      setLoading(false);
-    }
+    return withCleanup(
+      async () => {
+        await printerService.printTestPage();
+      },
+      () => setLoading(false),
+    );
   }
 
   function handleDeviceSelected(device: BluetoothDevice) {

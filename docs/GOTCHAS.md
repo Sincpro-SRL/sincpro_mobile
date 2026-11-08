@@ -14,6 +14,12 @@
 - **Causa:** un `const enum` (típicamente `AppScreen`) cuyos miembros se inicializan desde otro enum (`LOGIN = OdooScreen.LOGIN`). Babel/Metro **no inlinea `const enum` entre módulos** (con `isolatedModules`), así que en runtime los valores quedan `undefined` → `<Route path={undefined}>` no matchea → blanco.
 - **Fix:** usar `enum` regular, nunca `const enum`. Convertí todos: `grep -rl "const enum" .` → cambiá `const enum`→`enum`. Aplica también a enums que un paquete **publica** y otro **consume** (el `.d.ts` declara `const enum` pero el `.js` lo inlineó/eliminó → el consumidor lo ve `undefined`).
 
+### 🔴 Un cron de 15 min o más no corre con la app cerrada → tarea definida tarde
+
+- **Síntoma:** el cron corre mientras la app está abierta, pero con la app cerrada el SO no lo ejecuta (o loguea que la tarea no está definida).
+- **Causa:** con la app cerrada, el SO despierta el bundle **sin montar React**. `TaskManager.defineTask` tiene que haber corrido mientras el bundle cargaba; si se define en un `useEffect`, en `start()` o después del bootstrap, la tarea no existe.
+- **Fix:** devolver el cron desde `DomainModule.crons()`. `defineAppShell` lo define al cargar con `defineBackgroundCrons(kernel)`, y cada ejecución prepara la base (`kernel.bootstrap()`) antes del job. Un cron de fondo creado fuera de un módulo avisa con un warning en `start()`.
+
 ### 🔴 "RepositoryFacade: Repository not found" al arrancar → `repos.get()` eager
 
 - **Síntoma:** crash al iniciar, repos no encontrados.
@@ -33,6 +39,12 @@
 - **Fix:** un evento se exporta por **una sola ruta**: `domain/events.ts`. Los barrels de contexto no re-exportan sus eventos.
 
 ---
+
+### 🔴 `make build` falla con "React Compiler must compile every component"
+
+- **Síntoma:** el build lista `· skipped <archivo>: Handle TryStatement ...` y termina con error.
+- **Causa:** React Compiler salta entero cualquier componente o hook cuyo cuerpo tenga `try/finally` (o un `try` sin `catch`), y lo publicaría sin memoización.
+- **Fix:** `withCleanup(task, cleanup)` de `tools/utils/async`. Es `try/finally` como función: devuelve el resultado, deja pasar el error y limpia siempre. Si además hay `catch`, el `try/catch` va **dentro** del task: el compilador lo soporta.
 
 ## Dependencias / packaging
 

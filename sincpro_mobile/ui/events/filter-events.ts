@@ -103,12 +103,27 @@ function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-export function matchesEventQuery(event: EventListItem, query: string): boolean {
-  const needle = normalize(query);
+// Events are immutable in name and label: their normalized text is computed once per
+// instance, not once per keystroke. The WeakMap lets collected events go.
+const searchText = new WeakMap<EventListItem, readonly [label: string, name: string]>();
+
+function textsOfEvent(event: EventListItem): readonly [string, string] {
+  let texts = searchText.get(event);
+  if (texts === undefined) {
+    texts = [normalize(event.label || ""), normalize(event.name)];
+    searchText.set(event, texts);
+  }
+  return texts;
+}
+
+function matchesNeedle(event: EventListItem, needle: string): boolean {
   if (!needle) return true;
-  return (
-    normalize(event.label || "").includes(needle) || normalize(event.name).includes(needle)
-  );
+  const [label, name] = textsOfEvent(event);
+  return label.includes(needle) || name.includes(needle);
+}
+
+export function matchesEventQuery(event: EventListItem, query: string): boolean {
+  return matchesNeedle(event, normalize(query));
 }
 
 export function matchesEventRange(
@@ -185,12 +200,12 @@ export function filterEvents<T extends EventListItem>(
   now = new Date(),
 ): T[] {
   const status = criteria.status ?? "ALL";
-  const query = criteria.query ?? "";
+  const needle = normalize(criteria.query ?? "");
   const range = criteria.range ?? "all";
   const custom = criteria.custom;
   return events.filter((event) => {
     if (status !== "ALL" && event.status !== status) return false;
-    if (!matchesEventQuery(event, query)) return false;
+    if (!matchesNeedle(event, needle)) return false;
     if (!matchesEventRange(event.createdAt, range, now)) return false;
     return custom ? matchesNode(event, custom) : true;
   });

@@ -2,7 +2,11 @@
 export { Tracing } from "./tracing_facade";
 
 // Initialization
-export { initTelemetry } from "./init_telemetry";
+export {
+  initTelemetry,
+  type InitTelemetryOptions,
+  runBackgroundTelemetryFlush,
+} from "./init_telemetry";
 
 // Shared types
 export type {

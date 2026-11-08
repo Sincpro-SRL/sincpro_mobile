@@ -1,41 +1,54 @@
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import {
-  type ComponentType,
-  createContext,
-  type ReactNode,
-  useContext,
-  useState,
-} from "react";
+import logger from "@sincpro/mobile/infrastructure/logger";
+import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
 
-const RootStack = createNativeStackNavigator();
-
-export interface DomainApp {
+/** A domain the app can show. Which route or screen it maps to is the host's decision. */
+export interface DomainEntry {
   key: string;
   name: string;
-  component: ComponentType;
 }
 
-interface DomainSwitcherValue {
+export interface DomainSwitcherValue {
   activeDomain: string;
-  setActiveDomain: (key: string) => void;
-  apps: DomainApp[];
+  domains: DomainEntry[];
+  /** Makes `key` the active domain and tells the host, which owns the navigation. */
+  switchTo: (key: string) => void;
 }
 
 const DomainSwitcherContext = createContext<DomainSwitcherValue | null>(null);
 
-export function DomainSwitcherProvider(props: {
-  apps: DomainApp[];
+interface DomainSwitcherProviderProps {
+  domains: DomainEntry[];
   initialDomain: string;
+  /** Host callback: map the domain to a route (`router.replace`, a navigator state…). */
+  onChange?: (key: string) => void;
   children: ReactNode;
-}) {
-  const [activeDomain, setActiveDomain] = useState(props.initialDomain);
+}
+
+export function DomainSwitcherProvider({
+  domains,
+  initialDomain,
+  onChange,
+  children,
+}: DomainSwitcherProviderProps) {
+  const [activeDomain, setActiveDomain] = useState(initialDomain);
+  const value = useMemo<DomainSwitcherValue>(
+    () => ({
+      activeDomain,
+      domains,
+      switchTo: (key) => {
+        if (!domains.some((domain) => domain.key === key)) {
+          logger.warn(`[DomainSwitcher] unknown domain "${key}"`);
+          return;
+        }
+        setActiveDomain(key);
+        onChange?.(key);
+      },
+    }),
+    [activeDomain, domains, onChange],
+  );
 
   return (
-    <DomainSwitcherContext.Provider
-      value={{ activeDomain, setActiveDomain, apps: props.apps }}
-    >
-      {props.children}
-    </DomainSwitcherContext.Provider>
+    <DomainSwitcherContext.Provider value={value}>{children}</DomainSwitcherContext.Provider>
   );
 }
 
@@ -45,16 +58,4 @@ export function useDomainSwitcher(): DomainSwitcherValue {
     throw new Error("useDomainSwitcher must be used within AppShell");
   }
   return context;
-}
-
-export function ActiveDomainApp() {
-  const { activeDomain, apps } = useDomainSwitcher();
-  const currentApp = apps.find((entry) => entry.key === activeDomain);
-  if (!currentApp) return null;
-
-  return (
-    <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      <RootStack.Screen component={currentApp.component} name={currentApp.key} />
-    </RootStack.Navigator>
-  );
 }

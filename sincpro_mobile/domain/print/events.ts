@@ -1,5 +1,9 @@
 import { IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
 import { textOf } from "@sincpro/mobile/domain/events/label";
+import {
+  serializeWithoutHeavyField,
+  STORED_TEXT_LIMIT,
+} from "@sincpro/mobile/domain/events/stored_payload";
 
 export class PrintImageRequestedEvent extends IntegrationEvent {
   static readonly name = "common.print.v1.image_requested";
@@ -18,4 +22,10 @@ export class PrintImageRequestedEvent extends IntegrationEvent {
   public width: number = 0;
   public height: number = 0;
   public title: string = "";
+
+  override asJSON(pretty: boolean = false): string {
+    return serializeWithoutHeavyField(this, "imageBase64", STORED_TEXT_LIMIT, () =>
+      super.asJSON(pretty),
+    );
+  }
 }

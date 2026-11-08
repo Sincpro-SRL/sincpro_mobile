@@ -1,5 +1,6 @@
 import { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { eventService } from "@sincpro/mobile/services/event.service";
+import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import React, {
   createContext,
   ReactNode,
@@ -69,13 +70,14 @@ export function EventsProvider({
 
   const loadEvents = useCallback(async () => {
     setIsLoading(true);
-    try {
-      const fetched = await eventService.listAllEvents();
-      setEvents(fetched);
-      setPage(1);
-    } finally {
-      setIsLoading(false);
-    }
+    return withCleanup(
+      async () => {
+        const fetched = await eventService.listRecentEvents();
+        setEvents(fetched);
+        setPage(1);
+      },
+      () => setIsLoading(false),
+    );
   }, []);
 
   const refreshEvents = useCallback(async () => {
@@ -85,22 +87,24 @@ export function EventsProvider({
   const loadMore = useCallback(async () => {
     if (isLoadingMore || isLoading || !hasMore) return;
     setIsLoadingMore(true);
-    try {
-      setPage((p) => p + 1);
-    } finally {
-      setIsLoadingMore(false);
-    }
+    return withCleanup(
+      () => {
+        setPage((p) => p + 1);
+      },
+      () => setIsLoadingMore(false),
+    );
   }, [hasMore, isLoading, isLoadingMore]);
 
   const retryEvent = useCallback(
     async (event: IntegrationEvent) => {
       setIsRetrying(true);
-      try {
-        await eventService.republishSync(event);
-        await refreshEvents();
-      } finally {
-        setIsRetrying(false);
-      }
+      return withCleanup(
+        async () => {
+          await eventService.republishSync(event);
+          await refreshEvents();
+        },
+        () => setIsRetrying(false),
+      );
     },
     [refreshEvents],
   );

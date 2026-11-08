@@ -96,16 +96,22 @@ export async function setActivityEnabled(
   UIEventBus.emit(ACTIVITY_SETTING_EVENT, change);
 }
 
+export type ActivityVisibility = boolean | "debug";
+
+/**
+ * `true` shows every fact. `"debug"` shows any fact with a readable label.
+ * The default keeps the toast quiet: only classes that set `static ui = true`.
+ */
 export function activityVisible(
   fact: ActivityFact,
   enabled: Record<ActivityChannel, boolean>,
-  all = false,
+  mode: ActivityVisibility = false,
 ): boolean {
-  if (all) return true;
-  if (!fact.ui) return false;
+  if (mode === true) return true;
   if (!enabled[fact.channel]) return false;
   if (fact.channel !== "device" && textOf(fact.label).length === 0) return false;
-  return true;
+  if (mode === "debug") return true;
+  return fact.ui;
 }
 
 export function applyActivity(state: ActivityState, fact: ActivityFact): ActivityState {

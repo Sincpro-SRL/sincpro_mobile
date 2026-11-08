@@ -1,6 +1,11 @@
 import { GeoAdapter } from "@sincpro/mobile/adapters/Geo.adapter";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
-import logger from "@sincpro/mobile/infrastructure/logger";
+import { Debug } from "@sincpro/mobile/infrastructure/debug";
+import logger, {
+  EApplicationLogger,
+  getEnabledLoggers,
+} from "@sincpro/mobile/infrastructure/logger";
+import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import type { ThemeTokens } from "@sincpro/mobile-ui/theme";
 import { DEFAULT_DARK_THEME, DEFAULT_THEME, setActiveTheme } from "@sincpro/mobile-ui/theme";
 import {
@@ -19,7 +24,6 @@ export interface TimezoneLocale {
   locale: string;
 }
 
-const DEBUG_MODE_SETTING_KEY = "app.debug_mode";
 const TIMEZONE_SETTING_KEY = "app.timezone";
 const LOCALE_SETTING_KEY = "app.locale";
 const COLOR_SCHEME_SETTING_KEY = "app.color_scheme";
@@ -28,6 +32,10 @@ interface ICommonContext {
   debugMode: boolean;
   debugModeLoaded: boolean;
   toggleDebugMode: () => Promise<void>;
+  /** Which application loggers may emit INFO while debug mode is on. */
+  loggerContexts: Record<EApplicationLogger, boolean>;
+  setLoggerContextEnabled: (context: EApplicationLogger, enabled: boolean) => Promise<void>;
+  resetLoggerContexts: () => Promise<void>;
   hasGeoPermission: boolean;
   geoIsLoading: boolean;
   geoError: string | null;
@@ -51,6 +59,7 @@ interface CommonProviderProps {
 export function CommonProvider({ children, lightTheme, darkTheme }: CommonProviderProps) {
   const [debugMode, setDebugMode] = useState(false);
   const [debugModeLoaded, setDebugModeLoaded] = useState(false);
+  const [loggerContexts, setLoggerContexts] = useState(getEnabledLoggers);
 
   const [hasGeoPermission, setHasGeoPermission] = useState(false);
   const [geoIsLoading, setGeoIsLoading] = useState(false);
@@ -60,48 +69,68 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
   const [colorScheme, setColorSchemeState] = useState<"light" | "dark" | "system">("system");
 
   useEffect(() => {
-    async function loadDebugMode() {
-      const value = await SettingsRepository.getSettingByName(DEBUG_MODE_SETTING_KEY);
-      setDebugMode(value === true);
+    async function loadDebug() {
+      const snapshot = await Debug.hydrate();
+      setDebugMode(snapshot.enabled);
+      setLoggerContexts(snapshot.loggers);
       setDebugModeLoaded(true);
     }
-    loadDebugMode();
+    loadDebug();
+    return Debug.subscribe(() => {
+      setDebugMode(Debug.isEnabled());
+      setLoggerContexts(Debug.loggers.get());
+    });
   }, []);
 
   const toggleDebugMode = useCallback(async () => {
-    const newValue = !debugMode;
-    await SettingsRepository.saveOneSetting(DEBUG_MODE_SETTING_KEY, newValue);
-    setDebugMode(newValue);
+    await Debug.setEnabledPersist(!debugMode);
   }, [debugMode]);
+
+  const setLoggerContextEnabled = useCallback(
+    async (context: EApplicationLogger, enabled: boolean) => {
+      await Debug.loggers.setEnabledPersist(context, enabled);
+    },
+    [],
+  );
+
+  const resetLoggerContexts = useCallback(async () => {
+    await Debug.loggers.resetPersist();
+  }, []);
 
   const checkGeoPermission = useCallback(async () => {
     setGeoIsLoading(true);
     setGeoError(null);
-    try {
-      const granted = await GeoAdapter.hasPermission();
-      setHasGeoPermission(granted);
-    } catch (error) {
-      setGeoError((error as Error).message);
-      setHasGeoPermission(false);
-    } finally {
-      setGeoIsLoading(false);
-    }
+    return withCleanup(
+      async () => {
+        try {
+          const granted = await GeoAdapter.hasPermission();
+          setHasGeoPermission(granted);
+        } catch (error) {
+          setGeoError((error as Error).message);
+          setHasGeoPermission(false);
+        }
+      },
+      () => setGeoIsLoading(false),
+    );
   }, []);
 
   const requestGeoPermission = useCallback(async () => {
     setGeoIsLoading(true);
     setGeoError(null);
-    try {
-      const granted = await GeoAdapter.requestPermission();
-      setHasGeoPermission(granted);
-      return granted;
-    } catch (error) {
-      setGeoError((error as Error).message);
-      setHasGeoPermission(false);
-      return false;
-    } finally {
-      setGeoIsLoading(false);
-    }
+    return withCleanup(
+      async () => {
+        try {
+          const granted = await GeoAdapter.requestPermission();
+          setHasGeoPermission(granted);
+          return granted;
+        } catch (error) {
+          setGeoError((error as Error).message);
+          setHasGeoPermission(false);
+          return false;
+        }
+      },
+      () => setGeoIsLoading(false),
+    );
   }, []);
 
   const updateTimezone = useCallback(async (tz: TimezoneLocale) => {
@@ -137,10 +166,16 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
     [applyTheme],
   );
 
+  // Returning to the foreground re-reads the permission quietly: no loading
+  // flag, and React skips the update when the value did not change, so the
+  // whole tree under this provider does not re-render on every resume.
   useEffect(() => {
     Promise.resolve().then(() => checkGeoPermission());
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") Promise.resolve().then(() => checkGeoPermission());
+      if (state !== "active") return;
+      GeoAdapter.hasPermission().then(setHasGeoPermission, (error: unknown) =>
+        logger.warn("Failed to refresh location permission", error),
+      );
     });
     return () => sub.remove();
   }, [checkGeoPermission]);
@@ -185,6 +220,9 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
       debugMode,
       debugModeLoaded,
       toggleDebugMode,
+      loggerContexts,
+      setLoggerContextEnabled,
+      resetLoggerContexts,
       hasGeoPermission,
       geoIsLoading,
       geoError,
@@ -200,6 +238,9 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
       debugMode,
       debugModeLoaded,
       toggleDebugMode,
+      loggerContexts,
+      setLoggerContextEnabled,
+      resetLoggerContexts,
       hasGeoPermission,
       geoIsLoading,
       geoError,

@@ -1,19 +1,19 @@
 import { IntegrationEvent } from "@sincpro/mobile/domain/events";
-import { EventActionSheet } from "@sincpro/mobile/ui/components/organisms/EventActionSheet";
 import { Display } from "@sincpro/mobile-ui/Display";
+import { Pressable } from "@sincpro/mobile-ui/primitives/Pressable";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
-import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { memo } from "react";
+import { View } from "react-native";
 
 interface DeadLetterQueueRowProps {
   item: IntegrationEvent;
-  onRetry: (event: IntegrationEvent) => Promise<void> | void;
+  /** The screen owns the one action sheet; a row never mounts an overlay. */
+  onOpen: (event: IntegrationEvent) => void;
 }
 
-function DeadLetterQueueRow({ item, onRetry }: DeadLetterQueueRowProps) {
+function DeadLetterQueueRow({ item, onOpen }: DeadLetterQueueRowProps) {
   const theme = useTheme();
-  const [open, setOpen] = useState(false);
 
   if (!item || typeof item !== "object" || !item.name || !item.createdAt) {
     return null;
@@ -28,7 +28,7 @@ function DeadLetterQueueRow({ item, onRetry }: DeadLetterQueueRowProps) {
         accessibilityHint="Abre las acciones del evento"
         accessibilityRole="button"
         className="flex-row items-center gap-2 px-4 py-2"
-        onPress={() => setOpen(true)}
+        onPress={() => onOpen(item)}
       >
         <Display.Icon color={theme.danger} name="error" size={16} />
         <View className="min-w-0 flex-1">
@@ -47,15 +47,8 @@ function DeadLetterQueueRow({ item, onRetry }: DeadLetterQueueRowProps) {
           {attemptsLabel}
         </Typography.Text>
       </Pressable>
-      <EventActionSheet
-        event={item}
-        onClose={() => setOpen(false)}
-        onRetry={onRetry}
-        retryLabel="Reintentar"
-        visible={open}
-      />
     </View>
   );
 }
 
-export default DeadLetterQueueRow;
+export default memo(DeadLetterQueueRow);

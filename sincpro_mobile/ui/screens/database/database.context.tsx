@@ -1,4 +1,5 @@
 import { databaseTablesUseCase } from "@sincpro/mobile/services/database_table.service";
+import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 import React, {
   createContext,
@@ -66,22 +67,24 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
   const loadTables = useCallback(async () => {
     setIsLoading(true);
-    try {
-      const result = await databaseTablesUseCase.getAllTables();
-      setTables(result);
-    } finally {
-      setIsLoading(false);
-    }
+    return withCleanup(
+      async () => {
+        const result = await databaseTablesUseCase.getAllTables();
+        setTables(result);
+      },
+      () => setIsLoading(false),
+    );
   }, []);
 
   const loadTableData = useCallback(async (tableName: string) => {
     setIsLoading(true);
-    try {
-      const dataTable = await databaseTablesUseCase.getTableData(tableName);
-      setData(dataTable);
-    } finally {
-      setIsLoading(false);
-    }
+    return withCleanup(
+      async () => {
+        const dataTable = await databaseTablesUseCase.getTableData(tableName);
+        setData(dataTable);
+      },
+      () => setIsLoading(false),
+    );
   }, []);
 
   const selectTable = useCallback(
@@ -166,33 +169,52 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     goBackFromJson();
   }
 
-  return (
-    <DatabaseContext.Provider
-      value={{
-        currentView,
-        tables,
-        data,
-        filteredData,
-        isLoading,
-        selectedTable,
-        selectedRowJson,
-        searchQuery,
-        currentRowIndex,
-        hasNextRow,
-        hasPreviousRow,
-        loadTables,
-        selectTable,
-        goBackFromRows,
-        selectRowJson,
-        goBackFromJson,
-        setSearchQuery,
-        goToNextRow,
-        goToPreviousRow,
-      }}
-    >
-      {children}
-    </DatabaseContext.Provider>
+  const value = useMemo(
+    () => ({
+      currentView,
+      tables,
+      data,
+      filteredData,
+      isLoading,
+      selectedTable,
+      selectedRowJson,
+      searchQuery,
+      currentRowIndex,
+      hasNextRow,
+      hasPreviousRow,
+      loadTables,
+      selectTable,
+      goBackFromRows,
+      selectRowJson,
+      goBackFromJson,
+      setSearchQuery,
+      goToNextRow,
+      goToPreviousRow,
+    }),
+    [
+      currentView,
+      tables,
+      data,
+      filteredData,
+      isLoading,
+      selectedTable,
+      selectedRowJson,
+      searchQuery,
+      currentRowIndex,
+      hasNextRow,
+      hasPreviousRow,
+      loadTables,
+      selectTable,
+      goBackFromRows,
+      selectRowJson,
+      goBackFromJson,
+      setSearchQuery,
+      goToNextRow,
+      goToPreviousRow,
+    ],
   );
+
+  return <DatabaseContext.Provider value={value}>{children}</DatabaseContext.Provider>;
 }
 
 export function useDatabase() {
