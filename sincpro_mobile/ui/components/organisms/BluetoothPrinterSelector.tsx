@@ -71,9 +71,7 @@ function PrinterInfo({
       <Typography.Text className="text-text-primary" semibold>
         {printer.name}
       </Typography.Text>
-      <Typography.Text className="text-text-tertiary text-xs">
-        {printer.address}
-      </Typography.Text>
+      <Typography.Text className="text-text-tertiary">{printer.address}</Typography.Text>
 
       <View className="flex-row gap-2 mt-2">
         {!isConnected ? (
@@ -104,7 +102,7 @@ function PrinterInfo({
       {isConnected && (
         <View className="flex-row items-center mt-2">
           <View className="w-2 h-2 rounded-full bg-success mr-2" />
-          <Typography.Text className="text-success text-xs">Conectado</Typography.Text>
+          <Typography.Text className="text-success">Conectado</Typography.Text>
         </View>
       )}
     </View>
@@ -308,7 +306,7 @@ function BluetoothPrinterSelector({
       <View className="flex-row items-start">
         <PrinterIcon color={granted ? theme.success : theme.danger} size={24} />
         <View className="ml-2.5 flex-1">
-          <Typography.Text className="text-base mb-1" semibold>
+          <Typography.Text className="mb-1" semibold>
             Impresora Bluetooth
           </Typography.Text>
 
