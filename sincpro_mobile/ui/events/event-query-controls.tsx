@@ -1,16 +1,14 @@
 import { Actions } from "@sincpro/mobile-ui/Actions";
 import Sheet from "@sincpro/mobile-ui/Dialog/Sheet";
-import { Display } from "@sincpro/mobile-ui/Display";
 import KeyboardForm from "@sincpro/mobile-ui/Form/Form.KeyboardForm";
 import { Navigation } from "@sincpro/mobile-ui/Navigation";
 import { Pressable } from "@sincpro/mobile-ui/primitives/Pressable";
-import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { type CriteriaGroup, describeCriteria } from "@sincpro/mobile-ui/utils/criteria";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import FilterBuilder from "@sincpro/mobile-ui/widgets/FilterBuilder";
 import { type ReactNode, useState } from "react";
-import { TextInput, View } from "react-native";
+import { View } from "react-native";
 
 import {
   countConditions,
@@ -68,35 +66,23 @@ export function EventSearchButton({
   );
 }
 
-function CompactSearch({
+/** The search of the events list: the same pill search as every list header. */
+function NameSearch({
   value,
   onChangeText,
 }: {
   value: string;
   onChangeText: (value: string) => void;
 }) {
-  const theme = useTheme();
   return (
-    <View
-      className="mb-1 flex-row items-center gap-2 rounded-full bg-bg-muted px-3"
-      style={{ minHeight: 36 }}
-    >
-      <Display.Icon color={theme.icon.tertiary} name="search" size={16} />
-      <TextInput
+    <View className="pb-2">
+      <Navigation.SearchBar
         accessibilityLabel="Buscar por nombre"
         autoFocus
-        className="flex-1 text-text-primary"
         onChangeText={onChangeText}
         placeholder="Nombre o nombre técnico"
-        placeholderTextColor={theme.text.tertiary}
-        style={{ fontSize: 15, minHeight: 36, paddingVertical: 0 }}
         value={value}
       />
-      {value ? (
-        <Pressable accessibilityLabel="Limpiar" hitSlop={8} onPress={() => onChangeText("")}>
-          <Display.Icon color={theme.icon.tertiary} name="dismiss" size={16} />
-        </Pressable>
-      ) : null}
     </View>
   );
 }
@@ -228,9 +214,7 @@ export function EventListHeader({
       }
       variant="default"
     >
-      {list.searching ? (
-        <CompactSearch onChangeText={list.setQuery} value={list.query} />
-      ) : null}
+      {list.searching ? <NameSearch onChangeText={list.setQuery} value={list.query} /> : null}
       <ListViewV2.Header.Segmented
         accessibilityLabel="Tipo de filtro"
         onChange={setTab}

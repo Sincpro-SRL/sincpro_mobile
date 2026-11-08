@@ -62,7 +62,7 @@ function EmptyState() {
       <Typography.Text className="text-text-secondary text-center mt-4">
         {"No hay dispositivos vinculados"}
       </Typography.Text>
-      <Typography.Text className="text-text-tertiary text-center text-sm mt-2">
+      <Typography.Text className="text-text-tertiary text-center mt-2">
         {"Vincula una impresora desde configuración de Bluetooth del sistema"}
       </Typography.Text>
     </View>
@@ -144,7 +144,7 @@ function BluetoothDeviceSelectorModal({
   return (
     <Sheet onClose={onClose} title="Seleccionar Impresora" visible={visible}>
       <View className="flex-row items-center justify-between mb-3">
-        <Typography.Text className="text-text-secondary text-xs">
+        <Typography.Text className="text-text-secondary">
           Dispositivos Bluetooth vinculados
         </Typography.Text>
         <Pressable
