@@ -2177,9 +2177,9 @@
   integrity sha512-rXOCC5MxYTZ1JYiJ++8EJFvkYpMRMZl4JQ9PNgqzYa/StsZjGJsK7mnQAqdJb2TfHuwUys8gMxj9wp4fEZN5ZQ==
 
 "@sincpro/mobile-ui@^3.0.0":
-  version "3.0.0"
-  resolved "https://registry.yarnpkg.com/@sincpro/mobile-ui/-/mobile-ui-3.0.0.tgz#64af1678d79362ee2d4f611863ec45d660fb4d2f"
-  integrity sha512-/LEaQoIMIyaIl1vd1klgKAFfevNioK2+ic4bkr/44fjHmkqJ97tTJuq9c65L4z3cx8vOFop/ZVfAzWvLqCf3MQ==
+  version "3.0.1"
+  resolved "https://registry.yarnpkg.com/@sincpro/mobile-ui/-/mobile-ui-3.0.1.tgz#a2d46054ab2c64edee2874fbed1fd6d786565475"
+  integrity sha512-csL3d/4Chz9KdjSUTyhmedbXyvpEpPm/NKK+MBc7rOp9qOPGnX5PzuvAkbbFULjtoArWeNiPyAxGSCscFQFkAQ==
   dependencies:
     "@babel/runtime" "^7.29.13"
     big.js "^7.0.1"
