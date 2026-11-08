@@ -1,182 +1,59 @@
 import { IntegrationEvent } from "@sincpro/mobile/domain/events";
-import DeadLetterErrorBlock from "@sincpro/mobile/ui/components/molecules/DeadLetterErrorBlock";
+import { EventActionSheet } from "@sincpro/mobile/ui/components/organisms/EventActionSheet";
 import { Display } from "@sincpro/mobile-ui/Display";
-import { Form } from "@sincpro/mobile-ui/Form";
+import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
-import { IRowItemProps } from "@sincpro/mobile-ui/views/types/IListView";
-import JsonPreview from "@sincpro/mobile-ui/widgets/JSONViewer";
-import * as Clipboard from "expo-clipboard";
-import React, { useState } from "react";
-import { View } from "react-native";
+import { useState } from "react";
+import { Pressable, View } from "react-native";
 
-interface DeadLetterQueueRowProps extends IRowItemProps<IntegrationEvent> {
+interface DeadLetterQueueRowProps {
+  item: IntegrationEvent;
   onRetry: (event: IntegrationEvent) => Promise<void> | void;
 }
 
-function getAttemptsBadgeVariant(attempts: number): "warning" | "danger" {
-  if (attempts < 3) return "warning";
-  return "danger";
-}
-
 function DeadLetterQueueRow({ item, onRetry }: DeadLetterQueueRowProps) {
-  const [showPayload, setShowPayload] = useState(false);
-  const [showError, setShowError] = useState(false);
-  const [sending, setSending] = useState(false);
+  const theme = useTheme();
+  const [open, setOpen] = useState(false);
 
-  if (!item || typeof item !== "object") {
+  if (!item || typeof item !== "object" || !item.name || !item.createdAt) {
     return null;
   }
 
-  const event = item as IntegrationEvent;
-
-  if (!event.name || !event.createdAt) {
-    return null;
-  }
-
-  const togglePayload = () => setShowPayload((v) => !v);
-  const handleRetry = async () => {
-    if (sending) return;
-    setSending(true);
-    try {
-      await onRetry(event);
-      setTimeout(() => setSending(false), 5000);
-    } catch {
-      setSending(false);
-    }
-  };
-
-  const friendlyName = event.label || event.name;
-  const attemptsBadgeVariant = getAttemptsBadgeVariant(event.attempts ?? 0);
-
-  function renderBadges() {
-    const badges: React.ReactElement[] = [];
-
-    badges.push(
-      <Display.Badge className="self-end" key="status" label="FAILED" variant="danger" />,
-    );
-
-    badges.push(
-      <Display.Badge
-        className="self-end"
-        key="attempts"
-        label={`${event.attempts} intento${event.attempts !== 1 ? "s" : ""}`}
-        variant={attemptsBadgeVariant}
-      />,
-    );
-
-    if (event.requiresNetwork) {
-      badges.push(
-        <Display.Badge className="self-end" key="network" label="Internet" variant="info" />,
-      );
-    }
-
-    if (typeof event.sequence === "number" && event.sequence > 0) {
-      badges.push(
-        <Display.Badge
-          className="self-end"
-          key="seq"
-          label={`#${event.sequence}`}
-          variant="infoDark"
-        />,
-      );
-    }
-
-    return <View className="flex-col items-end gap-1.5">{badges}</View>;
-  }
-
-  function renderHeader() {
-    return (
-      <View className="flex-row items-start mb-2">
-        <View className="flex-1 pr-2">
-          <Typography.Text className="mb-1" numberOfLines={2} semibold variant="body">
-            {friendlyName}
-          </Typography.Text>
-          <Display.CopyableText value={event.name} />
-        </View>
-        <View className="ml-2 self-start">{renderBadges()}</View>
-      </View>
-    );
-  }
-
-  function renderMeta() {
-    return (
-      <View className="flex-row items-center justify-between mb-3">
-        <Display.Date
-          className="text-text-primary"
-          showTime
-          textVariant="bodySmall"
-          value={event.createdAt}
-        />
-        <Display.CopyableText label="Copiar UUID" value={event.uuid} />
-      </View>
-    );
-  }
-
-  function renderPayload() {
-    if (!showPayload) {
-      return null;
-    }
-
-    return (
-      <View className="bg-bg-muted rounded-lg p-2 border border-border-default mb-2.5">
-        <Typography.Text className="text-text-primary mb-1" semibold variant="bodySmall">
-          {"Payload"}
-        </Typography.Text>
-        <JsonPreview selectedJson={event.asJSON(true)} />
-      </View>
-    );
-  }
-
-  function renderActions() {
-    return (
-      <View className="mt-2 gap-2">
-        <Form.Button
-          className="w-full"
-          onPress={() => setShowError((v) => !v)}
-          size="small"
-          title={showError ? "Ocultar error" : "Ver error"}
-          variant="secondary"
-        />
-        <Form.Button
-          className="w-full"
-          onPress={togglePayload}
-          size="small"
-          title={showPayload ? "Ocultar payload" : "Ver payload"}
-          variant="secondary"
-        />
-        <Form.Button
-          className="w-full"
-          onPress={async () => {
-            await Clipboard.setStringAsync(event.asJSON(true));
-          }}
-          size="small"
-          title="Copiar payload"
-          variant="secondary"
-        />
-        <Form.Button
-          className="w-full"
-          disabled={sending}
-          loading={sending}
-          onPress={handleRetry}
-          size="medium"
-          title={sending ? "Reintentando…" : "Reintentar"}
-          variant="primary"
-        />
-      </View>
-    );
-  }
+  const attempts = item.attempts ?? 0;
+  const attemptsLabel = attempts === 1 ? "1 intento" : `${attempts} intentos`;
 
   return (
-    <View className="bg-bg-card border border-border-default rounded-2xl mx-4 p-3.5 mb-3 shadow-sm">
-      {renderHeader()}
-      {renderMeta()}
-      <DeadLetterErrorBlock
-        errorMessage={event.errorMessage}
-        expanded={showError}
-        onToggle={() => setShowError((v) => !v)}
+    <View className="border-b border-border-default bg-bg-card">
+      <Pressable
+        accessibilityHint="Abre las acciones del evento"
+        accessibilityRole="button"
+        className="flex-row items-center gap-2 px-4 py-2"
+        onPress={() => setOpen(true)}
+      >
+        <Display.Icon color={theme.danger} name="error" size={16} />
+        <View className="min-w-0 flex-1">
+          <Typography.Text numberOfLines={1} semibold>
+            {item.label || item.name}
+          </Typography.Text>
+          <Typography.Text
+            className={attempts < 3 ? "text-warning" : "text-danger"}
+            numberOfLines={1}
+            variant="caption"
+          >
+            {item.errorMessage || attemptsLabel}
+          </Typography.Text>
+        </View>
+        <Typography.Text className="text-text-tertiary" variant="caption">
+          {attemptsLabel}
+        </Typography.Text>
+      </Pressable>
+      <EventActionSheet
+        event={item}
+        onClose={() => setOpen(false)}
+        onRetry={onRetry}
+        retryLabel="Reintentar"
+        visible={open}
       />
-      {renderPayload()}
-      {renderActions()}
     </View>
   );
 }

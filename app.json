@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Mobile Storybook",
+    "slug": "sincpro-mobile-storybook",
+    "scheme": "sincpro-mobile-storybook",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "bo.com.sincpro.mobile.storybook",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "bo.com.sincpro.mobile.storybook",
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "plugins": ["expo-font"],
+    "experiments": {
+      "reactCompiler": true
+    }
+  }
+}

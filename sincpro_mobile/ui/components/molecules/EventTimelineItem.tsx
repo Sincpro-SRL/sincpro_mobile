@@ -1,146 +1,90 @@
-import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/events";
+import { IntegrationEvent } from "@sincpro/mobile/domain/events";
+import {
+  eventStatusIcon,
+  eventStatusLabel,
+} from "@sincpro/mobile/ui/components/molecules/event-status";
+import { EventActionSheet } from "@sincpro/mobile/ui/components/organisms/EventActionSheet";
 import { Display } from "@sincpro/mobile-ui/Display";
-import CopyableText from "@sincpro/mobile-ui/Display/Display.CopyableText";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
-import JsonPreview from "@sincpro/mobile-ui/widgets/JSONViewer";
 import { useState } from "react";
-import { TouchableOpacity, View } from "react-native";
-
-function getStatusIcon(status: string): string {
-  switch (status) {
-    case EEventStatus.ACKNOWLEDGED:
-      return "check-circle";
-    case EEventStatus.PENDING:
-      return "clock";
-    case EEventStatus.PROCESSING:
-      return "loader";
-    case EEventStatus.FAILED:
-      return "x-circle";
-    default:
-      return "circle";
-  }
-}
-
-function formatEventName(name: string): string {
-  const parts = name.split(".");
-  return parts[parts.length - 1]?.replace(/_/g, " ").toUpperCase() || name;
-}
+import { Pressable, View } from "react-native";
 
 interface EventTimelineItemProps {
   event: IntegrationEvent;
   isLast?: boolean;
+  onRetry?: (event: IntegrationEvent) => Promise<void> | void;
 }
 
-function EventTimelineItem({ event, isLast = false }: EventTimelineItemProps) {
-  const [expanded, setExpanded] = useState(false);
+function readableName(event: IntegrationEvent): string {
+  if (event.label) return event.label;
+  const raw = event.name.split(".").pop()?.replace(/_/g, " ") || event.name;
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function dotColor(status: string | undefined, theme: ReturnType<typeof useTheme>): string {
+  if (status === "FAILED") return theme.danger;
+  if (status === "ACKNOWLEDGED") return theme.success;
+  if (status === "PROCESSING") return theme.info;
+  if (status === "PENDING") return theme.warning;
+  return theme.text.tertiary;
+}
+
+function EventTimelineItem({ event, isLast = false, onRetry }: EventTimelineItemProps) {
+  const [open, setOpen] = useState(false);
   const theme = useTheme();
-
-  const statusColorMap = {
-    [EEventStatus.ACKNOWLEDGED]: {
-      bg: "bg-success",
-      color: theme.success,
-      light: `${theme.success}4D`,
-    },
-    [EEventStatus.PENDING]: {
-      bg: "bg-warning",
-      color: theme.warning,
-      light: `${theme.warning}4D`,
-    },
-    [EEventStatus.PROCESSING]: {
-      bg: "bg-accent",
-      color: theme.warning,
-      light: `${theme.warning}4D`,
-    },
-    [EEventStatus.FAILED]: {
-      bg: "bg-danger",
-      color: theme.danger,
-      light: `${theme.danger}4D`,
-    },
-  };
-  const defaultStatus = {
-    bg: "bg-text-tertiary",
-    color: theme.text.secondary,
-    light: `${theme.text.secondary}4D`,
-  };
-  const statusInfo =
-    statusColorMap[event.status as keyof typeof statusColorMap] ?? defaultStatus;
-
-  const statusIcon = getStatusIcon(event.status);
-  const friendlyName = formatEventName(event.name);
+  const color = dotColor(event.status, theme);
+  const attempts = event.attempts === 1 ? "1 intento" : `${event.attempts} intentos`;
 
   return (
-    <View className="flex-row px-4">
-      <View className="items-center w-8 mr-3">
-        <View className={`w-6 h-6 rounded-full items-center justify-center ${statusInfo.bg}`}>
-          <Display.Icon color="#ffffff" name={statusIcon} size={12} type="feather" />
-        </View>
-        {!isLast && (
-          <View className="w-0.5 flex-1 mt-1" style={{ backgroundColor: statusInfo.light }} />
-        )}
-      </View>
-
-      <TouchableOpacity
-        activeOpacity={0.7}
-        className="flex-1 bg-bg-card rounded-xl p-3 mb-3 border border-border-light shadow-sm"
-        onPress={() => setExpanded(!expanded)}
-      >
-        <View className="flex-row justify-between items-center mb-2">
-          <Typography.Text semibold variant="body">
-            {friendlyName}
-          </Typography.Text>
+    <View className="flex-row">
+      <View className="items-center" style={{ width: 28 }}>
+        <View
+          className="items-center justify-center rounded-full"
+          style={{ width: 22, height: 22, marginTop: 2, backgroundColor: color }}
+        >
           <Display.Icon
-            color={theme.text.secondary}
-            name={expanded ? "chevron-up" : "chevron-down"}
-            size={16}
-            type="feather"
+            color={theme.text.inverse}
+            name={eventStatusIcon(event.status)}
+            size={12}
           />
         </View>
+        {!isLast ? (
+          <View
+            className="my-1 w-0.5 flex-1"
+            style={{ backgroundColor: theme.border.default }}
+          />
+        ) : null}
+      </View>
 
-        <View className="flex-row items-center mb-1 gap-1.5">
-          <Display.Icon color={theme.text.secondary} name="clock" size={12} type="feather" />
+      <Pressable
+        accessibilityHint="Abre el detalle del evento"
+        accessibilityRole="button"
+        className={isLast ? "flex-1" : "flex-1 pb-5"}
+        onPress={() => setOpen(true)}
+      >
+        <View className="flex-row items-center justify-between gap-3">
+          <Typography.Text className="flex-1" numberOfLines={1} semibold>
+            {readableName(event)}
+          </Typography.Text>
           <Display.Date
             className="text-text-tertiary"
-            showTime
+            relative
+            showTime={false}
             textVariant="caption"
             value={event.createdAt}
           />
         </View>
-
-        <View className="flex-row items-center mb-1 gap-1.5">
-          <Display.Icon color={statusInfo.color} name={statusIcon} size={12} type="feather" />
-          <Typography.Text style={{ color: statusInfo.color }} variant="caption">
-            {event.status} • Intentos: {event.attempts}
-          </Typography.Text>
-        </View>
-
-        {(event.sequence ?? 0) > 0 && (
-          <View className="flex-row items-center mb-1 gap-1.5">
-            <Display.Icon color={theme.text.secondary} name="hash" size={12} type="feather" />
-            <Typography.Text className="text-text-tertiary" variant="caption">
-              Secuencia: {event.sequence}
-            </Typography.Text>
-          </View>
-        )}
-
-        {expanded && event && (
-          <View className="mt-3 border-t border-border-light pt-3">
-            <View className="flex-row justify-between items-center mb-2">
-              <Typography.Text className="text-text-tertiary" semibold variant="caption">
-                Payload
-              </Typography.Text>
-              <CopyableText
-                className="text-primary text-xs"
-                getValue={() => event.asJSON(true)}
-                label={"copy"}
-              />
-            </View>
-            <View className="bg-bg-muted rounded-lg border border-border-default overflow-hidden">
-              <JsonPreview selectedJson={event.asJSON(true)} />
-            </View>
-          </View>
-        )}
-      </TouchableOpacity>
+        <Typography.Text className="text-text-secondary" variant="caption">
+          {`${eventStatusLabel(event.status)} · ${attempts}`}
+        </Typography.Text>
+      </Pressable>
+      <EventActionSheet
+        event={event}
+        onClose={() => setOpen(false)}
+        onRetry={onRetry}
+        visible={open}
+      />
     </View>
   );
 }

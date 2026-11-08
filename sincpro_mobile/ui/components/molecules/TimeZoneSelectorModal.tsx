@@ -1,10 +1,10 @@
+import { Actions } from "@sincpro/mobile-ui/Actions";
 import Sheet from "@sincpro/mobile-ui/Dialog/Sheet";
 import { Display } from "@sincpro/mobile-ui/Display";
-import { Form } from "@sincpro/mobile-ui/Form";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useMemo, useState } from "react";
-import { TextInput, TouchableOpacity, View } from "react-native";
+import { Pressable, TextInput, View } from "react-native";
 
 import { TimezoneLocale } from "./timezone";
 
@@ -40,31 +40,28 @@ function TimezoneRow({
 }) {
   const theme = useTheme();
   return (
-    <TouchableOpacity
-      activeOpacity={0.7}
-      className={`flex-row items-center p-4 rounded-xl ${
-        isSelected ? "bg-bg-accent" : "bg-bg-card"
-      }`}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
+      className="flex-row items-center border-b border-border-default py-3"
       onPress={onSelect}
+      style={({ pressed }) => ({
+        backgroundColor: pressed || isSelected ? theme.bg.muted : "transparent",
+      })}
     >
       <Display.Icon
         color={isSelected ? theme.accent : theme.text.secondary}
-        name="schedule"
-        size={24}
-        type="material"
+        name="time"
+        size={22}
       />
-      <View className="ml-3 flex-1">
+      <View className="ml-3 min-w-0 flex-1">
         <Typography.Text semibold>{item.label}</Typography.Text>
-        <Typography.Text className="text-text-tertiary text-xs">
-          {item.locale}
+        <Typography.Text className="text-text-tertiary" variant="caption">
+          {item.timezone}
         </Typography.Text>
       </View>
-      {isSelected && (
-        <View className="w-6 h-6 rounded-full bg-accent items-center justify-center">
-          <Display.Icon color={theme.text.inverse} name="check" size={16} type="material" />
-        </View>
-      )}
-    </TouchableOpacity>
+      {isSelected ? <Display.Icon color={theme.accent} name="check" size={18} /> : null}
+    </Pressable>
   );
 }
 
@@ -72,7 +69,7 @@ function EmptyState() {
   const theme = useTheme();
   return (
     <View className="p-8 items-center justify-center" style={{ minHeight: 200 }}>
-      <Display.Icon color={theme.text.tertiary} name="search-off" size={48} type="material" />
+      <Display.Icon color={theme.text.tertiary} name="search-empty" size={48} />
       <Typography.Text className="text-text-secondary text-center mt-4">
         {"No se encontraron zonas horarias"}
       </Typography.Text>
@@ -138,9 +135,6 @@ function TimeZoneSelectorModal({
 
   return (
     <Sheet onClose={onClose} title="Zona Horaria" visible={visible}>
-      <Typography.Text className="text-text-secondary text-xs mb-3">
-        Selecciona tu zona horaria
-      </Typography.Text>
       <TextInput
         className="bg-bg-muted px-4 py-3 rounded-xl mb-2"
         onChangeText={setQuery}
@@ -152,7 +146,7 @@ function TimeZoneSelectorModal({
       {filteredTimezones.length === 0 ? (
         <EmptyState />
       ) : (
-        <View className="gap-1">
+        <View>
           {filteredTimezones.map((item) => (
             <TimezoneRow
               isSelected={selectedTimezone === item.timezone}
@@ -166,11 +160,11 @@ function TimeZoneSelectorModal({
 
       <View className="flex-row gap-2 mt-4">
         <View className="flex-1">
-          <Form.Button onPress={onClose} title="Cancelar" variant="outline" />
+          <Actions.Button onPress={onClose} title="Cancelar" variant="outline" />
         </View>
         {selectedTimezone ? (
           <View className="flex-1">
-            <Form.Button onPress={handleConfirm} title="Confirmar" variant="cta" />
+            <Actions.Button onPress={handleConfirm} title="Confirmar" variant="cta" />
           </View>
         ) : null}
       </View>

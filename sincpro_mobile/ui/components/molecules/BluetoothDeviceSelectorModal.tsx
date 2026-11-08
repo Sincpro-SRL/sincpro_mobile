@@ -2,13 +2,13 @@ import { BluetoothDevice } from "@sincpro/mobile/domain/print";
 import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
 import { printerService } from "@sincpro/mobile/services/printer.service";
 import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
+import { Actions } from "@sincpro/mobile-ui/Actions";
 import Sheet from "@sincpro/mobile-ui/Dialog/Sheet";
 import { Display } from "@sincpro/mobile-ui/Display";
-import { Form } from "@sincpro/mobile-ui/Form";
 import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { useCallback, useEffect, useState } from "react";
-import { TouchableOpacity, View } from "react-native";
+import { Pressable, View } from "react-native";
 
 interface BluetoothDeviceSelectorModalProps {
   visible: boolean;
@@ -25,36 +25,32 @@ interface DeviceRowProps {
 function DeviceRow({ device, onSelect, isSelected }: DeviceRowProps) {
   const theme = useTheme();
   return (
-    <TouchableOpacity
-      activeOpacity={0.7}
-      className={`flex-row items-center p-4 rounded-xl ${
-        isSelected ? "bg-success-light" : "bg-bg-card"
-      }`}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
+      className="flex-row items-center border-b border-border-default py-3"
       onPress={onSelect}
+      style={({ pressed }) => ({
+        backgroundColor: pressed || isSelected ? theme.bg.muted : "transparent",
+      })}
     >
-      <Display.Icon
+      <PrinterIcon
         color={device.isPrinter ? theme.success : theme.text.secondary}
-        customIcon={PrinterIcon}
-        size={24}
-        type="custom"
+        size={22}
       />
-      <View className="ml-3 flex-1">
+      <View className="ml-3 min-w-0 flex-1">
         <Typography.Text semibold>{device.name || "Dispositivo sin nombre"}</Typography.Text>
-        <Typography.Text className="text-text-tertiary text-xs">
+        <Typography.Text className="text-text-tertiary" variant="caption">
           {device.address}
         </Typography.Text>
-        {device.isPrinter && (
-          <Typography.Text className="text-success text-xs">
-            {"Impresora detectada"}
+        {device.isPrinter ? (
+          <Typography.Text className="text-success" variant="caption">
+            Impresora
           </Typography.Text>
-        )}
+        ) : null}
       </View>
-      {isSelected && (
-        <View className="w-6 h-6 rounded-full bg-success items-center justify-center">
-          <Display.Icon color={theme.text.inverse} name="check" size={16} type="material" />
-        </View>
-      )}
-    </TouchableOpacity>
+      {isSelected ? <Display.Icon color={theme.success} name="check" size={18} /> : null}
+    </Pressable>
   );
 }
 
@@ -62,12 +58,7 @@ function EmptyState() {
   const theme = useTheme();
   return (
     <View className="p-8 items-center justify-center" style={{ minHeight: 250 }}>
-      <Display.Icon
-        color={theme.text.tertiary}
-        customIcon={PrinterIcon}
-        size={64}
-        type="custom"
-      />
+      <PrinterIcon color={theme.text.tertiary} size={40} />
       <Typography.Text className="text-text-secondary text-center mt-4">
         {"No hay dispositivos vinculados"}
       </Typography.Text>
@@ -154,25 +145,21 @@ function BluetoothDeviceSelectorModal({
         <Typography.Text className="text-text-secondary text-xs">
           Dispositivos Bluetooth vinculados
         </Typography.Text>
-        <TouchableOpacity
+        <Pressable
           accessibilityLabel="Actualizar"
+          accessibilityRole="button"
           disabled={loading}
           hitSlop={8}
           onPress={loadDevices}
         >
-          <Display.Icon
-            color={theme.icon.secondary}
-            name="refresh"
-            size={20}
-            type="material"
-          />
-        </TouchableOpacity>
+          <Display.Icon color={theme.icon.secondary} name="sync" size={20} />
+        </Pressable>
       </View>
 
       {devices.length === 0 && !loading ? (
         <EmptyState />
       ) : (
-        <View className="gap-1">
+        <View>
           {printers.length > 0 ? (
             <Typography.Text className="text-text-secondary px-1 py-1" semibold>
               Impresoras ({printers.length})
@@ -191,11 +178,11 @@ function BluetoothDeviceSelectorModal({
 
       <View className="flex-row gap-2 mt-4">
         <View className="flex-1">
-          <Form.Button onPress={onClose} title="Cancelar" variant="outline" />
+          <Actions.Button onPress={onClose} title="Cancelar" variant="outline" />
         </View>
         {selectedDevice ? (
           <View className="flex-1">
-            <Form.Button
+            <Actions.Button
               loading={connecting}
               onPress={handleConfirm}
               title={"Conectar"}
