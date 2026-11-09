@@ -13,6 +13,7 @@ import {
 import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/print/events";
 import { ECommonSetting } from "@sincpro/mobile/domain/settings";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { failedPrintImageUri } from "@sincpro/mobile/infrastructure/print/failed_print_files";
 import { holdPrintImage } from "@sincpro/mobile/infrastructure/print/pending_images";
 import { createReconnector } from "@sincpro/mobile/infrastructure/print/reconnect";
 import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
@@ -23,6 +24,16 @@ import type { RefObject } from "react";
 import { AppState, type View } from "react-native";
 
 import { bluetoothService } from "./bluetooth.service";
+
+/**
+ * Where a print problem sends the user. The host maps each intent to a screen:
+ * `failed-prints` to the list of prints that did not come out, `printer` to its settings.
+ */
+export const PRINT_NOTICE_ACTIONS = {
+  failed: { label: "Ver fallidas", intent: "failed-prints" },
+  printer: { label: "Impresora", intent: "printer" },
+} as const;
+const PRINT_FAILURE_ACTIONS = [PRINT_NOTICE_ACTIONS.failed, PRINT_NOTICE_ACTIONS.printer];
 
 class PrinterService {
   private readonly bluetooth = bluetoothService;
@@ -99,6 +110,7 @@ class PrinterService {
           title: "Error de conexión",
           message: `No se pudo conectar a ${name}`,
           variant: "danger",
+          actions: [PRINT_NOTICE_ACTIONS.printer],
         });
       }
 
@@ -298,6 +310,40 @@ class PrinterService {
       loggerUseCases.error("Error converting HTML to PDF", error);
       return null;
     }
+  }
+
+  /** A page started a print: the capture can take seconds, so the user sees it coming. */
+  reportPrintStarted(title: string): void {
+    notifyDevice({
+      name: "printer.preparing",
+      title: "Preparando impresión",
+      message: title || "Capturando el documento…",
+      variant: "info",
+    });
+  }
+
+  /** The capture failed before reaching the printer: without this nothing was shown. */
+  reportPrintFailed(title: string, reason: string): void {
+    loggerUseCases.warn(`Print capture failed: ${reason}`);
+    notifyDevice({
+      name: "printer.capture_failed",
+      title: "No se pudo preparar la impresión",
+      message: title
+        ? `«${title}»: vuelve a intentarlo desde la página.`
+        : "Vuelve a intentarlo desde la página.",
+      variant: "danger",
+      actions: [PRINT_NOTICE_ACTIONS.printer],
+    });
+  }
+
+  /** The image of a print that did not come out, as a file URI for a preview. */
+  failedPrintImage(eventId: string): string | null {
+    return failedPrintImageUri(eventId);
+  }
+
+  /** Actions offered when a print fails: the failed list and the printer settings. */
+  printFailureActions() {
+    return PRINT_FAILURE_ACTIONS;
   }
 
   /**

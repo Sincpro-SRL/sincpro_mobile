@@ -20,6 +20,16 @@ export interface ActivityFact {
   status: ActivityStatus;
   ui: boolean;
   variant?: "success" | "danger" | "info";
+  actions?: NoticeAction[];
+}
+
+/**
+ * A button on a device notice. `intent` says where to go ("printer"); the host maps it to a
+ * route through `AppShellConfig.onNoticeAction`, so the framework never knows route names.
+ */
+export interface NoticeAction {
+  label: string;
+  intent: string;
 }
 
 export interface ActivityState {
@@ -58,6 +68,7 @@ export function notifyDevice(input: {
   title: LabelText;
   message: LabelText;
   variant: "success" | "danger" | "info";
+  actions?: NoticeAction[];
 }): void {
   publishActivity({
     channel: "device",
@@ -66,6 +77,7 @@ export function notifyDevice(input: {
     detail: input.message,
     status: input.variant === "danger" ? "failed" : "succeeded",
     variant: input.variant,
+    actions: input.actions,
     ui: true,
   });
 }

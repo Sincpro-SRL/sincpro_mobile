@@ -57,12 +57,13 @@ function createPrintInterceptor(): IInjectedScript {
         return document.body;
       }
 
-      var originalPrint = window.print;
+      // The app shows the print as a process: started here, then the image or the failure.
+      // The native print() does nothing inside the app, so it is not a fallback.
       window.print = function() {
         try {
           window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'DEBUG_PRINT',
-            debug: { message: 'print() called', ts: Date.now() }
+            type: '${EWebViewMessageType.PRINT_STARTED}',
+            title: document.title
           }));
         } catch(e) {}
         
@@ -96,11 +97,11 @@ function createPrintInterceptor(): IInjectedScript {
         }).catch(function(error) {
           try {
             window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'DEBUG_PRINT',
-              debug: { message: 'ERROR: ' + error.message }
+              type: '${EWebViewMessageType.PRINT_FAILED}',
+              title: document.title,
+              reason: (error && error.message) || 'capture failed'
             }));
           } catch(e) {}
-          originalPrint.call(window);
         });
       };
 

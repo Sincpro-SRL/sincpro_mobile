@@ -152,6 +152,11 @@ export interface AppShellConfig {
   splashComponent?: ComponentType;
   /** Minimum time (ms) the splash stays visible. Default 2000. */
   splashDuration?: number;
+  /**
+   * Called when the user taps the button of a device notice, e.g. "printer" on a failed
+   * print. The host owns the routes: navigate there (`router.push(...)`).
+   */
+  onNoticeAction?: (intent: string) => void;
 }
 
 /** What `defineAppShell` prepared while the bundle loaded. Pass it to `<AppShell shell>`. */
@@ -334,7 +339,7 @@ export function AppShell({
                       )}
                     </ErrorBoundary>
                   </OverlayHost>
-                  <DeviceNotices />
+                  <DeviceNotices onAction={config.onNoticeAction} />
                 </ToastProvider>
                 {/* The only keyboard toolbar of the app; every KeyboardForm and sheet uses it. */}
                 <KeyboardToolbarHost />

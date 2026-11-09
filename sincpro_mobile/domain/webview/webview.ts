@@ -5,6 +5,10 @@ export enum EWebViewMessageType {
   INJECTION_READY = "INJECTION_READY",
   AJAX_INTERCEPTED = "AJAX_INTERCEPTED",
   DEBUG_PRINT = "DEBUG_PRINT",
+  /** The page called print(): the capture started. */
+  PRINT_STARTED = "PRINT_STARTED",
+  /** The capture failed (html2canvas did not load, CORS...): nothing reaches the printer. */
+  PRINT_FAILED = "PRINT_FAILED",
 }
 
 export type TPrintSource = "pos-receipt" | "report" | "document" | "unknown";
@@ -28,6 +32,17 @@ export interface IPrintImageMessage {
   width: number;
   height: number;
   metadata: IWebViewMetadata;
+}
+
+export interface IPrintStartedMessage {
+  type: EWebViewMessageType.PRINT_STARTED;
+  title: string;
+}
+
+export interface IPrintFailedMessage {
+  type: EWebViewMessageType.PRINT_FAILED;
+  title: string;
+  reason: string;
 }
 
 export interface IContentReadyMessage {
@@ -62,6 +77,8 @@ export interface IDebugPrintMessage {
 export type TWebViewMessage =
   | IPrintRequestMessage
   | IPrintImageMessage
+  | IPrintStartedMessage
+  | IPrintFailedMessage
   | IContentReadyMessage
   | IInjectionReadyMessage
   | IAjaxInterceptedMessage
