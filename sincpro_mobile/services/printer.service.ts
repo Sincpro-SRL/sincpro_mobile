@@ -14,8 +14,6 @@ import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/print/events";
 import { ECommonSetting } from "@sincpro/mobile/domain/settings";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
-import { failedPrintImageUri } from "@sincpro/mobile/infrastructure/print/failed_print_files";
-import { holdPrintImage } from "@sincpro/mobile/infrastructure/print/pending_images";
 import {
   createReconnector,
   RECONNECT_DELAYS_MS,
@@ -241,13 +239,13 @@ export class PrinterService {
     height: number;
     title: string;
   }): Promise<void> {
+    // The image travels in the event: kept while pending or failed, dropped once printed.
     const event = PrintImageRequestedEvent.create({
-      imageBase64: "",
+      imageBase64: input.imageBase64,
       width: input.width,
       height: input.height,
       title: input.title,
     });
-    holdPrintImage(event.uuid, input.imageBase64);
     await EventBus.publish(event);
   }
 
@@ -370,11 +368,6 @@ export class PrinterService {
       variant: "danger",
       actions: [PRINT_NOTICE_ACTIONS.printer],
     });
-  }
-
-  /** The image of a print that did not come out, as a file URI for a preview. */
-  failedPrintImage(eventId: string): string | null {
-    return failedPrintImageUri(eventId);
   }
 
   /** Actions offered when a print fails: the failed list and the printer settings. */
