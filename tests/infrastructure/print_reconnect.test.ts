@@ -111,6 +111,6 @@ test("a failed print tells the user before it goes to the failed queue", async (
     ),
     "utf8",
   );
-  const failed = source.slice(source.indexOf("if (!printed)"));
+  const failed = source.slice(source.indexOf("await keepFailedPrintImage"));
   assert.ok(failed.indexOf('name: "printer.print_failed"') < failed.indexOf("throw new"));
 });

@@ -8,6 +8,8 @@ import {
   type IPrintRequestMessage,
   type TWebViewMessage,
 } from "@sincpro/mobile/domain/webview";
+import { routePrintMessage } from "@sincpro/mobile/domain/webview/print_cycle";
+import { printerService } from "@sincpro/mobile/services/printer.service";
 import { safeJsonParse } from "@sincpro/mobile/tools/utils/serializer";
 
 class WebViewService {
@@ -65,6 +67,15 @@ class WebViewService {
 
   isPrintImage(msg: TWebViewMessage): msg is IPrintImageMessage {
     return msg.type === EWebViewMessageType.PRINT_IMAGE;
+  }
+
+  /** Handles the whole print cycle of a page that runs the print interceptor. */
+  handlePrintMessage(rawData: string): Promise<boolean> {
+    return routePrintMessage(this.parseMessage(rawData), {
+      started: (title) => printerService.reportPrintStarted(title),
+      failed: (title, reason) => printerService.reportPrintFailed(title, reason),
+      image: (input) => printerService.enqueuePrintImage(input),
+    });
   }
 
   isContentReady(msg: TWebViewMessage): msg is IContentReadyMessage {
