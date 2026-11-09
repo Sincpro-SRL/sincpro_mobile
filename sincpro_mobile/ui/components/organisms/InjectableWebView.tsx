@@ -6,9 +6,12 @@ import Spinner from "@sincpro/mobile-ui/Feedback/Feedback.Spinner";
 import { useBottomInset } from "@sincpro/mobile-ui/layouts/BottomInset";
 import {
   type ComponentType,
+  type Ref,
   type RefAttributes,
   useCallback,
   useEffect,
+  useEffectEvent,
+  useImperativeHandle,
   useRef,
   useState,
 } from "react";
@@ -21,6 +24,8 @@ import RawWebView, {
 } from "react-native-webview";
 import type { WebViewError } from "react-native-webview/lib/WebViewTypes";
 
+import { webViewReloadNotice } from "./InjectableWebView.notices";
+
 type WebViewHandle = RawWebView<Record<string, never>>;
 
 // The library defaults its extra-props generic to `undefined`, and
@@ -29,10 +34,24 @@ const WebView = RawWebView as unknown as ComponentType<
   WebViewProps & RefAttributes<WebViewHandle>
 >;
 
+const STUCK_LOAD_MS = 15000;
+const CLEAR_CACHE_SETTLE_MS = 300;
+
 export type WebViewErrorEvent = NativeSyntheticEvent<WebViewError>;
+
+/** What a screen can ask of the page it shows: get it with `ref`. */
+export interface InjectableWebViewHandle {
+  /** Loads the page again. The HTTP cache serves what did not change, so it is fast. */
+  reload(): void;
+  /** Drops the WebView cache and loads the page again: a fresh client, slower. */
+  clearCacheAndReload(): void;
+}
 
 export interface InjectableWebViewProps {
   url: string;
+  ref?: Ref<InjectableWebViewHandle>;
+  /** Names the page in the reload notices ("Odoo"). Default: "la página". */
+  label?: string;
   scripts?: IInjectedScript[];
   injectedJavaScript?: string;
   onMessage?: (event: WebViewMessageEvent) => void;
@@ -43,9 +62,16 @@ export interface InjectableWebViewProps {
   showControls?: boolean;
   renderLoading?: () => React.ReactElement;
   backgroundColor?: string;
+  /** @deprecated Call `reload()` on the component's `ref`. */
   reloadKey?: number | string;
+  /** @deprecated Call `clearCacheAndReload()` on the component's `ref`. */
   hardRefreshKey?: number | string;
   maxRetries?: number;
+  /**
+   * @deprecated The HTTP cache is always on: pages with fingerprinted assets (Odoo) stay
+   * fresh with it, and without it every visit downloads the whole client again. For a fresh
+   * client call `clearCacheAndReload()` on the component's `ref`.
+   */
   useDefaultCache?: boolean;
   /**
    * Any other react-native-webview prop (user agent, navigation filter, downloads, media...).
@@ -81,13 +107,12 @@ function WebViewLoadingIndicator({ backgroundColor }: { backgroundColor: string 
 }
 
 function useWebView() {
-  const toast = useToast();
   const webViewRef = useRef<WebViewHandle>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isLoadingRef = useRef(false);
+  const clearCacheTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleNavigationStateChange = useCallback((navState: WebViewNavigation) => {
     setCanGoBack(navState.canGoBack);
@@ -98,35 +123,6 @@ function useWebView() {
       webViewRef.current.goBack();
     }
   }, [canGoBack]);
-
-  const reload = useCallback(() => {
-    if (webViewRef.current) {
-      loggerUseCases.info("Reloading WebView");
-      webViewRef.current.reload();
-    }
-  }, []);
-
-  const hardRefresh = useCallback(() => {
-    if (webViewRef.current) {
-      loggerUseCases.info("Hard refresh: Clearing cache and reloading");
-      toast.show({
-        variant: "info",
-        title: "Limpiando caché...",
-        message: "Descargando cliente fresco",
-        duration: 2000,
-      });
-
-      if (webViewRef.current.clearCache) {
-        webViewRef.current.clearCache(true);
-      }
-
-      setTimeout(() => {
-        if (webViewRef.current) {
-          webViewRef.current.reload();
-        }
-      }, 300);
-    }
-  }, [toast]);
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -142,11 +138,8 @@ function useWebView() {
 
   useEffect(() => {
     return () => {
-      if (errorTimeoutRef.current) {
-        clearTimeout(errorTimeoutRef.current);
-      }
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
+      for (const timer of [errorTimeoutRef, loadingTimeoutRef, clearCacheTimeoutRef]) {
+        if (timer.current) clearTimeout(timer.current);
       }
     };
   }, []);
@@ -157,16 +150,27 @@ function useWebView() {
     handleNavigationStateChange,
     retryCount,
     setRetryCount,
-    reload,
-    hardRefresh,
     errorTimeoutRef,
     loadingTimeoutRef,
-    isLoadingRef,
+    clearCacheTimeoutRef,
   };
 }
 
+/**
+ * A page with the app's scripts injected.
+ * 1. The HTTP cache is always on: a page with fingerprinted assets loads from the phone.
+ * 2. The loading overlay and the stuck check only cover the loads this component starts (the
+ *    first one, a reload, a retry). Android reports every history change of a single-page
+ *    app as a load start; covering those blanked the page on each menu and reloaded it
+ *    after 15 s.
+ * 3. `ref.reload()` and `ref.clearCacheAndReload()` show their progress in a toast.
+ * 4. When the system ends the page's process (low memory, in the background) a new WebView
+ *    loads the page instead of leaving it blank.
+ */
 function InjectableWebView({
   url,
+  ref,
+  label = "la página",
   scripts,
   injectedJavaScript,
   onMessage,
@@ -187,19 +191,76 @@ function InjectableWebView({
     handleNavigationStateChange,
     retryCount,
     setRetryCount,
-    reload,
-    hardRefresh,
     errorTimeoutRef,
     loadingTimeoutRef,
-    isLoadingRef,
+    clearCacheTimeoutRef,
   } = useWebView();
 
+  const toast = useToast();
   const bottomInset = useBottomInset();
   const finalScript = webViewService.combineScripts(scripts, injectedJavaScript);
   const [isLoading, setIsLoading] = useState(true);
+  const [instance, setInstance] = useState(0);
+  /** A load this component started: it shows the overlay and is checked for getting stuck. */
+  const blockingRef = useRef(true);
   /** The current load ended in onError; its trailing onLoadEnd is not a success. */
   const failedRef = useRef(false);
   const stuckAttemptsRef = useRef(0);
+  const reloadToastRef = useRef<string | null>(null);
+
+  function settleReloadToast(step: "done" | "failed") {
+    const id = reloadToastRef.current;
+    if (!id) return;
+    reloadToastRef.current = null;
+    toast.show({ id, ...webViewReloadNotice(step, label) });
+  }
+
+  function watchStuckLoad() {
+    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    loadingTimeoutRef.current = setTimeout(() => {
+      if (!blockingRef.current || !webViewRef.current) return;
+      if (stuckAttemptsRef.current >= maxRetries) {
+        blockingRef.current = false;
+        setIsLoading(false);
+        loggerUseCases.warn(`WebView stuck loading, stopped after ${maxRetries} reloads`);
+        settleReloadToast("failed");
+        return;
+      }
+      stuckAttemptsRef.current += 1;
+      loggerUseCases.warn("WebView stuck loading for 15s, attempting reload");
+      webViewRef.current.reload();
+    }, STUCK_LOAD_MS);
+  }
+
+  function startReload(step: "reload" | "clear-cache") {
+    const webView = webViewRef.current;
+    if (!webView) return;
+    loggerUseCases.info(`WebView ${step} requested`);
+    reloadToastRef.current = toast.show({
+      id: reloadToastRef.current ?? undefined,
+      ...webViewReloadNotice(step, label),
+    });
+    stuckAttemptsRef.current = 0;
+    setRetryCount(0);
+    blockingRef.current = true;
+    setIsLoading(true);
+    if (step === "reload") {
+      webView.reload();
+      return;
+    }
+    webView.clearCache?.(true);
+    if (clearCacheTimeoutRef.current) clearTimeout(clearCacheTimeoutRef.current);
+    // iOS removes the website data asynchronously; reloading at once could reuse it.
+    clearCacheTimeoutRef.current = setTimeout(
+      () => webViewRef.current?.reload(),
+      CLEAR_CACHE_SETTLE_MS,
+    );
+  }
+
+  useImperativeHandle(ref, () => ({
+    reload: () => startReload("reload"),
+    clearCacheAndReload: () => startReload("clear-cache"),
+  }));
 
   function handleMessage(event: WebViewMessageEvent) {
     onMessage?.(event);
@@ -211,32 +272,14 @@ function InjectableWebView({
   }
 
   function handleLoadStart() {
-    failedRef.current = false;
-    isLoadingRef.current = true;
-    setIsLoading(true);
-
-    if (loadingTimeoutRef.current) {
-      clearTimeout(loadingTimeoutRef.current);
-    }
-
-    loadingTimeoutRef.current = setTimeout(() => {
-      if (!isLoadingRef.current || !webViewRef.current) return;
-      if (stuckAttemptsRef.current >= maxRetries) {
-        isLoadingRef.current = false;
-        setIsLoading(false);
-        loggerUseCases.warn(`WebView stuck loading, stopped after ${maxRetries} reloads`);
-        return;
-      }
-      stuckAttemptsRef.current += 1;
-      loggerUseCases.warn("WebView stuck loading for 15s, attempting reload");
-      webViewRef.current.reload();
-    }, 15000);
-
     onLoadStart?.();
+    if (!blockingRef.current) return;
+    failedRef.current = false;
+    setIsLoading(true);
+    watchStuckLoad();
   }
 
   function handleLoadEnd() {
-    isLoadingRef.current = false;
     setIsLoading(false);
 
     if (loadingTimeoutRef.current) {
@@ -251,6 +294,8 @@ function InjectableWebView({
     } else {
       setRetryCount(0);
       stuckAttemptsRef.current = 0;
+      blockingRef.current = false;
+      settleReloadToast("done");
     }
     onLoadEnd?.();
   }
@@ -274,40 +319,44 @@ function InjectableWebView({
 
       errorTimeoutRef.current = setTimeout(() => {
         setRetryCount((prev) => prev + 1);
-        reload();
+        blockingRef.current = true;
+        webViewRef.current?.reload();
       }, retryDelay);
     } else {
       loggerUseCases.error(`WebView falló después de ${maxRetries} reintentos`);
+      settleReloadToast("failed");
       onError?.(error);
     }
   }
 
+  function handleProcessGone() {
+    loggerUseCases.warn("WebView content process ended: loading the page in a new WebView");
+    blockingRef.current = true;
+    setIsLoading(true);
+    setInstance((value) => value + 1);
+  }
+
   useEffect(() => {
     stuckAttemptsRef.current = 0;
+    blockingRef.current = true;
   }, [url]);
 
   const prevReloadKeyRef = useRef(reloadKey);
   const prevHardRefreshKeyRef = useRef(hardRefreshKey);
+  const reloadFromKey = useEffectEvent(() => startReload("reload"));
+  const clearCacheFromKey = useEffectEvent(() => startReload("clear-cache"));
 
   useEffect(() => {
     if (reloadKey === prevReloadKeyRef.current) return;
     prevReloadKeyRef.current = reloadKey;
-
-    if (webViewRef.current) {
-      loggerUseCases.info(`Reloading WebView due to key change: ${reloadKey}`);
-      reload();
-    }
-  }, [reloadKey, reload]);
+    reloadFromKey();
+  }, [reloadKey]);
 
   useEffect(() => {
     if (hardRefreshKey === prevHardRefreshKeyRef.current) return;
     prevHardRefreshKeyRef.current = hardRefreshKey;
-
-    if (webViewRef.current) {
-      loggerUseCases.info(`Hard refresh WebView due to key change: ${hardRefreshKey}`);
-      hardRefresh();
-    }
-  }, [hardRefreshKey, hardRefresh]);
+    clearCacheFromKey();
+  }, [hardRefreshKey]);
 
   const cacheMode = useDefaultCache ? "LOAD_DEFAULT" : "LOAD_NO_CACHE";
 
@@ -329,12 +378,15 @@ function InjectableWebView({
           domStorageEnabled={true}
           injectedJavaScript={finalScript}
           javaScriptEnabled={true}
+          key={instance}
           mixedContentMode="compatibility"
+          onContentProcessDidTerminate={handleProcessGone}
           onError={handleError}
           onLoadEnd={handleLoadEnd}
           onLoadStart={handleLoadStart}
           onMessage={handleMessage}
           onNavigationStateChange={handleNavigationStateChangeInternal}
+          onRenderProcessGone={handleProcessGone}
           ref={webViewRef}
           scalesPageToFit={true}
           sharedCookiesEnabled={true}

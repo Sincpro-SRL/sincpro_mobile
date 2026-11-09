@@ -3,12 +3,48 @@ import test from "node:test";
 
 import { textOf } from "../../sincpro_mobile/domain/events/label.ts";
 import {
+  ACTIVITY_EVENT,
   type ActivityFact,
   activityVisible,
   applyActivity,
   declaresUi,
   emptyActivity,
+  notifyDevice,
 } from "../../sincpro_mobile/infrastructure/ui/activity.ts";
+import { UIEventBus } from "../../sincpro_mobile/infrastructure/ui/UIEventBus.ts";
+
+test("a process notice keeps its key and a loading step counts as running", () => {
+  const facts: ActivityFact[] = [];
+  const off = UIEventBus.on(ACTIVITY_EVENT, (fact) => void facts.push(fact as ActivityFact), {
+    debounce: false,
+  });
+  try {
+    notifyDevice({
+      key: "print:1",
+      name: "printer.preparing",
+      title: "Preparando impresión",
+      message: "Ticket 7",
+      variant: "loading",
+    });
+    notifyDevice({
+      key: "print:1",
+      name: "printer.print_failed",
+      title: "No se imprimió",
+      message: "Ticket 7",
+      variant: "danger",
+    });
+  } finally {
+    off();
+  }
+
+  assert.deepEqual(
+    facts.map((fact) => [fact.key, fact.status, fact.variant]),
+    [
+      ["print:1", "running", "loading"],
+      ["print:1", "failed", "danger"],
+    ],
+  );
+});
 
 function fact(partial: Omit<ActivityFact, "id"> & { id?: string }): ActivityFact {
   return { id: partial.id ?? partial.name, ...partial };

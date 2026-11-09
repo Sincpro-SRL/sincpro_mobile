@@ -12,7 +12,9 @@ import {
 } from "@sincpro/mobile/domain/print";
 import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/print/events";
 import { ECommonSetting } from "@sincpro/mobile/domain/settings";
+import { printNoticeKey } from "@sincpro/mobile/domain/webview/print_cycle";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
+import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import {
   createReconnector,
@@ -36,6 +38,9 @@ export const PRINT_NOTICE_ACTIONS = {
   printer: { label: "Impresora", intent: "printer" },
 } as const;
 const PRINT_FAILURE_ACTIONS = [PRINT_NOTICE_ACTIONS.failed, PRINT_NOTICE_ACTIONS.printer];
+const PRINT_CAPTURE_TIMEOUT_MS = 45_000;
+/** A page that did not send a job id: its steps still share one notice. */
+const UNTRACKED_PAGE_JOB = "page";
 
 export interface PrinterOptions {
   /** Reconnect the saved printer on start, on return and after a lost link. Default: true. */
@@ -57,6 +62,8 @@ export class PrinterService {
   private cachedPrinter: ISelectedPrinter | null = null;
   /** The user disconnected on purpose: nothing reconnects until they connect again. */
   private userDisconnected = false;
+  /** Page captures that started and have not delivered an image or a failure yet. */
+  private readonly pendingCaptures = new Map<string, ReturnType<typeof setTimeout>>();
   private options: PrinterOptions = {
     autoReconnect: true,
     reconnectDelays: RECONNECT_DELAYS_MS,
@@ -233,20 +240,33 @@ export class PrinterService {
     }
   }
 
+  /**
+   * Queues an image to print. `jobId` is the notice the user is already following (a page
+   * print); without it the print starts its own.
+   */
   async enqueuePrintImage(input: {
     imageBase64: string;
     width: number;
     height: number;
     title: string;
+    jobId?: string;
   }): Promise<void> {
+    const jobId = input.jobId ?? generateUUID();
+    this.settleCapture(jobId);
     // The image travels in the event and stays in its history: retention and logout clean it.
     const event = PrintImageRequestedEvent.create({
       imageBase64: input.imageBase64,
       width: input.width,
       height: input.height,
       title: input.title,
+      jobId,
     });
-    await EventBus.publish(event);
+    try {
+      await EventBus.publish(event);
+    } catch (error) {
+      this.reportPrintFailed(input.title, "the print could not be queued", jobId);
+      throw error;
+    }
   }
 
   async printImageBase64(base64Data: string): Promise<boolean> {
@@ -346,20 +366,35 @@ export class PrinterService {
     }
   }
 
-  /** A page started a print: the capture can take seconds, so the user sees it coming. */
-  reportPrintStarted(title: string): void {
+  /**
+   * A page started a print. The capture can take seconds, so the user sees it coming, and a
+   * capture that never answers ends as a failure instead of a notice that spins forever.
+   */
+  reportPrintStarted(title: string, jobId: string = UNTRACKED_PAGE_JOB): void {
+    this.settleCapture(jobId);
+    this.pendingCaptures.set(
+      jobId,
+      setTimeout(
+        () => this.reportPrintFailed(title, "the capture did not answer", jobId),
+        PRINT_CAPTURE_TIMEOUT_MS,
+      ),
+    );
+    loggerUseCases.info(`Print started: ${title || "untitled"} (${jobId})`);
     notifyDevice({
+      key: printNoticeKey(jobId),
       name: "printer.preparing",
       title: "Preparando impresión",
       message: title || "Capturando el documento…",
-      variant: "info",
+      variant: "loading",
     });
   }
 
   /** The capture failed before reaching the printer: without this nothing was shown. */
-  reportPrintFailed(title: string, reason: string): void {
-    loggerUseCases.warn(`Print capture failed: ${reason}`);
+  reportPrintFailed(title: string, reason: string, jobId: string = UNTRACKED_PAGE_JOB): void {
+    this.settleCapture(jobId);
+    loggerUseCases.warn(`Print capture failed: ${reason} (${jobId})`);
     notifyDevice({
+      key: printNoticeKey(jobId),
       name: "printer.capture_failed",
       title: "No se pudo preparar la impresión",
       message: title
@@ -436,6 +471,12 @@ export class PrinterService {
       `Grace reconnect: reconnecting to ${printer.name} (${printer.address})`,
     );
     return this.connect(printer.address, printer.name, false);
+  }
+
+  private settleCapture(jobId: string): void {
+    const timer = this.pendingCaptures.get(jobId);
+    if (timer !== undefined) clearTimeout(timer);
+    this.pendingCaptures.delete(jobId);
   }
 
   private async ensureConnected(): Promise<boolean> {

@@ -58,12 +58,15 @@ function createPrintInterceptor(): IInjectedScript {
       }
 
       // The app shows the print as a process: started here, then the image or the failure.
-      // The native print() does nothing inside the app, so it is not a fallback.
+      // The native print() does nothing inside the app, so it is not a fallback. The job id
+      // ties the three messages, so the app updates one notice instead of stacking three.
       window.print = function() {
+        var jobId = 'print-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
         try {
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: '${EWebViewMessageType.PRINT_STARTED}',
-            title: document.title
+            title: document.title,
+            jobId: jobId
           }));
         } catch(e) {}
         
@@ -88,6 +91,7 @@ function createPrintInterceptor(): IInjectedScript {
             image: base64,
             width: canvas.width,
             height: canvas.height,
+            jobId: jobId,
             metadata: {
               url: window.location.href,
               title: document.title,
@@ -99,6 +103,7 @@ function createPrintInterceptor(): IInjectedScript {
             window.ReactNativeWebView.postMessage(JSON.stringify({
               type: '${EWebViewMessageType.PRINT_FAILED}',
               title: document.title,
+              jobId: jobId,
               reason: (error && error.message) || 'capture failed'
             }));
           } catch(e) {}

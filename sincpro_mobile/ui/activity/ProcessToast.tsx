@@ -12,8 +12,8 @@ function clip(value: string): string {
 
 function ProcessToast() {
   const { locale, debugMode } = useCommon();
-  // Debug mode shows every labeled queue/cron fact. The quiet default keeps
-  // only classes that opt in with `static ui = true` (print today).
+  // Debug mode shows every labeled queue/cron fact. The quiet default keeps only classes
+  // that opt in with `static ui = true`. Print does not: its notice toast follows each step.
   const { queue, crons, failure } = useActivity({ mode: debugMode ? "debug" : false });
   const progress = queue ?? crons[0];
   const current = failure ?? progress;

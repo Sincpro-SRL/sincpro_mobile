@@ -58,8 +58,9 @@ export class BaseModule extends DomainModule {
   override webViewHandlers(): Record<string, WebViewMessageHandler> {
     const printCycle = (message: WebViewMessage) =>
       routePrintMessage(message as unknown as TWebViewMessage, {
-        started: (title) => printerService.reportPrintStarted(title),
-        failed: (title, reason) => printerService.reportPrintFailed(title, reason),
+        started: (title, jobId) => printerService.reportPrintStarted(title, jobId),
+        failed: (title, reason, jobId) =>
+          printerService.reportPrintFailed(title, reason, jobId),
         image: (input) => printerService.enqueuePrintImage(input),
       }).then(() => undefined);
     return {
