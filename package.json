@@ -1,6 +1,6 @@
 {
   "name": "@sincpro/mobile",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Sincpro Mobile framework core: offline-first infra (DB, queue/events, cron), DDD patterns, adapters, AppShell and module-driven composition for React Native",
   "main": "expo/AppEntry.js",
   "types": "./dist/index.d.ts",
