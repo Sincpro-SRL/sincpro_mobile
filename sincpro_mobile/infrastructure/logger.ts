@@ -69,12 +69,21 @@ const LoggerColors: Record<EApplicationLogger, string> = {
  * Production flag - manually toggle to disable all logs
  * Set to true to disable logging, false to enable
  */
-export const IS_PRODUCTION = false;
+export let IS_PRODUCTION = false;
 
 /**
  * Global log level for the application.
  */
-export const LOG_LEVEL = ELogLevel.INFO;
+export let LOG_LEVEL: ELogLevel = ELogLevel.INFO;
+
+/**
+ * Console policy from the app: the lowest level printed (DEBUG to see everything) and
+ * whether it is a production build (no console output). Telemetry is configured apart.
+ */
+export function configureLogger(options: { level?: ELogLevel; production?: boolean }): void {
+  if (options.level !== undefined) LOG_LEVEL = options.level;
+  if (options.production !== undefined) IS_PRODUCTION = options.production;
+}
 
 // Console INFO and DEBUG follow the in-app debug switch. ERROR and WARN always print.
 // Remote shipping does not read this flag.

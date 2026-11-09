@@ -13,7 +13,10 @@
    real. Se extiende con los mecanismos de abajo.
 3. **Una app nunca modifica el core para su caso.** Usa la API rica, la de bajo nivel, la herencia
    o un interceptor.
-4. **Promoción al core por issue.** Si algo de una app se repite en N proyectos, alguien abre un
+4. **Sin filtros en el core.** Los datos pasan crudos: nada de listas blancas de tipos ni
+   descartes silenciosos. Los valores por defecto (nivel de log, retención, props de un
+   componente) se pueden configurar desde la app. Filtrar es decisión de la app.
+5. **Promoción al core por issue.** Si algo de una app se repite en N proyectos, alguien abre un
    issue. Se evalúa y, si reduce complejidad repetida, se sube al core como componente de
    propósito general.
 

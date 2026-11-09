@@ -11,6 +11,7 @@ const VARIANT = {
   success: "success",
   danger: "danger",
   info: "info",
+  warning: "warning",
 } as const;
 
 type Toasts = ReturnType<typeof useToast>;

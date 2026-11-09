@@ -184,3 +184,32 @@ test("WebView messages reach the handler of their type; an app's handler wins", 
   assert.deepEqual(seen, ["app", "order:A1"]);
   clearWebViewHandlers();
 });
+
+test("the core passes data raw and lets the app configure it", () => {
+  // No allow-lists: an app's own WebView message types reach its handlers.
+  const webview = read("sincpro_mobile/services/webview.service.ts");
+  assert.doesNotMatch(webview, /validTypes/);
+  assert.match(webview, /if \(typeof parsed\.type !== "string"\) return null;/);
+  // Any react-native-webview prop reaches the WebView, after the defaults.
+  const injectable = read("sincpro_mobile/ui/components/organisms/InjectableWebView.tsx");
+  assert.match(
+    injectable,
+    /style=\{\{ flex: 1, backgroundColor \}\}\s*\{\.\.\.webViewProps\}\s*\/>/,
+  );
+  // Console policy and event retention are the app's to set.
+  assert.match(
+    read("sincpro_mobile/infrastructure/logger.ts"),
+    /export function configureLogger\(/,
+  );
+  assert.match(
+    read("sincpro_mobile/entrypoints/ui/AppShell.tsx"),
+    /eventRetentionDays: config\.eventRetentionDays/,
+  );
+});
+
+test("an event nobody consumes is acknowledged, never a failure", () => {
+  const bus = read("sincpro_mobile/infrastructure/workers/EventBus.ts");
+  assert.doesNotMatch(bus, /postProcess\([a-z]+, \["No subscribers registered"\]\)/);
+  assert.match(bus, /await this\.postProcess\(event, \[\]\);/);
+  assert.match(bus, /await this\.postProcess\(current, \[\]\);/);
+});
