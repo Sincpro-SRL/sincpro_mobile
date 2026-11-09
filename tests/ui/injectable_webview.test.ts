@@ -62,10 +62,17 @@ test("screens reload through the ref and every reload shows its progress", () =>
     /useImperativeHandle\(ref, \(\) => \(\{\s*reload: \(\) => startReload\("reload"\),\s*clearCacheAndReload: \(\) => startReload\("clear-cache"\),/,
   );
   const reload = body("startReload");
-  assert.match(reload, /toast\.show\(\{/);
+  assert.match(reload, /reloadingRef\.current = true;\s*showNotice\(step\);/);
   assert.match(reload, /blockingRef\.current = true;/);
-  assert.match(body("handleLoadEnd"), /settleReloadToast\("done"\)/);
-  assert.match(body("handleError"), /settleReloadToast\("failed"\)/);
+  assert.match(body("handleLoadEnd"), /finishReload\(\)/);
+  assert.match(body("finishReload"), /if \(!reloadingRef\.current\) return;/);
+});
+
+test("a load that fails after its retries tells the user, asked for or not", () => {
+  const error = body("handleError");
+  assert.ok(error.indexOf("reportLoadFailure()") < error.indexOf("onError?.(error)"));
+  assert.match(body("watchStuckLoad"), /reportLoadFailure\(\);/);
+  assert.doesNotMatch(body("reportLoadFailure"), /if \(/);
 });
 
 test("a page whose process the system ended comes back in a new WebView", () => {

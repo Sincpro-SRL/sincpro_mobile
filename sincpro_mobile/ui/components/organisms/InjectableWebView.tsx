@@ -11,6 +11,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useId,
   useImperativeHandle,
   useRef,
   useState,
@@ -24,7 +25,7 @@ import RawWebView, {
 } from "react-native-webview";
 import type { WebViewError } from "react-native-webview/lib/WebViewTypes";
 
-import { webViewReloadNotice } from "./InjectableWebView.notices";
+import { webViewReloadNotice, type WebViewReloadStep } from "./InjectableWebView.notices";
 
 type WebViewHandle = RawWebView<Record<string, never>>;
 
@@ -163,7 +164,9 @@ function useWebView() {
  *    first one, a reload, a retry). Android reports every history change of a single-page
  *    app as a load start; covering those blanked the page on each menu and reloaded it
  *    after 15 s.
- * 3. `ref.reload()` and `ref.clearCacheAndReload()` show their progress in a toast.
+ * 3. `ref.reload()` and `ref.clearCacheAndReload()` show their progress in a toast, and a
+ *    load that still fails after its retries says so in that same toast: screens do not
+ *    need their own error toast.
  * 4. When the system ends the page's process (low memory, in the background) a new WebView
  *    loads the page instead of leaving it blank.
  */
@@ -206,13 +209,24 @@ function InjectableWebView({
   /** The current load ended in onError; its trailing onLoadEnd is not a success. */
   const failedRef = useRef(false);
   const stuckAttemptsRef = useRef(0);
-  const reloadToastRef = useRef<string | null>(null);
+  /** A reload the user asked for is in progress: its toast waits for the result. */
+  const reloadingRef = useRef(false);
+  const noticeId = `webview:${useId()}`;
 
-  function settleReloadToast(step: "done" | "failed") {
-    const id = reloadToastRef.current;
-    if (!id) return;
-    reloadToastRef.current = null;
-    toast.show({ id, ...webViewReloadNotice(step, label) });
+  function showNotice(step: WebViewReloadStep) {
+    toast.show({ id: noticeId, ...webViewReloadNotice(step, label) });
+  }
+
+  function finishReload() {
+    if (!reloadingRef.current) return;
+    reloadingRef.current = false;
+    showNotice("done");
+  }
+
+  /** Retries are over: the user learns it here, whether they asked for the load or not. */
+  function reportLoadFailure() {
+    reloadingRef.current = false;
+    showNotice("failed");
   }
 
   function watchStuckLoad() {
@@ -223,7 +237,7 @@ function InjectableWebView({
         blockingRef.current = false;
         setIsLoading(false);
         loggerUseCases.warn(`WebView stuck loading, stopped after ${maxRetries} reloads`);
-        settleReloadToast("failed");
+        reportLoadFailure();
         return;
       }
       stuckAttemptsRef.current += 1;
@@ -236,10 +250,8 @@ function InjectableWebView({
     const webView = webViewRef.current;
     if (!webView) return;
     loggerUseCases.info(`WebView ${step} requested`);
-    reloadToastRef.current = toast.show({
-      id: reloadToastRef.current ?? undefined,
-      ...webViewReloadNotice(step, label),
-    });
+    reloadingRef.current = true;
+    showNotice(step);
     stuckAttemptsRef.current = 0;
     setRetryCount(0);
     blockingRef.current = true;
@@ -295,7 +307,7 @@ function InjectableWebView({
       setRetryCount(0);
       stuckAttemptsRef.current = 0;
       blockingRef.current = false;
-      settleReloadToast("done");
+      finishReload();
     }
     onLoadEnd?.();
   }
@@ -324,7 +336,7 @@ function InjectableWebView({
       }, retryDelay);
     } else {
       loggerUseCases.error(`WebView falló después de ${maxRetries} reintentos`);
-      settleReloadToast("failed");
+      reportLoadFailure();
       onError?.(error);
     }
   }

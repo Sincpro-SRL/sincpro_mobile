@@ -39,7 +39,8 @@ export function webViewReloadNotice(
   }
   return {
     variant: "danger",
-    title: "No se pudo recargar",
+    title: "No se pudo cargar",
     message: `${capitalized(label)}: revisa la conexión e intenta de nuevo.`,
+    duration: 8000,
   };
 }
