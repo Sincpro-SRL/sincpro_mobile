@@ -23,3 +23,12 @@ test("the storybook frame mounts the same hosts as the AppShell", () => {
   assert.match(preview, /<OverlayHost>/);
   assert.match(preview, /<KeyboardToolbarHost\b/);
 });
+
+test("the AppShell loads the icon font of mobile UI with the brand fonts", () => {
+  // Android draws every DS icon from Material Symbols. The shell only loaded the brand
+  // files, so on a phone every icon of the app came out blank.
+  const shell = read("sincpro_mobile/entrypoints/ui/AppShell.tsx");
+  assert.match(shell, /import \{ ICON_FONTS \} from "@sincpro\/mobile-ui\/Display";/);
+  assert.match(shell, /fontFiles: \{ \.\.\.ICON_FONTS, \.\.\.config\.brandFont\?\.files \}/);
+  assert.match(shell, /useFonts\(shell\.fontFiles\)/);
+});
