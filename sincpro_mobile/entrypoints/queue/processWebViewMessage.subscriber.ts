@@ -17,6 +17,7 @@ export class ProcessWebViewMessageSubscriber extends Subscriber {
       width: parsed.width,
       height: parsed.height,
       title: parsed.metadata.title,
+      jobId: parsed.jobId,
     });
   }
 }

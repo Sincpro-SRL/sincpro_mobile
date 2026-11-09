@@ -19,9 +19,14 @@ export interface ActivityFact {
   detail?: LabelText;
   status: ActivityStatus;
   ui: boolean;
-  variant?: "success" | "danger" | "info" | "warning";
+  variant?: NoticeVariant;
   actions?: NoticeAction[];
+  /** Notices with the same key are one process: each one updates the same toast. */
+  key?: string;
 }
+
+/** `loading` is a step of a process: its toast stays until the next notice with its key. */
+export type NoticeVariant = "success" | "danger" | "info" | "warning" | "loading";
 
 /**
  * A button on a device notice. `intent` says where to go ("printer"); the host maps it to a
@@ -63,21 +68,29 @@ export function publishActivity(fact: Omit<ActivityFact, "id">): ActivityFact {
   return full;
 }
 
+function noticeStatus(variant: NoticeVariant): ActivityStatus {
+  if (variant === "danger") return "failed";
+  if (variant === "loading") return "running";
+  return "succeeded";
+}
+
 export function notifyDevice(input: {
   name: string;
   title: LabelText;
   message: LabelText;
-  variant: "success" | "danger" | "info" | "warning";
+  variant: NoticeVariant;
   actions?: NoticeAction[];
+  key?: string;
 }): void {
   publishActivity({
     channel: "device",
     name: input.name,
     label: input.title,
     detail: input.message,
-    status: input.variant === "danger" ? "failed" : "succeeded",
+    status: noticeStatus(input.variant),
     variant: input.variant,
     actions: input.actions,
+    key: input.key,
     ui: true,
   });
 }

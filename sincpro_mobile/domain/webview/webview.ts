@@ -26,23 +26,27 @@ export interface IPrintRequestMessage {
   metadata: IWebViewMetadata;
 }
 
+/** `jobId` ties the messages of one print together, so the user follows it in one notice. */
 export interface IPrintImageMessage {
   type: EWebViewMessageType.PRINT_IMAGE;
   image: string;
   width: number;
   height: number;
   metadata: IWebViewMetadata;
+  jobId?: string;
 }
 
 export interface IPrintStartedMessage {
   type: EWebViewMessageType.PRINT_STARTED;
   title: string;
+  jobId?: string;
 }
 
 export interface IPrintFailedMessage {
   type: EWebViewMessageType.PRINT_FAILED;
   title: string;
   reason: string;
+  jobId?: string;
 }
 
 export interface IContentReadyMessage {

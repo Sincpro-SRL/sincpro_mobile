@@ -8,7 +8,6 @@ export class PrintImageRequestedEvent extends IntegrationEvent {
     en: "Printing...",
   };
   static readonly requiresNetwork = false;
-  static readonly ui = true;
 
   public readonly name = PrintImageRequestedEvent.name;
   public readonly label = textOf(PrintImageRequestedEvent.label);
@@ -18,4 +17,6 @@ export class PrintImageRequestedEvent extends IntegrationEvent {
   public width: number = 0;
   public height: number = 0;
   public title: string = "";
+  /** The print notice it updates; empty in events stored before it existed (then the uuid). */
+  public jobId: string = "";
 }
