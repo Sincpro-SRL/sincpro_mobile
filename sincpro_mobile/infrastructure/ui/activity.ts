@@ -19,7 +19,7 @@ export interface ActivityFact {
   detail?: LabelText;
   status: ActivityStatus;
   ui: boolean;
-  variant?: "success" | "danger" | "info";
+  variant?: "success" | "danger" | "info" | "warning";
   actions?: NoticeAction[];
 }
 
@@ -67,7 +67,7 @@ export function notifyDevice(input: {
   name: string;
   title: LabelText;
   message: LabelText;
-  variant: "success" | "danger" | "info";
+  variant: "success" | "danger" | "info" | "warning";
   actions?: NoticeAction[];
 }): void {
   publishActivity({

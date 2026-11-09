@@ -47,6 +47,11 @@ export interface InjectableWebViewProps {
   hardRefreshKey?: number | string;
   maxRetries?: number;
   useDefaultCache?: boolean;
+  /**
+   * Any other react-native-webview prop (user agent, navigation filter, downloads, media...).
+   * They go last: the app overrides the defaults of this component.
+   */
+  webViewProps?: Partial<WebViewProps>;
 }
 
 interface WebViewControlsProps {
@@ -175,6 +180,7 @@ function InjectableWebView({
   hardRefreshKey,
   maxRetries = 2,
   useDefaultCache = true,
+  webViewProps,
 }: InjectableWebViewProps) {
   const {
     webViewRef,
@@ -334,6 +340,7 @@ function InjectableWebView({
           sharedCookiesEnabled={true}
           source={{ uri: url }}
           style={{ flex: 1, backgroundColor }}
+          {...webViewProps}
         />
       </SafeAreaView>
       {isLoading &&

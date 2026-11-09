@@ -52,8 +52,8 @@ export class WebViewService {
       const parsed = safeJsonParse(rawData) as TWebViewMessage;
       if (!parsed || !parsed.type) return null;
 
-      const validTypes = Object.values(EWebViewMessageType);
-      if (!validTypes.includes(parsed.type as EWebViewMessageType)) return null;
+      // Raw: any message with a `type` passes; the app's handlers decide what it means.
+      if (typeof parsed.type !== "string") return null;
 
       return parsed;
     } catch {

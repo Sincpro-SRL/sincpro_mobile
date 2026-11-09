@@ -148,6 +148,8 @@ export interface AppShellConfig {
   brandFont?: BrandFontConfig;
   /** Component rendered while fonts + domain init complete. */
   splashComponent?: ComponentType;
+  /** Days a processed event stays in the history before pruning. Default 7. */
+  eventRetentionDays?: number;
   /** Minimum time (ms) the splash stays visible. Default 2000. */
   splashDuration?: number;
   /**
@@ -195,7 +197,10 @@ export function defineAppShell(config: AppShellConfig): AppShellDefinition {
     // icon is blank. On iOS ICON_FONTS is empty: icons are SF Symbols.
     fontFiles: { ...ICON_FONTS, ...config.brandFont?.files },
     start: onceUntilFailure(async () => {
-      await startApp(kernel, { telemetry: config.telemetry });
+      await startApp(kernel, {
+        telemetry: config.telemetry,
+        eventRetentionDays: config.eventRetentionDays,
+      });
     }),
   };
 }

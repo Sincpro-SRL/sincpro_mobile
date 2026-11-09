@@ -176,8 +176,8 @@ export class EventBus {
     if (hasSubscribers) this.publishQueue(event, "running");
 
     if (!hasSubscribers) {
-      loggerQueueProcessor.warn(
-        `EVENT=${event.name} [${event.label}] - No subscribers registered`,
+      loggerQueueProcessor.info(
+        `EVENT=${event.name} [${event.label}] - No subscribers: acknowledged`,
       );
     }
 
@@ -332,7 +332,8 @@ export class EventBus {
     await DomainEventRepository.save(event);
 
     if (!this.preProcess(event)) {
-      await this.postProcess(event, ["No subscribers registered"]);
+      // Nobody consumes it: the fact is recorded and acknowledged, never a failure.
+      await this.postProcess(event, []);
       return;
     }
 
@@ -365,7 +366,8 @@ export class EventBus {
         await DomainEventRepository.save(current);
 
         if (!this.preProcess(current)) {
-          await this.postProcess(current, ["No subscribers registered"]);
+          // Nobody consumes it: the fact is recorded and acknowledged, never a failure.
+          await this.postProcess(current, []);
           continue;
         }
 
