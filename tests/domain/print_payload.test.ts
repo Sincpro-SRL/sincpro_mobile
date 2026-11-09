@@ -42,3 +42,17 @@ test("only the latest pending images are kept, so a failed print cannot leak mem
     `image-${MAX_PENDING_PRINT_IMAGES + 1}`,
   );
 });
+
+test("a stored WebView message cannot carry a ticket to print again", async () => {
+  // The events screen republishes what is stored; with the full message it reprinted tickets.
+  const { WebViewMessageReceivedEvent } =
+    await import("../../sincpro_mobile/domain/webview/events.ts");
+  const raw = JSON.stringify({ type: "PRINT_IMAGE", image: "b".repeat(400) });
+  const event = WebViewMessageReceivedEvent.create({ raw, source: "https://odoo" });
+
+  const stored = JSON.parse(event.asJSON()) as { raw: string; source: string };
+
+  assert.equal(event.raw, raw);
+  assert.equal(stored.source, "https://odoo");
+  assert.match(stored.raw, /^\[omitido \d+ bytes\]$/);
+});
