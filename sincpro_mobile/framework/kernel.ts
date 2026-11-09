@@ -15,14 +15,19 @@ import {
   markMigrationApplied,
 } from "@sincpro/mobile/infrastructure/database/schema";
 import logger, { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
+import { registerWebViewHandler } from "@sincpro/mobile/infrastructure/webview/message_handlers";
 import type { CronWorker, CronWorkerOpts } from "@sincpro/mobile/infrastructure/workers";
+import { interceptEvent } from "@sincpro/mobile/infrastructure/workers/interceptors";
 import { onceUntilFailure } from "@sincpro/mobile/tools/utils/once";
 
 import type { DomainModule } from "./domain_module";
+import { type LifecycleHook, runLifecycle } from "./lifecycle";
+import { withoutReplaced } from "./replaces";
 
 export class Kernel {
   private readonly modules: DomainModule[];
   private crons?: Record<string, CronWorker[]>;
+  private extensionsRegistered = false;
   private readonly prepare = onceUntilFailure(async () => {
     repos.register(this.repositories());
     initializeRepositoryFacade(repos);
@@ -61,7 +66,33 @@ export class Kernel {
     for (const module of this.modules) {
       map[module.key] = module.subscribers();
     }
-    return map;
+    return withoutReplaced(map);
+  }
+
+  /**
+   * Registers what every module plugs into the core, once per JS context: event interceptors
+   * and WebView message handlers. The core module goes first, so an app's handler wins.
+   */
+  registerExtensions(): void {
+    if (this.extensionsRegistered) return;
+    this.extensionsRegistered = true;
+    for (const module of this.modules) {
+      for (const [eventName, value] of Object.entries(module.interceptors())) {
+        for (const interceptor of Array.isArray(value) ? value : [value]) {
+          interceptEvent(eventName, interceptor);
+        }
+      }
+      for (const [type, handler] of Object.entries(module.webViewHandlers())) {
+        registerWebViewHandler(type, handler);
+      }
+    }
+  }
+
+  /** Runs a lifecycle hook in every module; a failing one is logged and never stops the app. */
+  runHook(hook: LifecycleHook): Promise<void> {
+    return runLifecycle(this.modules, hook, (module, error) =>
+      logger.error(`[Kernel] ${module}.${hook} failed`, error),
+    );
   }
 
   /** Read once: the shell, the orchestrator and the cron config share the same instances. */

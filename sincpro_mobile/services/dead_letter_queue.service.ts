@@ -1,9 +1,10 @@
 import { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { ECommonRepository, repos } from "@sincpro/mobile/entrypoints/db";
+import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers/EventBus";
 
-class DeadLetterQueueUseCases {
+export class DeadLetterQueueUseCases {
   private get repository() {
     return repos.get(ECommonRepository.DOMAIN_EVENT_DEAD_LETTER);
   }
@@ -135,4 +136,12 @@ class DeadLetterQueueUseCases {
   }
 }
 
-export const deadLetterQueueUseCases = new DeadLetterQueueUseCases();
+const deadLetterQueueUseCasesSlot = replaceable(new DeadLetterQueueUseCases());
+
+/** Swaps the implementation for a subclass, for the whole app and the core. */
+export function setDeadLetterQueueUseCases(service: DeadLetterQueueUseCases): void {
+  deadLetterQueueUseCasesSlot.set(service);
+}
+
+export const deadLetterQueueUseCases: DeadLetterQueueUseCases =
+  deadLetterQueueUseCasesSlot.instance;

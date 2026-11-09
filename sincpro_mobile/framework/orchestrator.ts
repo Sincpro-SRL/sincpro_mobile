@@ -68,6 +68,7 @@ class Orchestrator {
     const subscription = AppState.addEventListener("change", async (state) => {
       if (state === "active") {
         await this.restoreConsistency();
+        await this.requireKernel().runHook("onForeground");
       }
       this.appStateCallbacks.forEach((callback) => callback(state));
     });
@@ -81,21 +82,25 @@ class Orchestrator {
     await this.orchestrateCron();
     this.initAppStateWatcher();
     logger.info("[Orchestrator] Infrastructure ready");
+    await this.requireKernel().runHook("onStart");
   }
 
   async authenticateSession(): Promise<void> {
     this.authenticated = true;
     await this.orchestrateQueue();
     await this.orchestrateCron();
+    await this.requireKernel().runHook("onLogin");
   }
 
   async restoreSession(): Promise<void> {
     this.authenticated = true;
     await this.orchestrateQueue();
     await this.orchestrateCron();
+    await this.requireKernel().runHook("onLogin");
   }
 
   async unauthenticateSession(cleanData: boolean = true): Promise<void> {
+    await this.requireKernel().runHook("onLogout");
     this.authenticated = false;
     await this.orchestrateQueue();
     await this.orchestrateCron();
