@@ -5,7 +5,6 @@ import { test } from "node:test";
 
 import type { TWebViewMessage } from "@sincpro/mobile/domain/webview";
 import { routePrintMessage } from "@sincpro/mobile/domain/webview/print_cycle";
-import { filesToPrune } from "@sincpro/mobile/infrastructure/print/failed_print_files";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const read = (file: string) => readFileSync(path.join(root, file), "utf8");
@@ -49,7 +48,7 @@ test("the interceptor reports start and failure instead of a silent native print
   assert.doesNotMatch(adapter, /originalPrint/);
 });
 
-test("a failed print offers both the failed list and the printer, and keeps its image", () => {
+test("a failed print offers both the failed list and the printer", () => {
   const notices = read("sincpro_mobile/ui/activity/DeviceNotices.tsx");
   assert.match(notices, /actions\.map\(\(action\) =>/);
   assert.match(notices, /onAction\?\.\(action\.intent\)/);
@@ -58,7 +57,7 @@ test("a failed print offers both the failed list and the printer, and keeps its 
     /<DeviceNotices onAction=\{config\.onNoticeAction\} \/>/,
   );
   const subscriber = read("sincpro_mobile/entrypoints/queue/printImage.subscriber.ts");
-  const failure = subscriber.slice(subscriber.indexOf("await keepFailedPrintImage"));
+  const failure = subscriber.slice(subscriber.indexOf('name: "printer.print_failed"'));
   assert.ok(
     failure.indexOf("actions: printerService.printFailureActions()") <
       failure.indexOf("throw new"),
@@ -67,11 +66,4 @@ test("a failed print offers both the failed list and the printer, and keeps its 
   const service = read("sincpro_mobile/services/printer.service.ts");
   assert.match(service, /failed: \{ label: "Ver fallidas", intent: "failed-prints" \}/);
   assert.match(service, /printer: \{ label: "Impresora", intent: "printer" \}/);
-});
-
-test("only the newest failed print images are kept", () => {
-  const files = [5, 1, 9, 3].map((modificationTime) => ({ modificationTime }));
-  const pruned = filesToPrune(files, 2).map((file) => file.modificationTime);
-  assert.deepEqual(pruned, [3, 1]);
-  assert.deepEqual(filesToPrune(files, 10), []);
 });
