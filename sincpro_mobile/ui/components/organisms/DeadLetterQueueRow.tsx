@@ -8,11 +8,13 @@ import { View } from "react-native";
 
 interface DeadLetterQueueRowProps {
   item: IntegrationEvent;
+  /** What the row calls the event; its label by default. */
+  title?: string;
   /** The screen owns the one action sheet; a row never mounts an overlay. */
   onOpen: (event: IntegrationEvent) => void;
 }
 
-function DeadLetterQueueRow({ item, onOpen }: DeadLetterQueueRowProps) {
+function DeadLetterQueueRow({ item, title, onOpen }: DeadLetterQueueRowProps) {
   const theme = useTheme();
 
   if (!item || typeof item !== "object" || !item.name || !item.createdAt) {
@@ -33,7 +35,7 @@ function DeadLetterQueueRow({ item, onOpen }: DeadLetterQueueRowProps) {
         <Display.Icon color={theme.danger} name="error" size={16} />
         <View className="min-w-0 flex-1">
           <Typography.Text numberOfLines={1} semibold>
-            {item.label || item.name}
+            {title || item.label || item.name}
           </Typography.Text>
           <Typography.Text
             className={attempts < 3 ? "text-warning" : "text-danger"}

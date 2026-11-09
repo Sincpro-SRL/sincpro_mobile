@@ -77,12 +77,18 @@ class TicketsModule extends DomainModule {
 | Hooks de ciclo de vida                   | `framework/lifecycle.ts`; el orquestador los corre                               | `onStart`, `onForeground`, `onLogin`, `onLogout` en `DomainModule`                                                                                                                               |
 | Mensajes del WebView por tipo            | `infrastructure/webview/message_handlers.ts`; `webViewService.handleMessage`     | `DomainModule.webViewHandlers()`: el de la app gana sobre el del core                                                                                                                            |
 | API rica y de bajo nivel de la impresora | `PrinterService`                                                                 | `configure()`, `driver`                                                                                                                                                                          |
+| Pantalla de eventos fallidos de la app   | `ui/screens/dead_letter_queue`; `EventActionSheet`                               | `DeadLetterQueueList` con `select`, `eventTitle`, `renderDetail`, `showTechnical`, `name`, `description`                                                                                         |
 
 **La impresión usa los mismos mecanismos que una app:**
 
 - la reconexión es el `onStart` de `baseModule`;
 - el ciclo de impresión del WebView son sus `webViewHandlers`;
 - el `AppShell` ya no sabe nada de impresoras.
+
+**Un reintento por falla:** `retryFailedEvent` saca el evento de la cola de fallidos antes de
+reenviarlo y devuelve `false` si ya no estaba. Dos toques seguidos o una lista sin refrescar no
+repiten el efecto (una impresión sale una vez). Si vuelve a fallar, el bus lo devuelve a la cola y
+se puede reintentar de nuevo.
 
 **Compatible con lo publicado:**
 

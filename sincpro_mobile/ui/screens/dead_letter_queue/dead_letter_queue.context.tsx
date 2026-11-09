@@ -18,7 +18,8 @@ interface IDeadLetterQueueContext {
   isRetrying: boolean;
   isDeleting: boolean;
   loadEvents: () => Promise<void>;
-  retryEvent: (event: IntegrationEvent) => Promise<void>;
+  /** False when the event was no longer failed: someone else already retried it. */
+  retryEvent: (event: IntegrationEvent) => Promise<boolean>;
   retrySelectedEvents: () => Promise<{ success: number; failed: number }>;
   deleteEvent: (event: IntegrationEvent) => Promise<void>;
   deleteSelectedEvents: () => Promise<{ success: number; failed: number }>;
@@ -75,8 +76,9 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
       setIsRetrying(true);
       return withCleanup(
         async () => {
-          await deadLetterQueueUseCases.retryFailedEvent(event);
+          const retried = await deadLetterQueueUseCases.retryFailedEvent(event);
           await loadEvents();
+          return retried;
         },
         () => setIsRetrying(false),
       );

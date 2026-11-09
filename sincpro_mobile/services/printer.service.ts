@@ -239,7 +239,7 @@ export class PrinterService {
     height: number;
     title: string;
   }): Promise<void> {
-    // The image travels in the event: kept while pending or failed, dropped once printed.
+    // The image travels in the event and stays in its history: retention and logout clean it.
     const event = PrintImageRequestedEvent.create({
       imageBase64: input.imageBase64,
       width: input.width,

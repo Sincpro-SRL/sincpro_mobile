@@ -26,29 +26,39 @@ export class DeadLetterQueueUseCases {
   }
 
   /**
-   * Manually retries a failed event by re-queuing it for processing.
-   * This removes the event from the dead letter queue and adds it back to the processing queue.
+   * Sends a failed event back to the queue, once per failure.
+   *
+   * 1. Take the event out of the dead letter queue first: a second retry of the same failure
+   *    (a double tap, a list that was not refreshed) finds nothing and returns false, so a
+   *    side effect such as a print never runs twice.
+   * 2. Publish it again. If it fails again the bus puts it back, ready for another retry.
+   * Final. If publishing throws, the event goes back to the dead letter queue.
    */
-  async retryFailedEvent(event: IntegrationEvent): Promise<void> {
+  async retryFailedEvent(event: IntegrationEvent): Promise<boolean> {
     loggerUseCases.info(
       `Manually retrying failed event: ${event.name} (uuid: ${event.uuid})`,
     );
 
+    if (!(await this.repository.remove(event.uuid))) {
+      loggerUseCases.warn(
+        `Retry skipped: ${event.name} (uuid: ${event.uuid}) is no longer in the dead letter queue`,
+      );
+      return false;
+    }
+
     try {
       event.retry();
       await EventBus.publish(event);
-
-      // Remove from dead letter queue only after successful re-queuing
-      await this.repository.remove(event.uuid);
       loggerUseCases.info(`Successfully retried event: ${event.name} (uuid: ${event.uuid})`);
+      return true;
     } catch (error) {
       loggerUseCases.error(
         `Failed to retry event ${event.name} (uuid: ${event.uuid}):`,
         error,
       );
-      throw new Error(
-        `Failed to retry event: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const reason = error instanceof Error ? error.message : String(error);
+      await this.repository.save(event, reason);
+      throw new Error(`Failed to retry event: ${reason}`);
     }
   }
 
@@ -65,8 +75,8 @@ export class DeadLetterQueueUseCases {
 
     for (const event of events) {
       try {
-        await this.retryFailedEvent(event);
-        successCount++;
+        if (await this.retryFailedEvent(event)) successCount++;
+        else failedCount++;
       } catch (error) {
         loggerUseCases.error(
           `Failed to retry event ${event.name} (uuid: ${event.uuid}):`,
