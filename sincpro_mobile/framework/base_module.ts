@@ -48,8 +48,14 @@ export class BaseModule extends DomainModule {
 
   // Both telemetry tables survive restartDatabase() — data generated during
   // logout must still be delivered; the flush cron runs independently of auth state.
+  // Settings belong to the device, not to the session: logging out kept wiping the printer,
+  // theme, time zone, debug mode and logger switches.
   override persistOnReset(): string[] {
-    return [DATABASE_TABLES.TELEMETRY_QUEUE, DATABASE_TABLES.SPANS_QUEUE];
+    return [
+      DATABASE_TABLES.TELEMETRY_QUEUE,
+      DATABASE_TABLES.SPANS_QUEUE,
+      DATABASE_TABLES.SETTINGS,
+    ];
   }
 }
 

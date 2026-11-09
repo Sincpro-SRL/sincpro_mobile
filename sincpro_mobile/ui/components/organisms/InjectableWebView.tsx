@@ -191,6 +191,8 @@ function InjectableWebView({
   const bottomInset = useBottomInset();
   const finalScript = webViewService.combineScripts(scripts, injectedJavaScript);
   const [isLoading, setIsLoading] = useState(true);
+  /** The current load ended in onError; its trailing onLoadEnd is not a success. */
+  const failedRef = useRef(false);
   const stuckAttemptsRef = useRef(0);
 
   function handleMessage(event: WebViewMessageEvent) {
@@ -203,6 +205,7 @@ function InjectableWebView({
   }
 
   function handleLoadStart() {
+    failedRef.current = false;
     isLoadingRef.current = true;
     setIsLoading(true);
 
@@ -235,8 +238,14 @@ function InjectableWebView({
       loadingTimeoutRef.current = null;
     }
 
-    setRetryCount(0);
-    stuckAttemptsRef.current = 0;
+    // react-native-webview also calls onLoadEnd right after onError. Resetting the counters
+    // there kept retryCount at 0, so an offline portal reloaded every 2 s forever.
+    if (failedRef.current) {
+      failedRef.current = false;
+    } else {
+      setRetryCount(0);
+      stuckAttemptsRef.current = 0;
+    }
     onLoadEnd?.();
   }
 
@@ -245,6 +254,11 @@ function InjectableWebView({
     const errorCode = error.nativeEvent.code || -1;
 
     loggerUseCases.warn(`WebView error (${errorCode}): ${errorMsg}`);
+    failedRef.current = true;
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = null;
+    }
 
     if (retryCount < maxRetries) {
       const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000);

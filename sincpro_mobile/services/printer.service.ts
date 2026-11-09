@@ -14,18 +14,21 @@ import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/print/events";
 import { ECommonSetting } from "@sincpro/mobile/domain/settings";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { holdPrintImage } from "@sincpro/mobile/infrastructure/print/pending_images";
+import { createReconnector } from "@sincpro/mobile/infrastructure/print/reconnect";
 import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers";
 import { File } from "expo-file-system";
 import * as Print from "expo-print";
 import type { RefObject } from "react";
-import type { View } from "react-native";
+import { AppState, type View } from "react-native";
 
 import { bluetoothService } from "./bluetooth.service";
 
 class PrinterService {
   private readonly bluetooth = bluetoothService;
   private cachedPrinter: ISelectedPrinter | null = null;
+  /** The user disconnected on purpose: nothing reconnects until they connect again. */
+  private userDisconnected = false;
 
   setDriver(driver: IPrinterDriver): void {
     setPrinterDriver(driver);
@@ -60,6 +63,7 @@ class PrinterService {
   }
 
   async connect(address: string, name: string, notify = true): Promise<boolean> {
+    this.userDisconnected = false;
     const hasPermissions = await this.bluetooth.ensurePermissionsForPrinter();
     if (!hasPermissions) {
       return false;
@@ -103,6 +107,7 @@ class PrinterService {
   }
 
   async disconnect(): Promise<void> {
+    this.userDisconnected = true;
     try {
       await getPrinterDriver().disconnect();
       notifyDevice({
@@ -139,13 +144,7 @@ class PrinterService {
   }
 
   async printTestPage(): Promise<boolean> {
-    if (!this.isConnected()) {
-      notifyDevice({
-        name: "printer.not_connected",
-        title: "Sin conexión",
-        message: "Conecta una impresora primero",
-        variant: "danger",
-      });
+    if (!(await this.ensureConnected())) {
       return false;
     }
 
@@ -299,6 +298,46 @@ class PrinterService {
       loggerUseCases.error("Error converting HTML to PDF", error);
       return null;
     }
+  }
+
+  /**
+   * One silent try to bring back the saved printer. Resolves `true` when there is nothing left
+   * to do: already connected, disconnected on purpose, no printer saved, or Bluetooth
+   * permission missing (it is never requested here; the user grants it from settings).
+   */
+  async restoreConnection(): Promise<boolean> {
+    if (this.isConnected() || this.userDisconnected) return true;
+    const printer = await this.getSelectedPrinter();
+    if (!printer) return true;
+    const permissions = await this.bluetooth.checkPermissions();
+    if (!permissions.isGranted) return true;
+    loggerUseCases.info(`Restoring printer connection: ${printer.name} (${printer.address})`);
+    return this.connect(printer.address, printer.name, false);
+  }
+
+  /**
+   * Keeps the saved printer connected while the app runs:
+   * 1. Tries at once, so a restart or a crash does not leave it disconnected.
+   * 2. Tries again when the app returns to the foreground and when the link is lost
+   *    (printer off or out of range), backing off up to 30 s.
+   * 3. A disconnection by the user stops it.
+   * Final: returns the cleanup that removes the listeners and the pending try.
+   */
+  keepConnected(): () => void {
+    const reconnector = createReconnector(() => this.restoreConnection());
+    reconnector.start();
+    const offConnection = this.onConnectionChange(({ reason }) => {
+      if (reason === "link_lost") reconnector.start();
+      if (reason === "user_disconnect") reconnector.stop();
+    });
+    const appState = AppState.addEventListener("change", (state) => {
+      if (state === "active") reconnector.start();
+    });
+    return () => {
+      reconnector.stop();
+      offConnection();
+      appState.remove();
+    };
   }
 
   /**
