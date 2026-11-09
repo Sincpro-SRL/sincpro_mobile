@@ -15,9 +15,16 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Appearance, AppState } from "react-native";
+
+import {
+  type ColorSchemeChoice,
+  type ColorSchemeFollower,
+  followColorScheme,
+} from "./color_scheme";
 
 export interface TimezoneLocale {
   timezone: string;
@@ -44,8 +51,8 @@ interface ICommonContext {
   locale: string | null;
   timezone: string | null;
   updateTimezone: (tz: TimezoneLocale) => Promise<void>;
-  colorScheme: "light" | "dark" | "system";
-  setColorScheme: (scheme: "light" | "dark" | "system") => Promise<void>;
+  colorScheme: ColorSchemeChoice;
+  setColorScheme: (scheme: ColorSchemeChoice) => Promise<void>;
 }
 
 const CommonContext = createContext<ICommonContext | null>(null);
@@ -66,7 +73,7 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
   const [geoError, setGeoError] = useState<string | null>(null);
   const [locale, setLocale] = useState<string | null>(null);
   const [timezone, setTimezone] = useState<string | null>(null);
-  const [colorScheme, setColorSchemeState] = useState<"light" | "dark" | "system">("system");
+  const [colorScheme, setColorSchemeState] = useState<ColorSchemeChoice>("system");
 
   useEffect(() => {
     async function loadDebug() {
@@ -144,27 +151,13 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
     }
   }, []);
 
-  const applyTheme = useCallback(
-    (scheme: "light" | "dark" | "system") => {
-      const resolved =
-        scheme === "system" ? (Appearance.getColorScheme() ?? "light") : scheme;
-      setActiveTheme(
-        resolved === "dark"
-          ? (darkTheme ?? DEFAULT_DARK_THEME)
-          : (lightTheme ?? DEFAULT_THEME),
-      );
-    },
-    [lightTheme, darkTheme],
-  );
+  const scheme = useRef<ColorSchemeFollower | null>(null);
 
-  const setColorScheme = useCallback(
-    async (scheme: "light" | "dark" | "system") => {
-      await SettingsRepository.saveOneSetting(COLOR_SCHEME_SETTING_KEY, scheme);
-      setColorSchemeState(scheme);
-      applyTheme(scheme);
-    },
-    [applyTheme],
-  );
+  const setColorScheme = useCallback(async (choice: ColorSchemeChoice) => {
+    await SettingsRepository.saveOneSetting(COLOR_SCHEME_SETTING_KEY, choice);
+    setColorSchemeState(choice);
+    scheme.current?.choose(choice);
+  }, []);
 
   // Returning to the foreground re-reads the permission quietly: no loading
   // flag, and React skips the update when the value did not change, so the
@@ -180,24 +173,33 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
     return () => sub.remove();
   }, [checkGeoPermission]);
 
-  // Load persisted color scheme on mount
+  // Follows the persisted color scheme, and the phone's while it is "system".
   useEffect(() => {
-    async function loadColorScheme() {
-      const saved = await SettingsRepository.getSettingByName(COLOR_SCHEME_SETTING_KEY);
-      const scheme =
-        saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
-      setColorSchemeState(scheme);
-      applyTheme(scheme);
-    }
-    loadColorScheme();
-  }, [applyTheme]);
-
-  // Follow system changes when scheme is "system"
-  useEffect(() => {
-    if (colorScheme !== "system") return;
-    const sub = Appearance.addChangeListener(() => applyTheme("system"));
-    return () => sub.remove();
-  }, [colorScheme, applyTheme]);
+    const follower = followColorScheme(Appearance, (resolved) =>
+      setActiveTheme(
+        resolved === "dark"
+          ? (darkTheme ?? DEFAULT_DARK_THEME)
+          : (lightTheme ?? DEFAULT_THEME),
+      ),
+    );
+    scheme.current = follower;
+    let active = true;
+    SettingsRepository.getSettingByName(COLOR_SCHEME_SETTING_KEY).then(
+      (saved) => {
+        if (!active) return;
+        const choice =
+          saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+        setColorSchemeState(choice);
+        follower.choose(choice);
+      },
+      (error: unknown) => logger.warn("Failed to load the color scheme", error),
+    );
+    return () => {
+      active = false;
+      follower.stop();
+      scheme.current = null;
+    };
+  }, [lightTheme, darkTheme]);
 
   useEffect(() => {
     async function loadTimezoneAndLocale() {

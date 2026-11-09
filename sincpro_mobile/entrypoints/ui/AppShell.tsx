@@ -7,22 +7,25 @@ import type { TelemetryConfig } from "@sincpro/mobile/infrastructure/telemetry";
 import { onceUntilFailure } from "@sincpro/mobile/tools/utils/once";
 import { DeviceNotices } from "@sincpro/mobile/ui/activity";
 import { type BrandingConfig, setBranding } from "@sincpro/mobile-ui/branding";
+import { OverlayHost } from "@sincpro/mobile-ui/Dialog";
 import { ErrorBoundary, Feedback, ToastProvider } from "@sincpro/mobile-ui/Feedback";
+import KeyboardToolbarHost from "@sincpro/mobile-ui/Form/Form.KeyboardToolbarHost";
 import {
   setActiveTheme,
   type ThemeTokens,
-  themeToVars,
   useTheme,
+  useThemeVars,
 } from "@sincpro/mobile-ui/theme";
 import { configureFonts, type FontRole, useFonts } from "@sincpro/mobile-ui/theme/typography";
 import * as SplashScreen from "expo-splash-screen";
-import { vars } from "nativewind";
+import { StatusBar } from "expo-status-bar";
 import { type ComponentType, type ReactNode, useEffect, useState } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context";
 
+import { statusBarStyleFor } from "./color_scheme";
 import { CommonProvider } from "./common_provider";
 import { type DomainEntry, DomainSwitcherProvider } from "./domain_switcher";
 
@@ -248,7 +251,10 @@ export function AppShell({
   const [minDurationMet, setMinDurationMet] = useState(false);
   const [fontsLoaded, fontError] = useFonts(shell.fontFiles);
   const activeTheme = useTheme();
-  const themeStyle = vars(themeToVars(activeTheme));
+  // One object per theme version. `vars(themeToVars(activeTheme))` was memoized by React
+  // Compiler on the theme object, which mobile UI 3.1 mutates in place: a light/dark switch
+  // from settings left every className color on the previous theme.
+  const themeStyle = useThemeVars();
   const fontsSettled = fontsLoaded || fontError != null;
   const showApp = status === "ready" && fontsSettled && minDurationMet;
   const settled = showApp || status === "failed";
@@ -277,6 +283,9 @@ export function AppShell({
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      {/* The only status bar controller: it follows the painted theme, not the phone's, so
+          dark chosen on a light phone keeps a readable clock. Hosts do not mount another. */}
+      <StatusBar style={statusBarStyleFor(activeTheme.bg.page)} />
       <View className="flex-1" style={themeStyle}>
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
           {status === "failed" ? (
@@ -291,22 +300,28 @@ export function AppShell({
             <KeyboardProvider>
               <CommonProvider darkTheme={config.darkTheme} lightTheme={config.theme}>
                 <ToastProvider position="top">
-                  <ErrorBoundary
-                    onError={(error) => logger.error("[AppShell] Render failed", error)}
-                  >
-                    {withProviders(
-                      config.providers ?? [],
-                      <DomainSwitcherProvider
-                        domains={shell.domains}
-                        initialDomain={shell.initialDomain}
-                        onChange={config.onDomainChange}
-                      >
-                        {children}
-                      </DomainSwitcherProvider>,
-                    )}
-                  </ErrorBoundary>
+                  {/* The one host every Sheet, Select and dialog draws in (mobile UI 3.1):
+                      without it each overlay renders in place, clipped by its container. */}
+                  <OverlayHost>
+                    <ErrorBoundary
+                      onError={(error) => logger.error("[AppShell] Render failed", error)}
+                    >
+                      {withProviders(
+                        config.providers ?? [],
+                        <DomainSwitcherProvider
+                          domains={shell.domains}
+                          initialDomain={shell.initialDomain}
+                          onChange={config.onDomainChange}
+                        >
+                          {children}
+                        </DomainSwitcherProvider>,
+                      )}
+                    </ErrorBoundary>
+                  </OverlayHost>
                   <DeviceNotices />
                 </ToastProvider>
+                {/* The only keyboard toolbar of the app; every KeyboardForm and sheet uses it. */}
+                <KeyboardToolbarHost />
               </CommonProvider>
             </KeyboardProvider>
           )}

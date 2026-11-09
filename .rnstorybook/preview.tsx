@@ -1,4 +1,5 @@
-import { ConfirmationProvider } from "@sincpro/mobile-ui/Dialog";
+import { ConfirmationProvider, OverlayHost } from "@sincpro/mobile-ui/Dialog";
+import KeyboardToolbarHost from "@sincpro/mobile-ui/Form/Form.KeyboardToolbarHost";
 import {
   DEFAULT_DARK_THEME,
   DEFAULT_THEME,
@@ -66,31 +67,35 @@ function ThemeFrame({
 
   const edges: Edge[] = ownsTopInset ? ["left", "right"] : ["top", "left", "right"];
 
+  // Theme variables on the root, the overlay host outside the scroll: sheets and dialogs
+  // draw over the whole screen with the theme colors, as in the AppShell.
   return (
-    <SafeAreaView
-      edges={edges}
-      style={[vars(themeToVars(tokens)), { flex: 1, backgroundColor: tokens.bg.page }]}
-    >
-      <View style={{ flex: 1 }}>
-        {ownsScroll ? (
-          children
-        ) : (
-          <KeyboardAwareScrollView
-            bottomOffset={20}
-            contentContainerStyle={{ flexGrow: 1, padding: 16 }}
-            keyboardShouldPersistTaps="handled"
-            style={{ flex: 1, backgroundColor: tokens.bg.page }}
-          >
-            {children}
-          </KeyboardAwareScrollView>
-        )}
-      </View>
-      <AppearanceBar
-        mode={mode}
-        onToggle={() => setMode(mode === "light" ? "dark" : "light")}
-        tokens={tokens}
-      />
-    </SafeAreaView>
+    <View style={[vars(themeToVars(tokens)), { flex: 1 }]}>
+      <OverlayHost>
+        <SafeAreaView edges={edges} style={{ flex: 1, backgroundColor: tokens.bg.page }}>
+          <View style={{ flex: 1 }}>
+            {ownsScroll ? (
+              children
+            ) : (
+              <KeyboardAwareScrollView
+                bottomOffset={20}
+                contentContainerStyle={{ flexGrow: 1, padding: 16 }}
+                keyboardShouldPersistTaps="handled"
+                style={{ flex: 1, backgroundColor: tokens.bg.page }}
+              >
+                {children}
+              </KeyboardAwareScrollView>
+            )}
+          </View>
+          <AppearanceBar
+            mode={mode}
+            onToggle={() => setMode(mode === "light" ? "dark" : "light")}
+            tokens={tokens}
+          />
+        </SafeAreaView>
+      </OverlayHost>
+      <KeyboardToolbarHost />
+    </View>
   );
 }
 

@@ -57,6 +57,7 @@
     "expo-sharing": "*",
     "expo-splash-screen": "*",
     "expo-sqlite": "*",
+    "expo-status-bar": "*",
     "expo-task-manager": "*",
     "nativewind": ">=4.2.7",
     "react": "*",
