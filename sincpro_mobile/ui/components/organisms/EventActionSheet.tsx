@@ -13,15 +13,21 @@ import { useTheme } from "@sincpro/mobile-ui/theme";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import JsonPreview from "@sincpro/mobile-ui/widgets/JSONViewer";
 import * as Clipboard from "expo-clipboard";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
 interface EventActionSheetProps {
   event: IntegrationEvent | null;
   visible: boolean;
   onClose: () => void;
-  onRetry?: (event: IntegrationEvent) => Promise<void> | void;
+  onRetry?: (event: IntegrationEvent) => Promise<unknown> | void;
   retryLabel?: string;
+  /** Heading of the sheet; the event's label by default. */
+  title?: string;
+  /** What the app shows of this event above its details, such as the image of a print. */
+  detail?: ReactNode;
+  /** Shows the event name and its raw payload; turn it off for people who are not debugging. */
+  showTechnical?: boolean;
 }
 
 function ActionRow({
@@ -64,6 +70,9 @@ export function EventActionSheet({
   onClose,
   onRetry,
   retryLabel = "Re-disparar",
+  title,
+  detail,
+  showTechnical = true,
 }: EventActionSheetProps) {
   const theme = useTheme();
   const [showPayload, setShowPayload] = useState(false);
@@ -133,10 +142,11 @@ export function EventActionSheet({
       onClose={close}
       scrollable
       snapPoints={["48%", "88%"]}
-      title={event.label || event.name}
+      title={title || event.label || event.name}
       visible={visible}
     >
       <View className="gap-3 pb-2">
+        {detail}
         <View className="flex-row items-center justify-between gap-3">
           <Display.Badge
             label={eventStatusLabel(event.status)}
@@ -144,7 +154,7 @@ export function EventActionSheet({
           />
           <Display.Date showTime textVariant="caption" value={event.createdAt} />
         </View>
-        <Display.CopyableText value={event.name} />
+        {showTechnical ? <Display.CopyableText value={event.name} /> : null}
         <View className="flex-row flex-wrap gap-x-3">
           <Typography.Text className="text-text-tertiary" variant="caption">
             {attempts === 1 ? "1 intento" : `${attempts} intentos`}
@@ -166,22 +176,24 @@ export function EventActionSheet({
           </Typography.Text>
         ) : null}
 
-        <View className="overflow-hidden rounded-xl bg-bg-muted">
-          <ActionRow
-            icon="document"
-            label={showPayload ? "Ocultar payload" : "Ver payload"}
-            onPress={() => setShowPayload((value) => !value)}
-            trailing={showPayload ? "collapse" : "expand"}
-          />
-          <ActionRow
-            icon={copied ? "success" : "copy"}
-            label={copied ? "Copiado" : "Copiar payload"}
-            last
-            onPress={copyPayload}
-          />
-        </View>
+        {showTechnical ? (
+          <View className="overflow-hidden rounded-xl bg-bg-muted">
+            <ActionRow
+              icon="document"
+              label={showPayload ? "Ocultar payload" : "Ver payload"}
+              onPress={() => setShowPayload((value) => !value)}
+              trailing={showPayload ? "collapse" : "expand"}
+            />
+            <ActionRow
+              icon={copied ? "success" : "copy"}
+              label={copied ? "Copiado" : "Copiar payload"}
+              last
+              onPress={copyPayload}
+            />
+          </View>
+        ) : null}
 
-        {showPayload ? (
+        {showTechnical && showPayload ? (
           <View className="rounded-xl bg-bg-muted p-2">
             <JsonPreview selectedJson={event.asJSON(true)} />
           </View>

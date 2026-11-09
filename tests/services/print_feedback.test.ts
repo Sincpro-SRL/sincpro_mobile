@@ -50,6 +50,8 @@ test("the interceptor reports start and failure instead of a silent native print
 
 test("a failed print offers both the failed list and the printer", () => {
   const notices = read("sincpro_mobile/ui/activity/DeviceNotices.tsx");
+  // The host frames the toast; a second Toast.Root drew a toast inside the toast.
+  assert.doesNotMatch(notices, /<Toast\.Root>/);
   assert.match(notices, /actions\.map\(\(action\) =>/);
   assert.match(notices, /onAction\?\.\(action\.intent\)/);
   assert.match(

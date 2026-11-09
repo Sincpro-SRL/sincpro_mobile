@@ -4,7 +4,7 @@ import { EventActionSheet } from "@sincpro/mobile/ui/components/organisms/EventA
 import { EventListHeader } from "@sincpro/mobile/ui/events/event-query-controls";
 import { useEventQuery } from "@sincpro/mobile/ui/events/use-event-query";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DeadLetterQueueProvider, useDeadLetterQueue } from "./dead_letter_queue.context";
 
@@ -14,11 +14,32 @@ const RELOAD_AFTER_RETRY_MS = 5000;
 export interface DeadLetterQueueListProps {
   /** Leaves the screen. Without it the header shows no back button. */
   onBack?: () => void;
+  /** Screen title. */
+  name?: string;
+  /** Screen subtitle. */
+  description?: string;
+  /** Which failed events this screen lists; all of them by default. The app decides. */
+  select?: (event: IntegrationEvent) => boolean;
+  /** What a row and its sheet call the event; its label by default. */
+  eventTitle?: (event: IntegrationEvent) => string;
+  /** What the app shows of an event in its sheet, such as the image of a print. */
+  renderDetail?: (event: IntegrationEvent) => ReactNode;
+  /** Shows event names and raw payloads; turn it off for people who are not debugging. */
+  showTechnical?: boolean;
 }
 
-function DeadLetterQueueScreenComponent({ onBack }: DeadLetterQueueListProps) {
+function DeadLetterQueueScreenComponent({
+  onBack,
+  name = "Eventos fallidos",
+  description = "Eventos que no pudieron ser procesados",
+  select,
+  eventTitle,
+  renderDetail,
+  showTechnical = true,
+}: DeadLetterQueueListProps) {
   const { events, isLoading, loadEvents, retryEvent } = useDeadLetterQueue();
-  const list = useEventQuery(events);
+  const listed = useMemo(() => (select ? events.filter(select) : events), [events, select]);
+  const list = useEventQuery(listed);
   const [selected, setSelected] = useState<IntegrationEvent | null>(null);
   const [open, setOpen] = useState(false);
   const reload = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -34,13 +55,19 @@ function DeadLetterQueueScreenComponent({ onBack }: DeadLetterQueueListProps) {
   }, []);
   const renderEvent = useCallback(
     (event: unknown) => (
-      <DeadLetterQueueRow item={event as IntegrationEvent} onOpen={openEvent} />
+      <DeadLetterQueueRow
+        item={event as IntegrationEvent}
+        onOpen={openEvent}
+        title={eventTitle?.(event as IntegrationEvent)}
+      />
     ),
-    [openEvent],
+    [eventTitle, openEvent],
   );
   const retry = useCallback(
     async (event: IntegrationEvent) => {
       await retryEvent(event);
+      // The event left the list: its sheet must not offer a second retry of the same failure.
+      setOpen(false);
       clearTimeout(reload.current);
       reload.current = setTimeout(() => void loadEvents(), RELOAD_AFTER_RETRY_MS);
     },
@@ -49,11 +76,11 @@ function DeadLetterQueueScreenComponent({ onBack }: DeadLetterQueueListProps) {
 
   return (
     <ListViewV2.Root
-      description="Eventos que no pudieron ser procesados"
+      description={description}
       hasMore={list.hasMore}
       isLoading={isLoading}
       items={list.visible}
-      name="Eventos fallidos"
+      name={name}
       onBack={onBack}
       onLoadMore={list.loadMore}
       onRefresh={loadEvents}
@@ -61,20 +88,23 @@ function DeadLetterQueueScreenComponent({ onBack }: DeadLetterQueueListProps) {
       <EventListHeader list={list} showStatus={false} />
       <ListViewV2.Content>{renderEvent}</ListViewV2.Content>
       <EventActionSheet
+        detail={selected && renderDetail ? renderDetail(selected) : null}
         event={selected}
         onClose={() => setOpen(false)}
         onRetry={retry}
         retryLabel="Reintentar"
+        showTechnical={showTechnical}
+        title={selected && eventTitle ? eventTitle(selected) : undefined}
         visible={open}
       />
     </ListViewV2.Root>
   );
 }
 
-function DeadLetterQueueList({ onBack }: DeadLetterQueueListProps) {
+function DeadLetterQueueList(props: DeadLetterQueueListProps) {
   return (
     <DeadLetterQueueProvider>
-      <DeadLetterQueueScreenComponent onBack={onBack} />
+      <DeadLetterQueueScreenComponent {...props} />
     </DeadLetterQueueProvider>
   );
 }

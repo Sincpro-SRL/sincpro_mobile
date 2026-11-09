@@ -1,12 +1,20 @@
 import logger, { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
 import { Mutex } from "async-mutex";
 import {
-  openDatabaseAsync,
   openDatabaseSync,
   SQLiteDatabase,
   SQLiteRunResult,
   SQLiteVariadicBindParams,
 } from "expo-sqlite";
+
+/*
+ * Every call reaches SQLite through the synchronous native functions, even behind the async API.
+ * On iOS, expo-modules-jsi 58 encodes the result of an async expo-sqlite call from a Swift
+ * cooperative thread instead of the JavaScript thread: Hermes is touched off its thread, its heap
+ * gets corrupted and the app crashes a moment later (seen on logout, when many tables are cleared
+ * at once). The sync functions run and encode on the JavaScript thread. The mutex keeps the order
+ * of operations. Go back to the async functions once expo/expo#52754 and #51040 are fixed.
+ */
 
 export const DB_NAME = "distribution.db";
 let dbInstance: SQLiteDatabase | null = null;
@@ -31,10 +39,7 @@ function shouldLogQuery(query: string): boolean {
 
 async function initDatabase(): Promise<SQLiteDatabase> {
   logger.info("Initializing database connection...");
-  const db = await openDatabaseAsync(DB_NAME);
-  await db.execAsync("PRAGMA journal_mode = WAL;");
-  await db.execAsync("PRAGMA foreign_keys = ON;");
-  return db;
+  return initDatabaseSync();
 }
 
 export async function getDatabase(): Promise<SQLiteDatabase> {
@@ -76,16 +81,18 @@ export const DBCursor = {
   async transaction<T>(work: () => Promise<T>): Promise<T> {
     return dbLock.runExclusive(async () => {
       const db = await getDatabase();
-      let result!: T;
-      await db.withTransactionAsync(async () => {
-        currentTx = db;
-        try {
-          result = await work();
-        } finally {
-          currentTx = null;
-        }
-      });
-      return result;
+      db.execSync("BEGIN;");
+      currentTx = db;
+      try {
+        const result = await work();
+        db.execSync("COMMIT;");
+        return result;
+      } catch (error) {
+        db.execSync("ROLLBACK;");
+        throw error;
+      } finally {
+        currentTx = null;
+      }
     });
   },
 
@@ -99,7 +106,7 @@ export const DBCursor = {
         if (shouldLogQuery(safeQuery)) {
           loggerRepositories.info(`Database mutation: ${safeQuery}]`);
         }
-        const result = await db.runAsync(safeQuery, ...params);
+        const result = db.runSync(safeQuery, ...params);
         if (shouldLogQuery(safeQuery)) {
           loggerRepositories.debug("Database mutation result:", result.lastInsertRowId);
         }
@@ -122,7 +129,7 @@ export const DBCursor = {
         if (shouldLogQuery(safeQuery)) {
           loggerRepositories.info("Database query:", safeQuery, params);
         }
-        return await db.getFirstAsync(safeQuery, ...params);
+        return db.getFirstSync<T>(safeQuery, ...params);
       } catch (error) {
         loggerRepositories.error("Database query error:", error);
         loggerRepositories.error("SQL:", safeQuery, params);
@@ -138,7 +145,7 @@ export const DBCursor = {
         if (shouldLogQuery(safeQuery)) {
           loggerRepositories.info("Database query:", safeQuery, params);
         }
-        return await db.getAllAsync(safeQuery, ...params);
+        return db.getAllSync<T>(safeQuery, ...params);
       } catch (error) {
         loggerRepositories.error("Database query error:", error);
         loggerRepositories.error("SQL:", safeQuery, params);
@@ -154,7 +161,7 @@ export const DBCursor = {
         if (shouldLogQuery(safeQuery)) {
           loggerRepositories.info("Executing database command:", safeQuery);
         }
-        await db.execAsync(safeQuery);
+        db.execSync(safeQuery);
       } catch (error) {
         loggerRepositories.error("Database command error:", error);
         loggerRepositories.error("SQL:", safeQuery);

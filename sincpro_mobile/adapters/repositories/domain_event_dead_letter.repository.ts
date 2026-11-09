@@ -93,9 +93,14 @@ class DomainEventDeadLetterRepositoryImpl {
     return rows.map((row) => readEvent(row));
   }
 
-  async remove(uuid: string): Promise<void> {
-    await DBCursor.mutateDatabase(`DELETE FROM ${this.table} WHERE uuid = ?`, uuid);
+  /** Removes a failed event; false when it was no longer there (another caller took it). */
+  async remove(uuid: string): Promise<boolean> {
+    const result = await DBCursor.mutateDatabase(
+      `DELETE FROM ${this.table} WHERE uuid = ?`,
+      uuid,
+    );
     loggerRepositories.debug(`Dead letter removed: ${uuid}`);
+    return result.changes > 0;
   }
 
   async removeByCorrelationId(correlationId: string): Promise<void> {

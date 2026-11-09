@@ -50,8 +50,9 @@ function showNotice(
 
   toast.show({
     variant,
+    // The toast host already wraps this in Toast.Root: only its content goes here.
     render: ({ dismiss }) => (
-      <Toast.Root>
+      <>
         <Toast.Icon variant={variant} />
         <Toast.Content>
           <Toast.Title>{title}</Toast.Title>
@@ -70,7 +71,7 @@ function showNotice(
           </View>
         </Toast.Content>
         <Toast.Close onPress={dismiss} />
-      </Toast.Root>
+      </>
     ),
   });
 }
