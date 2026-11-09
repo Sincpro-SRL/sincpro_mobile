@@ -8,6 +8,7 @@ import { onceUntilFailure } from "@sincpro/mobile/tools/utils/once";
 import { DeviceNotices } from "@sincpro/mobile/ui/activity";
 import { type BrandingConfig, setBranding } from "@sincpro/mobile-ui/branding";
 import { OverlayHost } from "@sincpro/mobile-ui/Dialog";
+import { ICON_FONTS } from "@sincpro/mobile-ui/Display";
 import { ErrorBoundary, Feedback, ToastProvider } from "@sincpro/mobile-ui/Feedback";
 import KeyboardToolbarHost from "@sincpro/mobile-ui/Form/Form.KeyboardToolbarHost";
 import {
@@ -185,7 +186,9 @@ export function defineAppShell(config: AppShellConfig): AppShellDefinition {
     kernel,
     domains,
     initialDomain: config.initialDomain ?? domains[0]?.key ?? "",
-    fontFiles: config.brandFont?.files ?? {},
+    // Mobile UI draws Android and web icons from the Material Symbols font; without it every
+    // icon is blank. On iOS ICON_FONTS is empty: icons are SF Symbols.
+    fontFiles: { ...ICON_FONTS, ...config.brandFont?.files },
     start: onceUntilFailure(async () => {
       await startApp(kernel, { telemetry: config.telemetry });
     }),
@@ -265,7 +268,11 @@ export function AppShell({
   }, [config.splashDuration]);
 
   useEffect(() => {
-    if (fontError) logger.warn("[AppShell] Brand fonts failed; using DS defaults", fontError);
+    if (fontError)
+      logger.warn(
+        "[AppShell] Fonts failed to load (icons or brand); using system fallbacks",
+        fontError,
+      );
   }, [fontError]);
 
   useEffect(() => {
