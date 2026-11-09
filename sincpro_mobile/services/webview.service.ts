@@ -8,11 +8,11 @@ import {
   type IPrintRequestMessage,
   type TWebViewMessage,
 } from "@sincpro/mobile/domain/webview";
-import { routePrintMessage } from "@sincpro/mobile/domain/webview/print_cycle";
-import { printerService } from "@sincpro/mobile/services/printer.service";
+import { replaceable } from "@sincpro/mobile/framework/replaceable";
+import { dispatchWebViewMessage } from "@sincpro/mobile/infrastructure/webview/message_handlers";
 import { safeJsonParse } from "@sincpro/mobile/tools/utils/serializer";
 
-class WebViewService {
+export class WebViewService {
   private interceptors: Map<string, IInjectedScript> = new Map();
 
   registerInterceptor(interceptor: IInjectedScript): void {
@@ -69,13 +69,17 @@ class WebViewService {
     return msg.type === EWebViewMessageType.PRINT_IMAGE;
   }
 
-  /** Handles the whole print cycle of a page that runs the print interceptor. */
+  /**
+   * Routes a message posted by the page to the handler of its `type`: the core's (the print
+   * cycle) or any an app registered with `DomainModule.webViewHandlers()`.
+   */
+  handleMessage(rawData: string): Promise<boolean> {
+    return dispatchWebViewMessage(rawData);
+  }
+
+  /** @deprecated Use `handleMessage`: printing is one more message handler. */
   handlePrintMessage(rawData: string): Promise<boolean> {
-    return routePrintMessage(this.parseMessage(rawData), {
-      started: (title) => printerService.reportPrintStarted(title),
-      failed: (title, reason) => printerService.reportPrintFailed(title, reason),
-      image: (input) => printerService.enqueuePrintImage(input),
-    });
+    return this.handleMessage(rawData);
   }
 
   isContentReady(msg: TWebViewMessage): msg is IContentReadyMessage {
@@ -91,4 +95,11 @@ class WebViewService {
   }
 }
 
-export const webViewService = new WebViewService();
+const webViewServiceSlot = replaceable(new WebViewService());
+
+/** Swaps the implementation for a subclass, for the whole app and the core. */
+export function setWebViewService(service: WebViewService): void {
+  webViewServiceSlot.set(service);
+}
+
+export const webViewService: WebViewService = webViewServiceSlot.instance;

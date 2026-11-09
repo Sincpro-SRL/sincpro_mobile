@@ -3,10 +3,11 @@ import {
   BluetoothPermissionStatus,
   BluetoothStatus,
 } from "@sincpro/mobile/domain/connectivity";
+import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 
-class BluetoothService {
+export class BluetoothService {
   private permissionStatus: BluetoothPermissionStatus | null = null;
 
   async requestPermissions(): Promise<BluetoothPermissionStatus> {
@@ -96,4 +97,11 @@ class BluetoothService {
   }
 }
 
-export const bluetoothService = new BluetoothService();
+const bluetoothServiceSlot = replaceable(new BluetoothService());
+
+/** Swaps the implementation for a subclass, for the whole app and the core. */
+export function setBluetoothService(service: BluetoothService): void {
+  bluetoothServiceSlot.set(service);
+}
+
+export const bluetoothService: BluetoothService = bluetoothServiceSlot.instance;

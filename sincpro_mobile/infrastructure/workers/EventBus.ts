@@ -8,6 +8,7 @@ import { runWithChain } from "@sincpro/mobile/infrastructure/event_chain";
 import { isConsoleDebug, loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
 import { declaresUi, publishActivity } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
+import { runIntercepted } from "@sincpro/mobile/infrastructure/workers/interceptors";
 import { AppState } from "react-native";
 
 export const PROCESS_WORKER_MAX_ATTEMPTS = 1;
@@ -224,7 +225,9 @@ export class EventBus {
     for (const subscriber of subscriberList) {
       try {
         const typedEvent = subscriber.getEvent(event);
-        await subscriber.process(typedEvent);
+        await runIntercepted(event, subscriber.constructor.name, () =>
+          subscriber.process(typedEvent),
+        );
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         loggerQueueProcessor.warn(`EVENT=${event.name} - Subscriber failed: ${errorMessage}`);

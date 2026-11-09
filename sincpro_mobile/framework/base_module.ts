@@ -3,7 +3,10 @@ import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/dom
 import { DomainEventDeadLetterRepository } from "@sincpro/mobile/adapters/repositories/domain_event_dead_letter.repository";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
 import type { IMigration } from "@sincpro/mobile/domain/database";
+import { hasPrinterDriver } from "@sincpro/mobile/domain/print";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
+import { EWebViewMessageType, type TWebViewMessage } from "@sincpro/mobile/domain/webview";
+import { routePrintMessage } from "@sincpro/mobile/domain/webview/print_cycle";
 import cronCheckNetworkStatus from "@sincpro/mobile/entrypoints/cron/checkNetworkStatus.cron";
 import MIGRATIONS, { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
 import { ActivateDomainSubscriber } from "@sincpro/mobile/entrypoints/queue/activateDomain.subscriber";
@@ -11,7 +14,12 @@ import { NewAppSettingsSubscriber } from "@sincpro/mobile/entrypoints/queue/newA
 import { PrintImageSubscriber } from "@sincpro/mobile/entrypoints/queue/printImage.subscriber";
 import { ProcessWebViewMessageSubscriber } from "@sincpro/mobile/entrypoints/queue/processWebViewMessage.subscriber";
 import type { Subscriber } from "@sincpro/mobile/event_driven";
+import type {
+  WebViewMessage,
+  WebViewMessageHandler,
+} from "@sincpro/mobile/infrastructure/webview/message_handlers";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
+import { printerService } from "@sincpro/mobile/services/printer.service";
 
 import { DomainModule } from "./domain_module";
 
@@ -44,6 +52,26 @@ export class BaseModule extends DomainModule {
 
   override crons(): CronWorker[] {
     return [cronCheckNetworkStatus];
+  }
+
+  /** The print cycle of a page with the print interceptor; an app can replace any type. */
+  override webViewHandlers(): Record<string, WebViewMessageHandler> {
+    const printCycle = (message: WebViewMessage) =>
+      routePrintMessage(message as unknown as TWebViewMessage, {
+        started: (title) => printerService.reportPrintStarted(title),
+        failed: (title, reason) => printerService.reportPrintFailed(title, reason),
+        image: (input) => printerService.enqueuePrintImage(input),
+      }).then(() => undefined);
+    return {
+      [EWebViewMessageType.PRINT_STARTED]: printCycle,
+      [EWebViewMessageType.PRINT_FAILED]: printCycle,
+      [EWebViewMessageType.PRINT_IMAGE]: printCycle,
+    };
+  }
+
+  /** A host that prints keeps its saved printer connected (start, return, lost link). */
+  override onStart(): void {
+    if (hasPrinterDriver()) printerService.keepConnected();
   }
 
   // Both telemetry tables survive restartDatabase() — data generated during

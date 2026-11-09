@@ -1,11 +1,9 @@
-import { hasPrinterDriver } from "@sincpro/mobile/domain/print";
 import { defineBackgroundCrons } from "@sincpro/mobile/framework/background";
 import { createKernel, startApp } from "@sincpro/mobile/framework/createApp";
 import type { DomainModule } from "@sincpro/mobile/framework/domain_module";
 import type { Kernel } from "@sincpro/mobile/framework/kernel";
 import logger from "@sincpro/mobile/infrastructure/logger";
 import type { TelemetryConfig } from "@sincpro/mobile/infrastructure/telemetry";
-import { printerService } from "@sincpro/mobile/services/printer.service";
 import { onceUntilFailure } from "@sincpro/mobile/tools/utils/once";
 import { DeviceNotices } from "@sincpro/mobile/ui/activity";
 import { type BrandingConfig, setBranding } from "@sincpro/mobile-ui/branding";
@@ -285,13 +283,6 @@ export function AppShell({
   useEffect(() => {
     if (settled) SplashScreen.hideAsync().catch(() => {});
   }, [settled]);
-
-  // A host that prints keeps its saved printer connected: after a restart, a crash, a return
-  // to the foreground or a lost link it reconnects by itself instead of waiting for a tap.
-  useEffect(() => {
-    if (status !== "ready" || !hasPrinterDriver()) return;
-    return printerService.keepConnected();
-  }, [status]);
 
   if (!settled) {
     const Splash = config.splashComponent;

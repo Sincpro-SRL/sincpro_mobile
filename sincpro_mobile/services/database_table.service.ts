@@ -1,8 +1,9 @@
 import { IDatabaseTable } from "@sincpro/mobile/domain/database";
 import { ECommonRepository, repos } from "@sincpro/mobile/entrypoints/db";
+import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 
-class DatabaseTablesUseCase {
+export class DatabaseTablesUseCase {
   private get repository() {
     return repos.get(ECommonRepository.DATABASE_TABLE);
   }
@@ -19,4 +20,12 @@ class DatabaseTablesUseCase {
   }
 }
 
-export const databaseTablesUseCase = new DatabaseTablesUseCase();
+const databaseTablesUseCaseSlot = replaceable(new DatabaseTablesUseCase());
+
+/** Swaps the implementation for a subclass, for the whole app and the core. */
+export function setDatabaseTablesUseCase(service: DatabaseTablesUseCase): void {
+  databaseTablesUseCaseSlot.set(service);
+}
+
+export const databaseTablesUseCase: DatabaseTablesUseCase =
+  databaseTablesUseCaseSlot.instance;

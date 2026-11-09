@@ -14,8 +14,12 @@ test("logging out keeps the device settings", () => {
   assert.match(persisted, /DATABASE_TABLES\.SETTINGS/);
 });
 
-test("the AppShell keeps the saved printer connected only for hosts that print", () => {
+test("the saved printer stays connected through a core hook, not the AppShell", () => {
+  const base = read("sincpro_mobile/framework/base_module.ts");
+  assert.match(
+    base,
+    /override onStart\(\): void \{\s*if \(hasPrinterDriver\(\)\) printerService\.keepConnected\(\);/,
+  );
   const shell = read("sincpro_mobile/entrypoints/ui/AppShell.tsx");
-  assert.match(shell, /if \(status !== "ready" \|\| !hasPrinterDriver\(\)\) return;/);
-  assert.match(shell, /return printerService\.keepConnected\(\);/);
+  assert.doesNotMatch(shell, /printerService|hasPrinterDriver/);
 });

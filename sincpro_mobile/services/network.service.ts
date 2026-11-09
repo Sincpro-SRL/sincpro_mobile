@@ -1,6 +1,7 @@
 import { NetworkAdapter } from "@sincpro/mobile/adapters/Network.adapter";
 import { NetworkStatus } from "@sincpro/mobile/domain/connectivity";
 import { InternetIsDownEvent, InternetIsUpEvent } from "@sincpro/mobile/domain/events";
+import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
@@ -47,4 +48,11 @@ export class NetworkUseCases {
   }
 }
 
-export const networkUseCases = new NetworkUseCases();
+const networkUseCasesSlot = replaceable(new NetworkUseCases());
+
+/** Swaps the implementation for a subclass, for the whole app and the core. */
+export function setNetworkUseCases(service: NetworkUseCases): void {
+  networkUseCasesSlot.set(service);
+}
+
+export const networkUseCases: NetworkUseCases = networkUseCasesSlot.instance;

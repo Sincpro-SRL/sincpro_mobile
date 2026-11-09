@@ -31,6 +31,7 @@ export interface AppConfig {
 export function createKernel(config: Pick<AppConfig, "domains" | "crons"> = {}): Kernel {
   const kernel = new Kernel([baseModule, ...(config.domains ?? [])]);
   if (config.crons) kernel.applyCronConfig(config.crons);
+  kernel.registerExtensions();
   return kernel;
 }
 

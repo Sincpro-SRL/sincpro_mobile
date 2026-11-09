@@ -12,10 +12,14 @@ import {
 } from "@sincpro/mobile/domain/print";
 import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/print/events";
 import { ECommonSetting } from "@sincpro/mobile/domain/settings";
+import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { failedPrintImageUri } from "@sincpro/mobile/infrastructure/print/failed_print_files";
 import { holdPrintImage } from "@sincpro/mobile/infrastructure/print/pending_images";
-import { createReconnector } from "@sincpro/mobile/infrastructure/print/reconnect";
+import {
+  createReconnector,
+  RECONNECT_DELAYS_MS,
+} from "@sincpro/mobile/infrastructure/print/reconnect";
 import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers";
 import { File } from "expo-file-system";
@@ -35,11 +39,43 @@ export const PRINT_NOTICE_ACTIONS = {
 } as const;
 const PRINT_FAILURE_ACTIONS = [PRINT_NOTICE_ACTIONS.failed, PRINT_NOTICE_ACTIONS.printer];
 
-class PrinterService {
+export interface PrinterOptions {
+  /** Reconnect the saved printer on start, on return and after a lost link. Default: true. */
+  autoReconnect: boolean;
+  /** Waits between reconnection tries, in ms. */
+  reconnectDelays: readonly number[];
+}
+
+/**
+ * The printer component: connect, print images, HTML and views, a test page, reconnection and
+ * notices. Extend it from the app without touching the core:
+ * - `configure()` tunes its policies;
+ * - `driver` gives the native driver for low-level work;
+ * - `class MyPrinter extends PrinterService` overrides any method, registered with `setPrinterService`;
+ * - event interceptors (`DomainModule.interceptors`) wrap the print subscriber.
+ */
+export class PrinterService {
   private readonly bluetooth = bluetoothService;
   private cachedPrinter: ISelectedPrinter | null = null;
   /** The user disconnected on purpose: nothing reconnects until they connect again. */
   private userDisconnected = false;
+  private options: PrinterOptions = {
+    autoReconnect: true,
+    reconnectDelays: RECONNECT_DELAYS_MS,
+  };
+
+  /** Tunes the service from the app: e.g. no automatic reconnection, or other delays. */
+  configure(options: Partial<PrinterOptions>): void {
+    this.options = { ...this.options, ...options };
+  }
+
+  /**
+   * The native driver, for what this service does not wrap: raw commands, other formats,
+   * custom status checks. Low level on purpose: the app reaches it without changing the core.
+   */
+  get driver(): IPrinterDriver {
+    return getPrinterDriver();
+  }
 
   setDriver(driver: IPrinterDriver): void {
     setPrinterDriver(driver);
@@ -370,7 +406,11 @@ class PrinterService {
    * Final: returns the cleanup that removes the listeners and the pending try.
    */
   keepConnected(): () => void {
-    const reconnector = createReconnector(() => this.restoreConnection());
+    if (!this.options.autoReconnect) return () => {};
+    const reconnector = createReconnector(
+      () => this.restoreConnection(),
+      this.options.reconnectDelays,
+    );
     reconnector.start();
     const offConnection = this.onConnectionChange(({ reason }) => {
       if (reason === "link_lost") reconnector.start();
@@ -425,4 +465,15 @@ class PrinterService {
   }
 }
 
-export const printerService = new PrinterService();
+const printerSlot = replaceable(new PrinterService());
+
+/**
+ * The app's printer service. A subclass replaces it for the whole app, the core included:
+ * `setPrinterService(new MyPrinter())` at module scope, before the AppShell mounts.
+ */
+export function setPrinterService(service: PrinterService): void {
+  printerSlot.set(service);
+}
+
+/** Always the current implementation, so a replacement reaches every caller of the core. */
+export const printerService: PrinterService = printerSlot.instance;

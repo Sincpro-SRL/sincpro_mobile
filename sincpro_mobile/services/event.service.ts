@@ -1,5 +1,6 @@
 import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
 import type { IntegrationEvent } from "@sincpro/mobile/domain/events";
+import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers/EventBus";
 
@@ -8,7 +9,7 @@ export const RECENT_EVENTS_LIMIT = 500;
 export const DEFAULT_EVENT_RETENTION_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-class EventService {
+export class EventService {
   async listRecentEvents(limit: number = RECENT_EVENTS_LIMIT): Promise<IntegrationEvent[]> {
     loggerUseCases.info(`Fetching the latest ${limit} events`);
     return DomainEventRepository.findRecent(limit);
@@ -28,4 +29,11 @@ class EventService {
   }
 }
 
-export const eventService = new EventService();
+const eventServiceSlot = replaceable(new EventService());
+
+/** Swaps the implementation for a subclass, for the whole app and the core. */
+export function setEventService(service: EventService): void {
+  eventServiceSlot.set(service);
+}
+
+export const eventService: EventService = eventServiceSlot.instance;
