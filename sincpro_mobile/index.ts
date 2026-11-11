@@ -57,7 +57,14 @@ export {
   setLayerEnabled,
   subscribeLoggerConfig,
 } from "@sincpro/mobile/infrastructure/logger";
-export { configureObservability } from "@sincpro/mobile/infrastructure/observability";
+export {
+  type AppIdentity,
+  appIdentity,
+  instrumentObservability,
+  type Observability,
+  type ObservabilityConfig,
+  processObservability,
+} from "@sincpro/mobile/infrastructure/observability";
 export type {
   LokiAuth,
   LokiConfig,

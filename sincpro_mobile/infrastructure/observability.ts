@@ -1,28 +1,171 @@
 import { configureProcess, type ErrorReporter } from "@sincpro/client-framework";
 import { openTelemetryTracer } from "@sincpro/client-framework/opentelemetry";
+import { type ExceptionClient, sentryReporter } from "@sincpro/client-framework/sentry";
+import * as Application from "expo-application";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 
-import { mobileLogger } from "./logger";
+import { configureLogger, mobileLogger, setConsoleDebug } from "./logger";
 import { getTracer } from "./telemetry/tracing/tracer";
+import type { FlushConfig, TelemetryConfig } from "./telemetry/types";
 
 /** The instrumentation scope every span of a use case is opened under. */
 export const TRACER_SCOPE = "@sincpro/mobile";
 
 /**
- * The process every bounded context of the app runs with: its spans through OpenTelemetry —
- * the provider `initTelemetry` registers, buffered in SQLite and shipped over OTLP — and its
- * lines through the console and Loki (`mobileLogger`).
- *
- * Context: called once, while the bundle loads (`createKernel`), before any use case runs; a
- * closed app the OS wakes builds the same kernel, so a background task runs with it too. The
- * tracer is OpenTelemetry's global one: it answers through whatever provider is registered when
- * a span starts, and records nothing while telemetry is off. `reporter` is where an unexpected
- * failure goes — `sentryReporter(client)` over the client the app initialized (GlitchTip speaks
- * Sentry); without one, nothing is reported.
+ * Who is running — read from the app itself, the same on its traces, its log lines and its
+ * reports, with sincpro_framework's keys.
  */
-export function configureObservability(options: { reporter?: ErrorReporter } = {}): void {
+export type AppIdentity = {
+  /** The app's slug (`sincpro-mobile-tickets`): `service.name`, and Loki's `app`/`service_name`. */
+  readonly name: string;
+  /** Its store id (`bo.com.sincpro.tickets`). */
+  readonly id: string;
+  /** app.json's `version` the bundle carries — an update (OTA) brings its own. */
+  readonly version: string;
+  /** The native build EAS numbers on every build (versionCode, CFBundleVersion). */
+  readonly build: string;
+  /** `production`, `preview` or `development`. */
+  readonly environment: string;
+  /** `<name>:<version>` — sincpro_framework's release: GlitchTip's release, the traces' `release`. */
+  readonly release: string;
+};
+
+/** Where the app's observability goes — one option of `defineAppShell`, everything in it. */
+export type ObservabilityConfig = {
+  /** `production`, `preview`, `development`. Default: development in a debug build. */
+  environment?: string;
+  /** Traces, to an OTLP collector (`https://otlp.sincpro.dev`; `/v1/traces` is added). */
+  traces?: { endpoint: string; headers?: Record<string, string> };
+  /**
+   * Log lines: their level and, with an endpoint, Loki (`https://loki.sincpro.dev`;
+   * `/loki/api/v1/push` is added). `info` by default; `debug` sends everything, `warn` only
+   * problems. In a debug build the console prints from that level; a release build's console
+   * stays silent.
+   */
+  logs?: {
+    endpoint?: string;
+    headers?: Record<string, string>;
+    level?: "debug" | "info" | "warn";
+  };
+  /**
+   * Unexpected failures: the app's Sentry-compatible client (GlitchTip), initialized by the app
+   * with who is running — its release, its build as `dist`, its environment. Expected ones (a
+   * printer off, a refusal) are never reported.
+   */
+  errors?: (app: AppIdentity) => ExceptionClient | undefined;
+  /** Delivery tuning of traces and logs. */
+  flush?: FlushConfig;
+};
+
+/** What the process was instrumented with. */
+export type Observability = {
+  readonly app: AppIdentity;
+  /** Started after the migrations (`startApp`), and by a background flush. */
+  readonly telemetry: TelemetryConfig | undefined;
+  readonly reporter: ErrorReporter | undefined;
+};
+
+let current: Observability | undefined;
+
+/** A debug build (`__DEV__`); false where the global does not exist (Node). */
+function debugBuild(): boolean {
+  return typeof __DEV__ !== "undefined" && __DEV__;
+}
+
+/**
+ * Instruments the process — what `createKernel` does while the bundle loads, before any use
+ * case runs, so a background task the OS wakes runs the same way:
+ * 1. Who is running, read from the app (`appIdentity`).
+ * 2. Its log lines: the console's mode and level, and what Loki receives.
+ * 3. Its unexpected failures: the app's client, wrapped as the process's reporter.
+ * 4. The process: spans through OpenTelemetry's global tracer — the provider `initTelemetry`
+ *    registers, buffered in SQLite and shipped over OTLP —, lines through `mobileLogger`.
+ * Final: the telemetry config, started after the migrations so its tables exist.
+ */
+export function instrumentObservability(config: ObservabilityConfig = {}): Observability {
+  const app = appIdentity(config.environment);
+  configureLogs(config.logs);
+  const client = config.errors?.(app);
+  const reporter = client ? sentryReporter(client) : undefined;
   configureProcess({
     tracer: openTelemetryTracer(getTracer(TRACER_SCOPE)),
     logger: { engine: mobileLogger },
-    ...(options.reporter ? { reporter: options.reporter } : {}),
+    ...(reporter ? { reporter } : {}),
   });
+  current = { app, telemetry: telemetryOf(app, config), reporter };
+  return current;
+}
+
+/** What the process was instrumented with; before `createKernel`, nothing. */
+export function processObservability(): Observability | undefined {
+  return current;
+}
+
+/**
+ * Who is running, from its config (`expo-constants`) and its native binary (`expo-application`),
+ * never from a value written by hand. The version is the bundle's, so an update shows its own.
+ */
+export function appIdentity(environment?: string): AppIdentity {
+  const name = Constants?.expoConfig?.slug ?? "app";
+  const id = Application?.applicationId ?? name;
+  const version =
+    Constants?.expoConfig?.version ?? Application?.nativeApplicationVersion ?? "0.0.0";
+  const build = Application?.nativeBuildVersion ?? "0";
+  return {
+    name,
+    id,
+    version,
+    build,
+    environment: environment || (debugBuild() ? "development" : "production"),
+    release: `${name}:${version}`,
+  };
+}
+
+/** The console's mode from the build, and the level both the console and Loki take. */
+function configureLogs(logs: ObservabilityConfig["logs"]): void {
+  const level = logs?.level ?? "info";
+  configureLogger({
+    mode: debugBuild() ? "development" : "production",
+    level: level === "debug" ? "debug" : "info",
+    loki: level,
+  });
+  if (debugBuild()) setConsoleDebug(level !== "warn");
+}
+
+/** Traces and log lines, each saying who sent it; nothing without an endpoint. */
+function telemetryOf(
+  app: AppIdentity,
+  config: ObservabilityConfig,
+): TelemetryConfig | undefined {
+  const { traces, logs } = config;
+  if (!traces && !logs?.endpoint) return undefined;
+  return {
+    serviceName: app.name,
+    serviceVersion: app.version,
+    deploymentEnvironment: app.environment,
+    resourceAttributes: {
+      release: app.release,
+      "app.id": app.id,
+      "app.build": app.build,
+      "os.type": Platform?.OS ?? "unknown",
+      "os.version": String(Platform?.Version ?? ""),
+    },
+    ...(traces ? { otlp: { endpoint: traces.endpoint, headers: traces.headers } } : {}),
+    ...(logs?.endpoint
+      ? {
+          loki: {
+            endpoint: logs.endpoint,
+            labels: {
+              app: app.name,
+              service_name: app.name,
+              env: app.environment,
+              version: app.version,
+            },
+            headers: logs.headers,
+          },
+        }
+      : {}),
+    ...(config.flush ? { flush: config.flush } : {}),
+  };
 }

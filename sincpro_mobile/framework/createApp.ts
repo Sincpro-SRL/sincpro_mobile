@@ -1,7 +1,10 @@
-import { type ErrorReporter, logger } from "@sincpro/client-framework";
+import { logger } from "@sincpro/client-framework";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
-import { configureObservability } from "@sincpro/mobile/infrastructure/observability";
-import type { TelemetryConfig } from "@sincpro/mobile/infrastructure/telemetry";
+import {
+  instrumentObservability,
+  type ObservabilityConfig,
+  processObservability,
+} from "@sincpro/mobile/infrastructure/observability";
 import { initTelemetry } from "@sincpro/mobile/infrastructure/telemetry";
 import { installWebCrypto } from "@sincpro/mobile/infrastructure/web_crypto";
 import type { CronWorkerOpts } from "@sincpro/mobile/infrastructure/workers";
@@ -16,10 +19,11 @@ import { orchestrator } from "./orchestrator";
 export interface AppConfig {
   domains?: DomainModule[];
   /**
-   * Opt-in telemetry. When provided, the Loki client and flush cron start automatically
-   * after migrations complete — so the `telemetry_queue` table is guaranteed to exist.
+   * Everything observability, in one place: traces (OTLP), log lines and their level (Loki),
+   * unexpected failures (GlitchTip), each saying who is running. Instrumented while the kernel
+   * is built; traces and logs start shipping after the migrations, so their tables exist.
    */
-  telemetry?: TelemetryConfig;
+  observability?: ObservabilityConfig;
   /**
    * Override options for any cron by taskName.
    * `ui` marks the cron for the activity toast. Silence is the default.
@@ -29,36 +33,33 @@ export interface AppConfig {
   crons?: Record<string, Partial<CronWorkerOpts>>;
   /** Days an acknowledged event stays in the local log. Defaults to 7. */
   eventRetentionDays?: number;
-  /**
-   * Where an unexpected failure of a use case is reported: `sentryReporter(Sentry)` over the
-   * client the app initialized (GlitchTip speaks Sentry). Expected ones — a printer off, a
-   * refusal — are never reported. Omit it and nothing is.
-   */
-  reporter?: ErrorReporter;
 }
 
 /**
  * Builds the kernel without IO: safe to call while the bundle loads. It installs Web Crypto's
- * random source (`installWebCrypto`), which every run's id needs, and configures the
- * process every bounded context runs with (`configureObservability`), so a background task the
- * OS wakes runs traced and logged the same way.
+ * random source (`installWebCrypto`), which every run's id needs, and instruments the process
+ * every bounded context runs with (`instrumentObservability`), so a background task the OS
+ * wakes runs traced, logged and reported the same way.
  */
 export function createKernel(
-  config: Pick<AppConfig, "domains" | "crons" | "reporter"> = {},
+  config: Pick<AppConfig, "domains" | "crons" | "observability"> = {},
 ): Kernel {
   // Every run needs an id before anything else, and Hermes has no Web Crypto.
   installWebCrypto();
-  configureObservability({ reporter: config.reporter });
+  instrumentObservability(config.observability);
   const kernel = new Kernel([baseModule, ...(config.domains ?? [])]);
   if (config.crons) kernel.applyCronConfig(config.crons);
   kernel.registerExtensions();
   return kernel;
 }
 
-/** Starts a kernel built with {@link createKernel}: data layer, queue, crons and telemetry. */
+/**
+ * Starts a kernel built with {@link createKernel}: data layer, queue, crons and the shipping of
+ * what the process was instrumented with.
+ */
 export async function startApp(
   kernel: Kernel,
-  config: Pick<AppConfig, "telemetry" | "eventRetentionDays"> = {},
+  config: Pick<AppConfig, "eventRetentionDays"> = {},
 ): Promise<Kernel> {
   orchestrator.configure(kernel);
   await orchestrator.bootstrap();
@@ -69,9 +70,8 @@ export async function startApp(
       logger.warn("Event history pruning failed", errorAttributes(error)),
     );
 
-  if (config.telemetry) {
-    await initTelemetry(config.telemetry);
-  }
+  const telemetry = processObservability()?.telemetry;
+  if (telemetry) await initTelemetry(telemetry);
 
   return kernel;
 }

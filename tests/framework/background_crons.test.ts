@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import MIGRATIONS, { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
 import { defineBackgroundCrons } from "@sincpro/mobile/framework/background";
 import { DomainModule } from "@sincpro/mobile/framework/domain_module";
 import { Kernel } from "@sincpro/mobile/framework/kernel";
+import { instrumentObservability } from "@sincpro/mobile/infrastructure/observability";
 import { initTelemetry } from "@sincpro/mobile/infrastructure/telemetry";
 import { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 import * as BackgroundTask from "expo-background-task";
@@ -136,22 +138,30 @@ test("bootstrap runs migrations once per context and retries after a failure", a
 
 test("the telemetry flush gets an OS task only when it runs in background", () => {
   tasks.delete("TELEMETRY_FLUSH");
-  defineBackgroundCrons(countingKernel([]).kernel, {
-    telemetry: { flush: { backgroundIntervalMin: 5 } },
+  instrumentObservability({
+    traces: { endpoint: "http://otlp.test" },
+    flush: { backgroundIntervalMin: 5 },
   });
+  defineBackgroundCrons(countingKernel([]).kernel);
   assert.equal(
     tasks.has("TELEMETRY_FLUSH"),
     false,
     "under 15 min it is a foreground interval",
   );
 
-  defineBackgroundCrons(countingKernel([]).kernel, { telemetry: {} });
+  instrumentObservability({ traces: { endpoint: "http://otlp.test" } });
+  defineBackgroundCrons(countingKernel([]).kernel);
   assert.equal(tasks.has("TELEMETRY_FLUSH"), true, "15 min by default");
 });
 
 test("a woken app flushes telemetry without scheduling the task again", async () => {
+  // The flush reads the telemetry tables a real bootstrap creates.
+  for (const table of [DATABASE_TABLES.TELEMETRY_QUEUE, DATABASE_TABLES.SPANS_QUEUE]) {
+    await MIGRATIONS.find((one) => one.name === table)!.migrationFn();
+  }
   const { kernel, prepared } = countingKernel([]);
-  defineBackgroundCrons(kernel, { telemetry: {} });
+  instrumentObservability({ traces: { endpoint: "http://otlp.test" } });
+  defineBackgroundCrons(kernel);
   const loadTime = tasks.get("TELEMETRY_FLUSH");
   registered.delete("TELEMETRY_FLUSH");
 

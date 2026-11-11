@@ -1,10 +1,8 @@
 import { logger } from "@sincpro/client-framework";
 import { EBuiltinCron } from "@sincpro/mobile/entrypoints/cron/EBuiltinCron";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
-import {
-  runBackgroundTelemetryFlush,
-  type TelemetryConfig,
-} from "@sincpro/mobile/infrastructure/telemetry";
+import { processObservability } from "@sincpro/mobile/infrastructure/observability";
+import { runBackgroundTelemetryFlush } from "@sincpro/mobile/infrastructure/telemetry";
 import { DEFAULT_BACKGROUND_INTERVAL_MIN } from "@sincpro/mobile/infrastructure/telemetry/telemetry_flush_worker";
 import {
   BACKGROUND_MIN_INTERVAL,
@@ -12,11 +10,6 @@ import {
 } from "@sincpro/mobile/infrastructure/workers";
 
 import type { Kernel } from "./kernel";
-
-export interface BackgroundOptions {
-  /** Same config the app passes to telemetry: its background flush is defined too. */
-  telemetry?: TelemetryConfig;
-}
 
 /** Prepares the data layer the way a closed app needs it, then runs the work. */
 function inBackground(kernel: Kernel, taskName: string, work: () => Promise<boolean>) {
@@ -35,14 +28,15 @@ function inBackground(kernel: Kernel, taskName: string, work: () => Promise<bool
 }
 
 /**
- * Defines the OS task of every background cron of the kernel, plus the telemetry flush.
+ * Defines the OS task of every background cron of the kernel, plus the telemetry flush of what
+ * the process was instrumented with (`createKernel`, from `observability`).
  * Call it while the bundle loads (`defineAppShell` does): a closed app woken by the OS
  * evaluates the bundle without mounting React, so the task must already exist and the
  * run prepares the data layer itself. Registering with the scheduler stays with the
  * orchestrator and telemetry, which only do it for active domains and, when the cron
  * asks for it, an authenticated session.
  */
-export function defineBackgroundCrons(kernel: Kernel, options: BackgroundOptions = {}): void {
+export function defineBackgroundCrons(kernel: Kernel): void {
   for (const cron of Object.values(kernel.cronsByKey()).flat()) {
     if (!cron.runsInBackground) continue;
     defineBackgroundTask(
@@ -51,7 +45,7 @@ export function defineBackgroundCrons(kernel: Kernel, options: BackgroundOptions
     );
   }
 
-  const { telemetry } = options;
+  const telemetry = processObservability()?.telemetry;
   const flushInterval =
     telemetry?.flush?.backgroundIntervalMin ?? DEFAULT_BACKGROUND_INTERVAL_MIN;
   if (telemetry && flushInterval >= BACKGROUND_MIN_INTERVAL) {
