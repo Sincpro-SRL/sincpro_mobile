@@ -282,8 +282,9 @@ export function TicketsScreen() {
 }
 ```
 
-The screen is registered against the module key in the app shell `ui` map
-(`{ [ticketsModule.key]: TicketsScreen }`).
+The host's router renders the screen: an Expo Router file under `app/` imports it and passes
+its callbacks. The library never knows the route; when the active domain changes, the shell tells
+the host (`onDomainChange`) and the host navigates. 2.0 removed the app shell's `ui` map.
 
 ---
 
