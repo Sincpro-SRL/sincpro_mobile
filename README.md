@@ -448,9 +448,9 @@ class SyncOrderEvent extends DomainEvent {
 }
 
 // Check status at any point
-import { networkUseCases } from "@sincpro/mobile/services/network.service";
+import { CommandCheckConnectivity, commonBoundedContext } from "@sincpro/mobile";
 
-const status = await networkUseCases.getNetworkStatus();
+const status = await commonBoundedContext.execute(new CommandCheckConnectivity());
 // { isConnected: boolean, isInternetReachable: boolean | null, type: "wifi"|"cellular"|…, ipAddress }
 ```
 
@@ -541,11 +541,11 @@ See [Telemetry Architecture](#telemetry-architecture) for the delivery and reten
 The printer port (`IPrinterDriver`) is defined by the framework; the concrete driver is registered by the app. Every printer operation is a use case of `commonBoundedContext`: a screen executes a Command, and the run has its span, its log lines, its failure kind and — only when unexpected — its report.
 
 ```tsx
-// Register the adapter before AppShell boots
-import { printerService } from "@sincpro/mobile/services/printer.service";
-import { PrinterAdapter } from "./adapters/Printer.adapter"; // your Bluetooth impl
+// Register the native driver (the IPrinterDriver port) before AppShell boots
+import { setPrinterDriver } from "@sincpro/mobile/domain/print";
+import { PrinterDriver } from "./adapters/Printer.driver"; // your Bluetooth impl
 
-printerService.setDriver(PrinterAdapter);
+setPrinterDriver(PrinterDriver);
 
 // Then, from a screen
 import {
@@ -575,7 +575,7 @@ Each use case tells the person what happened through the `Notifier` port; the sc
 
 **Grace reconnect:** if a print fails on a stale link, the adapter disconnects, reconnects to the chosen printer and tries once more.
 
-**Kept connected:** while the app runs, the core brings the chosen printer back on start, on return to the foreground and after a lost link, backing off up to 30 s; each try is `CommandRestorePrinterConnection`. `printerService.configure({ autoReconnect: false })` turns it off. `printerService.driver` reaches the native driver for what the adapter does not wrap.
+**Kept connected:** while the app runs, the core brings the chosen printer back on start, on return to the foreground and after a lost link, backing off up to 30 s; each try is `CommandRestorePrinterConnection`. `printerAdapter.configure({ autoReconnect: false })` (`@sincpro/mobile/adapters/Printer.adapter`) turns it off. `printerAdapter.driver` reaches the native driver for what the adapter does not wrap. An app replaces the adapter for every use case with `commonBoundedContext.addDependency("printer", myPrinter, { replaces: printerAdapter })`.
 
 ### ✅ WebView Print Interception
 
@@ -740,8 +740,8 @@ All hooks return safe empty defaults. Override only what your domain needs.
 ### Step 3 — Wire the module in the app shell
 
 ```tsx
-// Register adapters before the shell boots
-printerService.setDriver(PrinterAdapter);
+// Register the native drivers before the shell boots
+setPrinterDriver(PrinterDriver);
 
 export const ticketsShell = defineAppShell({
   theme:        createTheme(TICKETS_THEME),
@@ -1163,16 +1163,14 @@ import type { IMigration } from "@sincpro/mobile/domain/database";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 
-// Services
-import { printerService } from "@sincpro/mobile/services/printer.service";
-import { eventService } from "@sincpro/mobile/services/event.service";
-import { networkUseCases } from "@sincpro/mobile/services/network.service";
+// Use cases: the core's bounded context and its Commands
+import { CommandPrintImage, commonBoundedContext } from "@sincpro/mobile/services";
 
-// Adapters
-import { WebViewAdapter } from "@sincpro/mobile/adapters/webview";
-import { NetworkAdapter } from "@sincpro/mobile/adapters/network";
-import { GeoAdapter } from "@sincpro/mobile/adapters/geo";
-import { ReceiptExporterAdapter } from "@sincpro/mobile/adapters/receipt_exporter";
+// Adapters: what the use cases hold
+import { printerAdapter } from "@sincpro/mobile/adapters/Printer.adapter";
+import { bluetoothAdapter } from "@sincpro/mobile/adapters/Bluetooth.adapter";
+import { networkAdapter } from "@sincpro/mobile/adapters/Network.adapter";
+import { WebViewAdapter } from "@sincpro/mobile/adapters/webview.adapter";
 
 // UI components (screens, events)
 import { PlainLayout } from "@sincpro/mobile/ui/screens/events";

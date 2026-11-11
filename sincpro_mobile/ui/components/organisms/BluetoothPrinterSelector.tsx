@@ -6,7 +6,6 @@ import {
   CommandRequestBluetoothPermission,
   commonBoundedContext,
 } from "@sincpro/mobile/services";
-import { printerService } from "@sincpro/mobile/services/printer.service";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
 import { BluetoothDeviceSelectorModal } from "@sincpro/mobile/ui/components/molecules/BluetoothDeviceSelectorModal";
@@ -163,7 +162,7 @@ function BluetoothPrinterSelector({
   // (apagada o fuera de rango), así el estado mostrado no queda congelado.
   useEffect(
     () =>
-      printerService.onConnectionChange((connection) => {
+      commonBoundedContext.deps.printer.onConnectionChange((connection) => {
         setIsConnected(connection.state === "CONNECTED");
       }),
     [],

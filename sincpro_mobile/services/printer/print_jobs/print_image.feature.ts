@@ -2,7 +2,7 @@ import { Command, newEntityId } from "@sincpro/client-framework";
 import { printNoticeKey } from "@sincpro/mobile/domain/webview/print_cycle";
 import { DomainValidationError } from "@sincpro/mobile/exceptions";
 import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
-import { printFollowed } from "@sincpro/mobile/services/print/notices";
+import { printFollowed } from "@sincpro/mobile/services/printer/print_jobs/common";
 
 export class CommandPrintImage extends Command<void> {
   constructor(

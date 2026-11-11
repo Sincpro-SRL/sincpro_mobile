@@ -5,7 +5,7 @@ import type { TelemetryConfig } from "@sincpro/mobile/infrastructure/telemetry";
 import { initTelemetry } from "@sincpro/mobile/infrastructure/telemetry";
 import type { CronWorkerOpts } from "@sincpro/mobile/infrastructure/workers";
 import { commonBoundedContext } from "@sincpro/mobile/services";
-import { CommandPruneEventHistory } from "@sincpro/mobile/services/events/stored_events.feature";
+import { CommandPruneEventHistory } from "@sincpro/mobile/services/events/prune_event_history.feature";
 
 import { baseModule } from "./base_module";
 import type { DomainModule } from "./domain_module";

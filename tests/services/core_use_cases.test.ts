@@ -135,7 +135,7 @@ test("an unexpected failure of the printer adapter is a fault: the run fails and
 });
 
 test("the printer settings read their status through a use case, traced", async () => {
-  swap("bluetooth", { checkPermissions: async () => ({ isGranted: true }) });
+  swap("bluetooth", { hasPermissions: async () => ({ isGranted: true }) });
   swap("printer", {
     getSelectedPrinter: async () => ({ name: "Caja 1", address: "AA:BB", selectedAt: "" }),
     isConnected: () => false,
@@ -183,14 +183,19 @@ test("each reconnection try is a run; a printer that stays off is refused, never
 });
 
 test("the screens' event operations are use cases with their spans", async () => {
-  swap("events", { retryEvents: async (records: readonly unknown[]) => records.length - 1 });
+  const drained: string[] = [];
+  swap("eventStore", { retry: async (ids: readonly string[]) => ids.length - 1 });
+  swap("eventDelivery", { drain: async () => void drained.push("drain") });
 
-  const moved = await commonBoundedContext.execute(new CommandRetryEvents([{}, {}] as never));
+  const moved = await commonBoundedContext.execute(
+    new CommandRetryEvents([{ id: "a" }, { id: "b" }] as never),
+  );
 
   assert.equal(moved, 1);
   const span = spanOf("common/RetryEvents");
   assert.equal(span?.attributes["events.asked"], 2);
   assert.equal(span?.attributes["events.retried"], 1);
+  assert.deepEqual(drained, ["drain"], "what went back is delivered");
 });
 
 /** A queue that keeps what it was given: the event and the envelope the run wrote. */

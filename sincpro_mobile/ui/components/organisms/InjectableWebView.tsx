@@ -1,6 +1,5 @@
 import { logger } from "@sincpro/client-framework";
-import { IInjectedScript } from "@sincpro/mobile/domain/webview";
-import { webViewService } from "@sincpro/mobile/services/webview.service";
+import { combineScripts, type IInjectedScript } from "@sincpro/mobile/domain/webview";
 import { useToast } from "@sincpro/mobile-ui/Feedback";
 import Spinner from "@sincpro/mobile-ui/Feedback/Feedback.Spinner";
 import { useBottomInset } from "@sincpro/mobile-ui/layouts/BottomInset";
@@ -201,7 +200,7 @@ function InjectableWebView({
 
   const toast = useToast();
   const bottomInset = useBottomInset();
-  const finalScript = webViewService.combineScripts(scripts, injectedJavaScript);
+  const finalScript = combineScripts(scripts, injectedJavaScript);
   const [isLoading, setIsLoading] = useState(true);
   const [instance, setInstance] = useState(0);
   /** A load this component started: it shows the overlay and is checked for getting stuck. */

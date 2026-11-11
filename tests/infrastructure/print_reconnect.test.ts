@@ -105,7 +105,10 @@ test("a failed print tells the user before it goes to the failed queue", async (
   const { readFileSync } = await import("node:fs");
   const path = await import("node:path");
   const source = readFileSync(
-    path.resolve(import.meta.dirname, "../../sincpro_mobile/services/print/notices.ts"),
+    path.resolve(
+      import.meta.dirname,
+      "../../sincpro_mobile/services/printer/print_jobs/common.ts",
+    ),
     "utf8",
   );
   const failed = source.slice(source.indexOf('name: "printer.print_failed"'));

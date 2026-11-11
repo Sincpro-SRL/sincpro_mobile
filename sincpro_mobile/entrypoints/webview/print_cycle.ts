@@ -6,12 +6,10 @@ import type {
   WebViewMessageHandler,
 } from "@sincpro/mobile/infrastructure/webview/message_handlers";
 import { PagePrintWatch } from "@sincpro/mobile/infrastructure/webview/page_print_watch";
-import {
-  CommandFailPagePrint,
-  CommandQueuePrint,
-  CommandStartPagePrint,
-  UNTRACKED_PAGE_JOB,
-} from "@sincpro/mobile/services/print/page_print.feature";
+import { UNTRACKED_PAGE_JOB } from "@sincpro/mobile/services/printer/print_jobs/common";
+import { CommandFailPagePrint } from "@sincpro/mobile/services/printer/print_jobs/fail_page_print.feature";
+import { CommandQueuePrint } from "@sincpro/mobile/services/printer/print_jobs/queue_print.feature";
+import { CommandStartPagePrint } from "@sincpro/mobile/services/printer/print_jobs/start_page_print.feature";
 
 /**
  * The print cycle of a page with the print interceptor — the door a page prints through: each

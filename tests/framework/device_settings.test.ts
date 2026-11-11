@@ -19,7 +19,7 @@ test("the saved printer stays connected through a core hook, not the AppShell", 
   const onStart = base.slice(base.indexOf("override onStart(): void {"));
   assert.match(
     onStart,
-    /if \(!hasPrinterDriver\(\) \|\| !printerService\.policy\.autoReconnect\) return;/,
+    /if \(!hasPrinterDriver\(\) \|\| !printer\.policy\.autoReconnect\) return;/,
   );
   assert.match(
     onStart,
@@ -27,5 +27,5 @@ test("the saved printer stays connected through a core hook, not the AppShell", 
     "each try is a run of the core's bounded context",
   );
   const shell = read("sincpro_mobile/entrypoints/ui/AppShell.tsx");
-  assert.doesNotMatch(shell, /printerService|hasPrinterDriver/);
+  assert.doesNotMatch(shell, /printerAdapter|hasPrinterDriver/);
 });

@@ -1,16 +1,12 @@
-import type { Notifier } from "@sincpro/mobile/domain/notifier";
-import { BluetoothPermissionDenied, PrinterNotSelected } from "@sincpro/mobile/exceptions";
-import { PRINT_FAILURE_ACTIONS } from "@sincpro/mobile/services/printer.service";
+import type { Notice, Notifier } from "@sincpro/mobile/domain/notifier";
+import {
+  PRINT_FAILURE_ACTIONS,
+  PRINT_NOTICE_ACTIONS,
+  whyNotPrinted,
+} from "@sincpro/mobile/services/printer/common";
 
-/** What the person reads when a print did not come out, by the failure's kind. */
-export function whyNotPrinted(error: unknown, title: string): string {
-  if (error instanceof PrinterNotSelected) return "Selecciona una impresora primero.";
-  if (error instanceof BluetoothPermissionDenied)
-    return "Habilita los permisos de Bluetooth en configuración.";
-  return title
-    ? `«${title}»: revisa que la impresora esté encendida y cerca.`
-    : "Revisa que la impresora esté encendida y cerca.";
-}
+/** A page that sent no job id: its steps still share one notice. */
+export const UNTRACKED_PAGE_JOB = "page";
 
 /**
  * A print the person follows in one notice (`key`):
@@ -51,4 +47,18 @@ export async function printFollowed(
     message: job.title || "La impresión salió",
     variant: "success",
   });
+}
+
+/** The notice of a page's print that never reached the printer. */
+export function captureFailed(key: string, title: string): Notice {
+  return {
+    key,
+    name: "printer.capture_failed",
+    title: "No se pudo preparar la impresión",
+    message: title
+      ? `«${title}»: vuelve a intentarlo desde la página.`
+      : "Vuelve a intentarlo desde la página.",
+    variant: "danger",
+    actions: [PRINT_NOTICE_ACTIONS.printer],
+  };
 }

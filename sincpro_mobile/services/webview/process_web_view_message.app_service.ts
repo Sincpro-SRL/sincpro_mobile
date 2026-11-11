@@ -1,9 +1,13 @@
 import { Command } from "@sincpro/client-framework";
 import {
+  isPrintImageMessage,
+  parseWebViewMessage,
+} from "@sincpro/mobile/domain/webview/messages";
+import {
   ApplicationService,
   commonBoundedContext,
 } from "@sincpro/mobile/infrastructure/framework";
-import { CommandQueuePrint } from "@sincpro/mobile/services/print/page_print.feature";
+import { CommandQueuePrint } from "@sincpro/mobile/services/printer/print_jobs/queue_print.feature";
 
 export class CommandProcessWebViewMessage extends Command<void> {
   constructor(readonly raw: string) {
@@ -21,15 +25,15 @@ export class ProcessWebViewMessage extends ApplicationService<
   void
 > {
   async execute(command: CommandProcessWebViewMessage): Promise<void> {
-    const parsed = this.webView.parseMessage(command.raw);
-    if (!parsed || !this.webView.isPrintImage(parsed)) return;
+    const message = parseWebViewMessage(command.raw);
+    if (!message || !isPrintImageMessage(message)) return;
     await this.featureBus.execute(
       new CommandQueuePrint(
-        parsed.image,
-        parsed.width,
-        parsed.height,
-        parsed.metadata.title,
-        parsed.jobId ?? "",
+        message.image,
+        message.width,
+        message.height,
+        message.metadata.title,
+        message.jobId ?? "",
       ),
     );
   }

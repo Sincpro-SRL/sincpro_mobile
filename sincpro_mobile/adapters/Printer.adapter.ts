@@ -18,7 +18,6 @@ import {
   PrinterNotSelected,
   PrinterUnavailable,
 } from "@sincpro/mobile/exceptions";
-import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import { RECONNECT_DELAYS_MS } from "@sincpro/mobile/infrastructure/print/reconnect";
 import { File } from "expo-file-system";
@@ -26,21 +25,7 @@ import * as Print from "expo-print";
 import type { RefObject } from "react";
 import type { View } from "react-native";
 
-import { bluetoothService } from "./bluetooth.service";
-
-/**
- * Where a print problem sends the person. The host maps each intent to a screen:
- * `failed-prints` to the list of prints that did not come out, `printer` to its settings.
- */
-export const PRINT_NOTICE_ACTIONS = {
-  failed: { label: "Ver fallidas", intent: "failed-prints" },
-  printer: { label: "Impresora", intent: "printer" },
-} as const;
-/** What a print that did not come out offers: the failed list and the printer settings. */
-export const PRINT_FAILURE_ACTIONS = [
-  PRINT_NOTICE_ACTIONS.failed,
-  PRINT_NOTICE_ACTIONS.printer,
-];
+import { bluetoothAdapter } from "./Bluetooth.adapter";
 
 export interface PrinterOptions {
   /** Reconnect the saved printer on start, on return and after a lost link. Default: true. */
@@ -50,20 +35,23 @@ export interface PrinterOptions {
 }
 
 /**
- * The printer as a device — the adapter the print use cases hold (`this.printer`): the native
- * driver, the printer the person chose, and connecting, scanning and printing.
+ * The printer as a device — the adapter the printer's use cases hold (`this.printer`): it adapts
+ * the native driver the app registered (`setPrinterDriver`, the `IPrinterDriver` port) to the
+ * domain — the printer the person chose, connecting, scanning and printing, each failure with
+ * its kind.
  *
- * Context: it tells nobody anything and hides no failure. Each one says its kind: no printer
- * chosen is `PrinterNotSelected` (domain), a printer off or out of reach `PrinterUnavailable`
- * (unavailable), a Bluetooth permission missing `BluetoothPermissionDenied` (permission_denied).
- * What the person reads, and when, is the use case's (`services/printer`, `services/print`),
- * so every operation is a run with its span, its log lines and its report. Extend it from the
- * app without touching the core: `configure()` tunes its policies, `driver` reaches the native
- * driver, and `class MyPrinter extends PrinterService` registered with `setPrinterService`
- * replaces it for every use case.
+ * Context: it tells nobody anything and hides no failure. No printer chosen is
+ * `PrinterNotSelected` (domain), a printer off or out of reach `PrinterUnavailable`
+ * (unavailable), Bluetooth not granted `BluetoothPermissionDenied` (permission_denied). What the
+ * person reads, and when, is the use case's (`services/printer`), so every operation is a run
+ * with its span, its log lines and its report. It holds the device's state in the process (the
+ * chosen printer, a disconnection on purpose), as an adapter may and a use case never does.
+ * Extend it without touching the core: `configure()` tunes its policies, `driver` reaches the
+ * native driver, and a subclass takes its place for every use case with
+ * `commonBoundedContext.addDependency("printer", new MyPrinter(), { replaces: printerAdapter })`.
  */
-export class PrinterService {
-  private readonly bluetooth = bluetoothService;
+export class PrinterAdapter {
+  private readonly bluetooth = bluetoothAdapter;
   private cachedPrinter: ISelectedPrinter | null = null;
   /** The person disconnected on purpose: nothing reconnects until they connect again. */
   private userDisconnected = false;
@@ -232,7 +220,7 @@ export class PrinterService {
     if (this.isConnected() || this.userDisconnected) return;
     const printer = await this.getSelectedPrinter();
     if (!printer) return;
-    if (!(await this.bluetooth.checkPermissions()).isGranted) return;
+    if (!(await this.bluetooth.hasPermissions()).isGranted) return;
     try {
       await getPrinterDriver().connectBluetooth(printer.address);
     } catch (error) {
@@ -240,11 +228,6 @@ export class PrinterService {
         `${printer.name} did not come back: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-  }
-
-  /** Actions offered when a print fails: the failed list and the printer settings. */
-  printFailureActions() {
-    return PRINT_FAILURE_ACTIONS;
   }
 
   private async requireBluetooth(): Promise<void> {
@@ -297,15 +280,5 @@ export class PrinterService {
   }
 }
 
-const printerSlot = replaceable(new PrinterService());
-
-/**
- * The app's printer adapter. A subclass replaces it for the whole app, the core included:
- * `setPrinterService(new MyPrinter())` at module scope, before the AppShell mounts.
- */
-export function setPrinterService(service: PrinterService): void {
-  printerSlot.set(service);
-}
-
-/** Always the current implementation, so a replacement reaches every use case. */
-export const printerService: PrinterService = printerSlot.instance;
+/** The core's printer: what `commonBoundedContext` holds as `printer`. */
+export const printerAdapter = new PrinterAdapter();

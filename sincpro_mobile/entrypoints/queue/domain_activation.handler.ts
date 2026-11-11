@@ -3,10 +3,8 @@ import {
   DeactivateDomainEvent,
 } from "@sincpro/mobile/domain/events/catalog";
 import { commonBoundedContext, EventHandler } from "@sincpro/mobile/infrastructure/framework";
-import {
-  CommandActivateDomain,
-  CommandDeactivateDomain,
-} from "@sincpro/mobile/services/domains/activate_domain.feature";
+import { CommandActivateDomain } from "@sincpro/mobile/services/domains/activate_domain.feature";
+import { CommandDeactivateDomain } from "@sincpro/mobile/services/domains/deactivate_domain.feature";
 
 /** A domain turned on or off by an event: it executes the use case that does it. */
 @commonBoundedContext.handler([ActivateDomainEvent, DeactivateDomainEvent])

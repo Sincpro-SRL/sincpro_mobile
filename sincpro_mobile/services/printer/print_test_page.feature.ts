@@ -1,7 +1,6 @@
 import { Command } from "@sincpro/client-framework";
 import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
-import { whyNotPrinted } from "@sincpro/mobile/services/print/notices";
-import { PRINT_NOTICE_ACTIONS } from "@sincpro/mobile/services/printer.service";
+import { PRINT_NOTICE_ACTIONS, whyNotPrinted } from "@sincpro/mobile/services/printer/common";
 
 export class CommandPrintTestPage extends Command<void> {}
 
