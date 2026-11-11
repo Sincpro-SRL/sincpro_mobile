@@ -69,6 +69,30 @@ export default function App() {
 | Peers `@react-navigation/native`, `@react-navigation/native-stack`, `react-native-screens`          | Eliminados: el framework no navega                                                                                                                                             |
 | Peer `react-native-toast-message`                                                                   | Eliminado: nada lo usa                                                                                                                                                         |
 
+### Sobre `@sincpro/client-framework`
+
+El proceso, los logs, los errores y los casos de uso son los de `@sincpro/client-framework`
+(los mismos de web y del backend). Mobile solo pone sus destinos: OpenTelemetry con la cola
+SQLite → OTLP, y la consola + Loki.
+
+| Antes (1.x)                                                                                            | 2.0                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@sincpro/client-framework` era una dependencia (`^0.6`)                                               | Es `peerDependency` `^1.2.0`: el host la instala, una sola copia en la app                                                                                                                                                                          |
+| `loggerUseCases`, `loggerQueueProcessor`, `loggerCronJobs`, `logger` (default) de mobile               | `logger` de `@sincpro/client-framework` (infraestructura); dentro de un caso de uso, `this.logger`                                                                                                                                                  |
+| `loggerRepositories`, `loggerOdooClient`, `loggerAdapter` de mobile                                    | `loggerAdapter` de `@sincpro/client-framework`                                                                                                                                                                                                      |
+| `logger.info(msg, ...cualquier cosa)`                                                                  | `logger.info(message, attributes?)`; un error con `errorAttributes(error)`                                                                                                                                                                          |
+| `configureLogger({ production, level: "DEBUG" })`                                                      | `configureLogger({ mode: __DEV__ ? "development" : "production", level: "debug", layers })`                                                                                                                                                         |
+| `EApplicationLogger` (GLOBAL, ODOO_CLIENT, ADAPTER, REPOSITORIES, USE_CASES, EVENT_BUS, CRON_JOBS)     | Capas `LOG_LAYERS`: `infrastructure`, `adapter`, `entrypoint`, `bounded_context`, `application_service`, `feature`. `DEFAULT_ENABLED_LOGS` → `DEFAULT_ENABLED_LAYERS` (adapters apagados)                                                           |
+| `getEnabledLoggers`, `isLoggerEnabled`, `setLoggerEnabled`, `setEnabledLoggers`, `resetEnabledLoggers` | `getEnabledLayers`, `isLayerEnabled`, `setLayerEnabled`, `setEnabledLayers`, `resetEnabledLayers`                                                                                                                                                   |
+| `Debug.loggers.*`, `Debug.hydrate()` → `{ enabled, loggers }`                                          | `Debug.layers.*` (`contexts` → `all`), `Debug.hydrate()` → `{ enabled, layers }`. La preferencia se guarda en `app.debug_log_layers`; la de `app.debug_loggers` se ignora y las capas parten de sus defaults                                        |
+| `useCommon()`: `loggerContexts`, `setLoggerContextEnabled`, `resetLoggerContexts`                      | `logLayers`, `setLogLayerEnabled`, `resetLogLayers`                                                                                                                                                                                                 |
+| `loggingHooks(logger)` con el tipo `Logger` de mobile                                                  | `loggingHooks(logger)` recibe un `LayerLogger` del framework; el tipo `Logger` ya no se exporta                                                                                                                                                     |
+| `Feature` y `ApplicationService` de mobile (un proxy con un span por método)                           | Eliminados: los de `@sincpro/client-framework`, registrados en un `BoundedContext` y ejecutados con `boundedContext.execute(new Command(...))`                                                                                                      |
+| Errores sin tipo de falla                                                                              | Cada error declara `failureKind`: `UserError`/`RejectedFailure` → `domain`, `ValidationError`/`ChecksFailed` → `invalid`, `StaleAggregate` → `conflict`, `NetworkError`/`RepeatableFailure` → `unavailable`, `BackendError`/`AppError` → `internal` |
+
+Una línea en Loki ahora dice su capa y su caso de uso: `[feature] [ventas.Cotizar] cotizado
+cantidad=3 trace_id=… span_id=…`. Un panel que filtraba por `[USE_CASES]` filtra por la capa.
+
 ## Comportamiento nuevo, sin cambio de API
 
 - **EventBus:**
@@ -87,6 +111,7 @@ export default function App() {
 - **Impresión:** la imagen viaja en memoria y no en `domain_events`. Se guardan como máximo 5 pendientes.
 - **Componentes:** los 9 que usaban el `Pressable` de RN con `className` pasan al primitivo del DS.
 - **Build:** la capa React (`ui/**`, `entrypoints/ui/**`) se publica compilada con React Compiler.
+- **Proceso:** `createKernel` configura el proceso del framework (`configureObservability`): cada caso de uso es un span del tracer global de OpenTelemetry — el provider que registra `initTelemetry`, sin nada que registrar si la telemetría está apagada — y cada línea pasa por `mobileLogger` (consola + Loki).
 
 ## Para quien escribe pantallas
 

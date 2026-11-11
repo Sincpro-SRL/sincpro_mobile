@@ -1,5 +1,5 @@
+import { logger } from "@sincpro/client-framework";
 import type { Subscriber } from "@sincpro/mobile/event_driven";
-import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers";
 
 import {
@@ -23,13 +23,13 @@ export const QueueProcessor = {
     if (isRunning) return;
     isRunning = true;
     EventBus.start();
-    loggerQueueProcessor.info("QueueProcessor started");
+    logger.info("QueueProcessor started");
   },
 
   stop: () => {
     EventBus.stop();
     isRunning = false;
-    loggerQueueProcessor.info("QueueProcessor stopped");
+    logger.info("QueueProcessor stopped");
   },
 
   clearQueue: async () => {
@@ -71,7 +71,7 @@ export const QueueProcessor = {
     currentSubscribers = desired;
     lastSyncState = newState;
 
-    loggerQueueProcessor.info(
+    logger.info(
       `QueueProcessor.sync: +${added} -${removed} subscribers (domains=${[...domains].join(",")}, auth=${isAuthenticated})`,
     );
 

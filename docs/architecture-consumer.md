@@ -127,37 +127,62 @@ unit-test business logic with an in-memory fake. The framework's own `DBCursor`,
 ### `services/` — use cases & workflows (business logic)
 
 A **use case** is one business transaction: load entities via repositories, run domain
-logic, persist, and let entities emit domain events. It extends `Feature`. A
-**workflow** orchestrates several `Feature`s in one turn and extends
-`ApplicationService`. Every public method is a span (`ClassName.method`); a method
-whose name starts with `_` is not. No decorator. See
-[PRD 01](prd/PRD_01_feature-y-application-service.md).
+logic, persist, and let entities emit domain events. It is a `Feature` of
+`@sincpro/client-framework`, registered for its `Command` in the module's bounded context. A
+**workflow** — several use cases with decisions between them — is an `ApplicationService` that
+composes Features through `this.featureBus`. Every run is a span (`<context>/<serviceName>`),
+logs through `this.logger` and is reported once when it fails unexpectedly; nothing else opens
+spans.
 
 ```ts
-import { ApplicationService, Feature } from "@sincpro/mobile";
+import {
+  ApplicationService,
+  BoundedContext,
+  Command,
+  Feature,
+} from "@sincpro/client-framework";
 
-export class CreateTicket extends Feature<{ tickets: ITicketRepository }> {
-  async execute(input: CreateTicketInput): Promise<Ticket> {
-    const ticket = Ticket.create(input);
-    await this.deps.tickets.save(ticket);
+export class CommandCreateTicket extends Command<Ticket> {
+  constructor(readonly input: CreateTicketInput) {
+    super();
+  }
+}
+
+export class CreateTicket extends Feature<CommandCreateTicket, Ticket> {
+  static readonly serviceName = "CreateTicket";
+  declare readonly tickets: ITicketRepository;
+  async execute(command: CommandCreateTicket): Promise<Ticket> {
+    const ticket = Ticket.create(command.input);
+    await this.tickets.save(ticket);
     return ticket;
   }
 }
 
-const day = { createTicket: new CreateTicket({ tickets }) };
-
-export class SyncDay extends ApplicationService<typeof day> {
-  async run(input: CreateTicketInput) {
-    return this.features.createTicket.execute(input); // child span, same trace
+export class SyncDay extends ApplicationService<CommandSyncDay, void> {
+  static readonly serviceName = "SyncDay";
+  async execute(command: CommandSyncDay): Promise<void> {
+    await this.featureBus.execute(new CommandCreateTicket(command.input)); // child span
   }
 }
 
-export const syncDay = new SyncDay(day);
+export const ticketsBoundedContext = new BoundedContext<{ tickets: ITicketRepository }>(
+  "tickets",
+);
+ticketsBoundedContext.addDependency("tickets", tickets);
+ticketsBoundedContext.feature(CommandCreateTicket)(CreateTicket);
+ticketsBoundedContext.appService(CommandSyncDay)(SyncDay);
+
+await ticketsBoundedContext.execute(new CommandCreateTicket(input)); // from a screen
 ```
 
-**Why a thin use-case layer:** it's the seam the UI and subscribers both call, the unit
-of a transaction, and the natural place to attach tracing. Keep it free of React and of
-SQL — it speaks domain + ports only.
+Services live in one folder per aggregate (`services/ticket/`); an entity of that aggregate with
+use cases of its own gets a folder inside it (`services/sale_order/payments/`). A bounded
+context is named for what it is — `ticketsBoundedContext`, never `ctx`.
+
+**Why a thin use-case layer:** it's the seam the UI, the subscribers and the crons all call —
+they are entrypoints that build a Command and execute it —, the unit of a transaction, and where
+tracing, logging and error reporting happen. Keep it free of React and of SQL — it speaks
+domain + ports only.
 
 ### `ui/` — screens (render only)
 
@@ -284,4 +309,4 @@ lives in one adapter.
 4. **UI** — a screen that calls the use case, built from `@sincpro/mobile-ui`.
 5. **Subscribers** — for each side effect, declare a subscriber on the relevant event.
 6. **Module** — register repositories/migrations/subscribers/crons; add the screen to the `ui` map.
-7. **Telemetry** — a `Feature` / `ApplicationService` already opens the span. Shipping it is still opt-in: `createApp({ telemetry })` with an `otlp` endpoint. `@Tracing.TraceClass` remains for a class that is not one of those two.
+7. **Telemetry** — every `Feature` / `ApplicationService` run already opens its span (`createKernel` configures the process). Shipping it is still opt-in: `createApp({ telemetry })` with an `otlp` endpoint. `@Tracing.TraceClass` remains for a class that is not a use case.

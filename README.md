@@ -485,8 +485,10 @@ class InventoryService {
   /* … */
 }
 
-// Correlate your own logs with the active trace
-logger.info("charge attempt" + Tracing.logSuffix()); // → " trace_id=… span_id=…"
+// Logs: @sincpro/client-framework's layer loggers — `logger` (infrastructure), `loggerAdapter`
+// (adapters), `this.logger` inside a use case. The Loki line carries the run's trace, or the
+// active span's: "[infrastructure] charge attempt order=42 trace_id=… span_id=…"
+logger.info("charge attempt", { order: order.id });
 
 // Inspect offline backlog pressure (health checks / dashboards)
 const stats = await Tracing.bufferStats();

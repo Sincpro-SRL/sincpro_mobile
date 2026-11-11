@@ -1,3 +1,4 @@
+import { logger, loggerAdapter } from "@sincpro/client-framework";
 import type { IMigration } from "@sincpro/mobile/domain/database";
 import {
   applyMigrationStep,
@@ -14,7 +15,7 @@ import {
   forgetMigrations,
   markMigrationApplied,
 } from "@sincpro/mobile/infrastructure/database/schema";
-import logger, { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
+import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import { registerWebViewHandler } from "@sincpro/mobile/infrastructure/webview/message_handlers";
 import type { CronWorker, CronWorkerOpts } from "@sincpro/mobile/infrastructure/workers";
 import { interceptEvent } from "@sincpro/mobile/infrastructure/workers/interceptors";
@@ -91,7 +92,7 @@ export class Kernel {
   /** Runs a lifecycle hook in every module; a failing one is logged and never stops the app. */
   runHook(hook: LifecycleHook): Promise<void> {
     return runLifecycle(this.modules, hook, (module, error) =>
-      logger.error(`[Kernel] ${module}.${hook} failed`, error),
+      logger.error(`[Kernel] ${module}.${hook} failed`, errorAttributes(error)),
     );
   }
 
@@ -145,10 +146,10 @@ export class Kernel {
   }
 
   async restartDatabase(): Promise<void> {
-    loggerRepositories.warn("Restarting database");
+    loggerAdapter.warn("Restarting database");
     const plan = resetPlan(this.migrations(), this.persistedTables());
     for (const table of plan.drop) {
-      loggerRepositories.info(`Dropping table: ${table}`);
+      loggerAdapter.info(`Dropping table: ${table}`);
       await DBCursor.execAsync(`DROP TABLE IF EXISTS ${table}`);
     }
     await forgetMigrations(plan.forget);

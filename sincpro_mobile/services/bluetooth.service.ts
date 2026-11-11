@@ -1,17 +1,17 @@
+import { logger } from "@sincpro/client-framework";
 import { BluetoothAdapter } from "@sincpro/mobile/adapters/Bluetooth.adapter";
 import {
   BluetoothPermissionStatus,
   BluetoothStatus,
 } from "@sincpro/mobile/domain/connectivity";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
-import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 
 export class BluetoothService {
   private permissionStatus: BluetoothPermissionStatus | null = null;
 
   async requestPermissions(): Promise<BluetoothPermissionStatus> {
-    loggerUseCases.info("Requesting Bluetooth permissions");
+    logger.info("Requesting Bluetooth permissions");
 
     const permissions = await BluetoothAdapter.requestPermissions();
     this.permissionStatus = permissions;
@@ -22,7 +22,7 @@ export class BluetoothService {
   }
 
   async checkPermissions(): Promise<BluetoothPermissionStatus> {
-    loggerUseCases.info("Checking Bluetooth permissions");
+    logger.info("Checking Bluetooth permissions");
 
     const permissions = await BluetoothAdapter.hasPermissions();
     this.permissionStatus = permissions;
@@ -31,28 +31,28 @@ export class BluetoothService {
   }
 
   async getStatus(): Promise<BluetoothStatus> {
-    loggerUseCases.info("Getting Bluetooth status");
+    logger.info("Getting Bluetooth status");
     return BluetoothAdapter.getStatus();
   }
 
   async ensurePermissions(): Promise<boolean> {
-    loggerUseCases.info("Ensuring Bluetooth permissions are granted");
+    logger.info("Ensuring Bluetooth permissions are granted");
 
     const currentPermissions = await this.checkPermissions();
 
     if (currentPermissions.isGranted) {
-      loggerUseCases.info("Bluetooth permissions already granted");
+      logger.info("Bluetooth permissions already granted");
       return true;
     }
 
-    loggerUseCases.info("Bluetooth permissions not granted, requesting...");
+    logger.info("Bluetooth permissions not granted, requesting...");
     const requestedPermissions = await this.requestPermissions();
 
     return requestedPermissions.isGranted;
   }
 
   async ensurePermissionsForPrinter(): Promise<boolean> {
-    loggerUseCases.info("Ensuring Bluetooth permissions for printer connection");
+    logger.info("Ensuring Bluetooth permissions for printer connection");
 
     const permissions = await this.ensurePermissions();
 
@@ -84,7 +84,7 @@ export class BluetoothService {
         message: "Permisos de Bluetooth concedidos",
         variant: "success",
       });
-      loggerUseCases.info("Bluetooth permissions granted");
+      logger.info("Bluetooth permissions granted");
     } else {
       notifyDevice({
         name: "bluetooth.denied",
@@ -92,7 +92,9 @@ export class BluetoothService {
         message: "Los permisos de Bluetooth fueron denegados",
         variant: "danger",
       });
-      loggerUseCases.warn("Bluetooth permissions denied", { permissions });
+      logger.warn("Bluetooth permissions denied", {
+        permissions: JSON.stringify(permissions),
+      });
     }
   }
 }

@@ -1,7 +1,8 @@
+import { logger } from "@sincpro/client-framework";
 import { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { ECommonRepository, repos } from "@sincpro/mobile/entrypoints/db";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
-import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers/EventBus";
 
 export class DeadLetterQueueUseCases {
@@ -12,7 +13,7 @@ export class DeadLetterQueueUseCases {
    * Retrieves all failed events from the dead letter queue.
    */
   async getFailedEvents(): Promise<IntegrationEvent[]> {
-    loggerUseCases.info("Fetching all failed events from dead letter queue");
+    logger.info("Fetching all failed events from dead letter queue");
     const deadLetterEvents = await this.repository.findAll();
     return deadLetterEvents;
   }
@@ -21,7 +22,7 @@ export class DeadLetterQueueUseCases {
    * Retrieves a specific failed event by uuid.
    */
   async getFailedEventById(uuid: string): Promise<IntegrationEvent | null> {
-    loggerUseCases.info(`Fetching failed event with uuid: ${uuid}`);
+    logger.info(`Fetching failed event with uuid: ${uuid}`);
     return await this.repository.findById(uuid);
   }
 
@@ -35,12 +36,10 @@ export class DeadLetterQueueUseCases {
    * Final. If publishing throws, the event goes back to the dead letter queue.
    */
   async retryFailedEvent(event: IntegrationEvent): Promise<boolean> {
-    loggerUseCases.info(
-      `Manually retrying failed event: ${event.name} (uuid: ${event.uuid})`,
-    );
+    logger.info(`Manually retrying failed event: ${event.name} (uuid: ${event.uuid})`);
 
     if (!(await this.repository.remove(event.uuid))) {
-      loggerUseCases.warn(
+      logger.warn(
         `Retry skipped: ${event.name} (uuid: ${event.uuid}) is no longer in the dead letter queue`,
       );
       return false;
@@ -49,12 +48,12 @@ export class DeadLetterQueueUseCases {
     try {
       event.retry();
       await EventBus.publish(event);
-      loggerUseCases.info(`Successfully retried event: ${event.name} (uuid: ${event.uuid})`);
+      logger.info(`Successfully retried event: ${event.name} (uuid: ${event.uuid})`);
       return true;
     } catch (error) {
-      loggerUseCases.error(
-        `Failed to retry event ${event.name} (uuid: ${event.uuid}):`,
-        error,
+      logger.error(
+        `Failed to retry event ${event.name} (uuid: ${event.uuid})`,
+        errorAttributes(error),
       );
       const reason = error instanceof Error ? error.message : String(error);
       await this.repository.save(event, reason);
@@ -68,7 +67,7 @@ export class DeadLetterQueueUseCases {
   async retryMultipleFailedEvents(
     events: IntegrationEvent[],
   ): Promise<{ success: number; failed: number }> {
-    loggerUseCases.info(`Batch retrying ${events.length} failed events`);
+    logger.info(`Batch retrying ${events.length} failed events`);
 
     let successCount = 0;
     let failedCount = 0;
@@ -78,17 +77,15 @@ export class DeadLetterQueueUseCases {
         if (await this.retryFailedEvent(event)) successCount++;
         else failedCount++;
       } catch (error) {
-        loggerUseCases.error(
-          `Failed to retry event ${event.name} (uuid: ${event.uuid}):`,
-          error,
+        logger.error(
+          `Failed to retry event ${event.name} (uuid: ${event.uuid})`,
+          errorAttributes(error),
         );
         failedCount++;
       }
     }
 
-    loggerUseCases.info(
-      `Batch retry completed: ${successCount} successful, ${failedCount} failed`,
-    );
+    logger.info(`Batch retry completed: ${successCount} successful, ${failedCount} failed`);
     return { success: successCount, failed: failedCount };
   }
 
@@ -97,17 +94,15 @@ export class DeadLetterQueueUseCases {
    * Use with caution as this action cannot be undone.
    */
   async deleteFailedEvent(event: IntegrationEvent): Promise<void> {
-    loggerUseCases.info(
-      `Permanently deleting failed event: ${event.name} (uuid: ${event.uuid})`,
-    );
+    logger.info(`Permanently deleting failed event: ${event.name} (uuid: ${event.uuid})`);
 
     try {
       await this.repository.remove(event.uuid);
-      loggerUseCases.info(`Successfully deleted event: ${event.name} (uuid: ${event.uuid})`);
+      logger.info(`Successfully deleted event: ${event.name} (uuid: ${event.uuid})`);
     } catch (error) {
-      loggerUseCases.error(
-        `Failed to delete event ${event.name} (uuid: ${event.uuid}):`,
-        error,
+      logger.error(
+        `Failed to delete event ${event.name} (uuid: ${event.uuid})`,
+        errorAttributes(error),
       );
       throw new Error(
         `Failed to delete event: ${error instanceof Error ? error.message : String(error)}`,
@@ -121,7 +116,7 @@ export class DeadLetterQueueUseCases {
   async deleteMultipleFailedEvents(
     events: IntegrationEvent[],
   ): Promise<{ success: number; failed: number }> {
-    loggerUseCases.info(`Batch deleting ${events.length} failed events`);
+    logger.info(`Batch deleting ${events.length} failed events`);
 
     let successCount = 0;
     let failedCount = 0;
@@ -131,17 +126,15 @@ export class DeadLetterQueueUseCases {
         await this.deleteFailedEvent(event);
         successCount++;
       } catch (error) {
-        loggerUseCases.error(
-          `Failed to delete event ${event.name} (uuid: ${event.uuid}):`,
-          error,
+        logger.error(
+          `Failed to delete event ${event.name} (uuid: ${event.uuid})`,
+          errorAttributes(error),
         );
         failedCount++;
       }
     }
 
-    loggerUseCases.info(
-      `Batch delete completed: ${successCount} successful, ${failedCount} failed`,
-    );
+    logger.info(`Batch delete completed: ${successCount} successful, ${failedCount} failed`);
     return { success: successCount, failed: failedCount };
   }
 }

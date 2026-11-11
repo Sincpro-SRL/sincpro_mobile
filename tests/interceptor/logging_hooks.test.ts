@@ -20,9 +20,10 @@ function captureLogger() {
     info,
     errors,
     logger: {
-      debug: (...args: unknown[]) => debug.push(args),
-      info: (...args: unknown[]) => info.push(args),
-      error: (...args: unknown[]) => errors.push(args),
+      debug: (...args: unknown[]) => void debug.push(args),
+      info: (...args: unknown[]) => void info.push(args),
+      warn: () => {},
+      error: (...args: unknown[]) => void errors.push(args),
     },
   };
 }
@@ -75,7 +76,7 @@ test("loggingHooks: logs error and skips success log on failure", async () => {
   assert.equal(cap.errors.length, 1, "onError fires");
   assert.ok((cap.errors[0][0] as string).includes("✗"));
   assert.ok((cap.errors[0][0] as string).includes("getByRemoteId"));
-  assert.ok(cap.errors[0][1] instanceof Error);
+  assert.deepEqual(cap.errors[0][1], { error: "Error: remote unavailable" });
 });
 
 test("loggingHooks: log lines include className and methodName", () => {

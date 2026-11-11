@@ -1,8 +1,8 @@
+import { logger } from "@sincpro/client-framework";
 import { NetworkAdapter } from "@sincpro/mobile/adapters/Network.adapter";
 import { NetworkStatus } from "@sincpro/mobile/domain/connectivity";
 import { InternetIsDownEvent, InternetIsUpEvent } from "@sincpro/mobile/domain/events";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
-import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 
@@ -29,7 +29,7 @@ export class NetworkUseCases {
     }
 
     if (!networkStatus.isConnected) {
-      loggerUseCases.warn(`Network is down: ${networkStatus.type}`);
+      logger.warn(`Network is down: ${networkStatus.type}`);
       notifyDevice({
         name: "network.offline",
         title: "Estas desconectado",
@@ -37,7 +37,7 @@ export class NetworkUseCases {
         variant: "danger",
       });
     } else {
-      loggerUseCases.info(`Network is up: ${networkStatus.type}`);
+      logger.info(`Network is up: ${networkStatus.type}`);
       notifyDevice({
         name: "network.online",
         title: "Conectado",

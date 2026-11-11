@@ -1,3 +1,4 @@
+import { logger } from "@sincpro/client-framework";
 import {
   type DomainEvent,
   type DomainEventClass,
@@ -8,7 +9,6 @@ import { ECommonRepository } from "@sincpro/mobile/domain/repositories/catalog";
 import { DomainValidationError } from "@sincpro/mobile/exceptions";
 import { mapped, resolveEntity } from "@sincpro/mobile/infrastructure/database";
 import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
-import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
 
 import { heldEntities, relations } from "./relations";
 import { IValueObject, ValueObject } from "./value_object";
@@ -214,7 +214,7 @@ export class Entity extends ValueObject implements IEntity {
     );
 
     if (existingEvent) {
-      loggerQueueProcessor.warn(
+      logger.warn(
         `class ${this.constructor.name} - Event '${event.name}' is already recorded for '${this.uuid}' with the same payload. Skipping.`,
       );
       return existingEvent.uuid;

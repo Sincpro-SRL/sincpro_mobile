@@ -1,8 +1,9 @@
+import { logger } from "@sincpro/client-framework";
 import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/events";
 import { printNoticeKey } from "@sincpro/mobile/domain/webview/print_cycle";
 import { Subscriber } from "@sincpro/mobile/event_driven";
 import { DomainValidationError } from "@sincpro/mobile/exceptions";
-import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 import { printerService } from "@sincpro/mobile/services/printer.service";
 
@@ -44,7 +45,7 @@ export class PrintImageSubscriber extends Subscriber {
       variant: "loading",
     });
     const printed = await printerService.printImageBase64(image).catch((error: unknown) => {
-      loggerUseCases.error("Print failed before reaching the printer", error);
+      logger.error("Print failed before reaching the printer", errorAttributes(error));
       return false;
     });
     if (printed) {

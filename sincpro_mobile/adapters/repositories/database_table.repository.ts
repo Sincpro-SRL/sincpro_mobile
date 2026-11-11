@@ -1,9 +1,9 @@
+import { logger } from "@sincpro/client-framework";
 import { IDatabaseTable } from "@sincpro/mobile/domain/database";
 import { type DocumentCriteria } from "@sincpro/mobile/domain/database/criteria";
 import { EntityCollection } from "@sincpro/mobile/domain/entity";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
-import logger from "@sincpro/mobile/infrastructure/logger";
 
 class DatabaseTableRepositoryImpl {
   public readonly name = ECommonRepository.DATABASE_TABLE;

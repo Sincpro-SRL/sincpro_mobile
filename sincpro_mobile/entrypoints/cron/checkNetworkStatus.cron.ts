@@ -1,12 +1,12 @@
+import { logger } from "@sincpro/client-framework";
 import { EBuiltinCron } from "@sincpro/mobile/entrypoints/cron/EBuiltinCron";
-import { loggerCronJobs } from "@sincpro/mobile/infrastructure/logger";
 import { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 import { networkUseCases } from "@sincpro/mobile/services/network.service";
 
 async function checkNetworkStatus(): Promise<void> {
-  loggerCronJobs.info("Checking network status");
+  logger.info("Checking network status");
   await networkUseCases.getNetworkStatus();
-  loggerCronJobs.info("Finished checking network status");
+  logger.info("Finished checking network status");
 }
 
 const cronCheckNetworkStatus = new CronWorker(

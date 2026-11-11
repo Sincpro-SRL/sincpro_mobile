@@ -1,7 +1,7 @@
+import { logger } from "@sincpro/client-framework";
 import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
 import type { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
-import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { EventBus } from "@sincpro/mobile/infrastructure/workers/EventBus";
 
 /** The events screen shows the latest window; older history stays in SQLite. */
@@ -11,7 +11,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export class EventService {
   async listRecentEvents(limit: number = RECENT_EVENTS_LIMIT): Promise<IntegrationEvent[]> {
-    loggerUseCases.info(`Fetching the latest ${limit} events`);
+    logger.info(`Fetching the latest ${limit} events`);
     return DomainEventRepository.findRecent(limit);
   }
 
@@ -19,12 +19,12 @@ export class EventService {
   async pruneHistory(retentionDays: number = DEFAULT_EVENT_RETENTION_DAYS): Promise<void> {
     const cutoff = new Date(Date.now() - retentionDays * DAY_MS).toISOString();
     await DomainEventRepository.removeAcknowledgedBefore(cutoff);
-    loggerUseCases.info(`Pruned acknowledged events before ${cutoff}`);
+    logger.info(`Pruned acknowledged events before ${cutoff}`);
   }
 
   async republishSync(event: IntegrationEvent): Promise<void> {
     const cloned = event.cloneWithReset();
-    loggerUseCases.info(`Republishing event sync: ${cloned.name} (${cloned.uuid})`);
+    logger.info(`Republishing event sync: ${cloned.name} (${cloned.uuid})`);
     await EventBus.publishSync(cloned);
   }
 }

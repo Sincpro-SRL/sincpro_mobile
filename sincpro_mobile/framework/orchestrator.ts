@@ -1,6 +1,6 @@
+import { logger } from "@sincpro/client-framework";
 import { cron } from "@sincpro/mobile/entrypoints/cron/Cron";
 import { QueueProcessor } from "@sincpro/mobile/entrypoints/queue/QueueProcessor";
-import logger from "@sincpro/mobile/infrastructure/logger";
 import { AppState, AppStateStatus } from "react-native";
 
 import type { Kernel } from "./kernel";

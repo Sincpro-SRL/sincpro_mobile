@@ -1,3 +1,4 @@
+import { logger } from "@sincpro/client-framework";
 import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
 import { DomainEventDeadLetterRepository } from "@sincpro/mobile/adapters/repositories/domain_event_dead_letter.repository";
 import { EventName, type IntegrationEvent } from "@sincpro/mobile/domain/events";
@@ -5,7 +6,7 @@ import { InternetIsDownEvent, InternetIsUpEvent } from "@sincpro/mobile/domain/e
 import { Subscriber } from "@sincpro/mobile/event_driven";
 import { DomainNetworkError, RepeatableFailure } from "@sincpro/mobile/exceptions";
 import { runWithChain } from "@sincpro/mobile/infrastructure/event_chain";
-import { isConsoleDebug, loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
+import { errorAttributes, isConsoleDebug } from "@sincpro/mobile/infrastructure/logger";
 import { declaresUi, publishActivity } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 import { runIntercepted } from "@sincpro/mobile/infrastructure/workers/interceptors";
@@ -62,7 +63,7 @@ export class EventBus {
       this.internetConnected = false;
       this.consecutiveFailures++;
       this.adjustInterval();
-      loggerQueueProcessor.warn("[NET] offline – Solo eventos locales");
+      logger.warn("[NET] offline – Solo eventos locales");
     });
 
     UIEventBus.on(InternetIsUpEvent.name, () => {
@@ -71,7 +72,7 @@ export class EventBus {
         this.consecutiveFailures = 0;
         this.currentInterval = this.INTERVAL_MS;
         this.restartPolling();
-        loggerQueueProcessor.info("[NET] online – Reanudando eventos de red");
+        logger.info("[NET] online – Reanudando eventos de red");
       }
     });
   }
@@ -82,7 +83,7 @@ export class EventBus {
         this.INTERVAL_MS * Math.pow(this.BACKOFF_MULTIPLIER, this.consecutiveFailures),
         this.MAX_INTERVAL_MS,
       );
-      loggerQueueProcessor.debug(
+      logger.debug(
         `Adjusted polling interval to ${this.currentInterval}ms due to ${this.consecutiveFailures} failures`,
       );
     }
@@ -111,7 +112,7 @@ export class EventBus {
       this.consecutiveFailures++;
       this.adjustInterval();
       this.restartPolling();
-      loggerQueueProcessor.warn("Error in processing cycle:", error);
+      logger.warn("Error in processing cycle", errorAttributes(error));
     } finally {
       this.isDraining = false;
     }
@@ -126,13 +127,13 @@ export class EventBus {
     this.currentInterval = this.INTERVAL_MS;
     this.consecutiveFailures = 0;
     this.intervalId = setInterval(() => this.triggerProcessing(), this.currentInterval);
-    loggerQueueProcessor.info("ProcessWorker polling started");
+    logger.info("ProcessWorker polling started");
   }
 
   static stop(): void {
     this.running = false;
     this.pausePolling();
-    loggerQueueProcessor.info("ProcessWorker polling stopped");
+    logger.info("ProcessWorker polling stopped");
   }
 
   /**
@@ -153,7 +154,7 @@ export class EventBus {
     }
 
     if (this.isDraining) {
-      loggerQueueProcessor.warn("EventBus waitForIdle timed out after 5s");
+      logger.warn("EventBus waitForIdle timed out after 5s");
     }
   }
 
@@ -164,21 +165,17 @@ export class EventBus {
   private static preProcess(event: IntegrationEvent): boolean {
     const hasSubscribers = this.subscribers.has(event.name);
 
-    loggerQueueProcessor.info(
+    logger.info(
       `EVENT=${event.name} [${event.label}] (attempt ${event.attempts}/${EventBus.MAX_ATTEMPTS}) - STARTED`,
     );
     if (isConsoleDebug()) {
-      loggerQueueProcessor.debug(
-        `EVENT=${event.name} uuid=${event.uuid} payload=${event.asJSON()}`,
-      );
+      logger.debug(`EVENT=${event.name} uuid=${event.uuid} payload=${event.asJSON()}`);
     }
 
     if (hasSubscribers) this.publishQueue(event, "running");
 
     if (!hasSubscribers) {
-      loggerQueueProcessor.info(
-        `EVENT=${event.name} [${event.label}] - No subscribers: acknowledged`,
-      );
+      logger.info(`EVENT=${event.name} [${event.label}] - No subscribers: acknowledged`);
     }
 
     return hasSubscribers;
@@ -196,14 +193,14 @@ export class EventBus {
     if (success) {
       event.markAsAcknowledged();
       await DomainEventRepository.save(event);
-      loggerQueueProcessor.info(
+      logger.info(
         `EVENT=${event.name} [${event.label}] (attempt ${event.attempts}/${EventBus.MAX_ATTEMPTS}) - FINISHED`,
       );
     } else {
       event.markAsFailed(errorMessage!);
       await DomainEventRepository.save(event);
       await DomainEventDeadLetterRepository.save(event, errorMessage!);
-      loggerQueueProcessor.warn(
+      logger.warn(
         `EVENT=${event.name} [${event.label}] (attempt ${event.attempts}/${EventBus.MAX_ATTEMPTS}) - FAILED: ${errorMessage}`,
       );
     }
@@ -230,7 +227,7 @@ export class EventBus {
         );
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        loggerQueueProcessor.warn(`EVENT=${event.name} - Subscriber failed: ${errorMessage}`);
+        logger.warn(`EVENT=${event.name} - Subscriber failed: ${errorMessage}`);
 
         if (err instanceof DomainNetworkError || err instanceof RepeatableFailure) {
           if (err instanceof DomainNetworkError) {
@@ -255,9 +252,7 @@ export class EventBus {
   static on(subscriber: Subscriber): void {
     for (const EventClass of subscriber.listen) {
       if (!EventClass) {
-        loggerQueueProcessor.error(
-          `Undefined event class in subscriber: ${subscriber.constructor.name}`,
-        );
+        logger.error(`Undefined event class in subscriber: ${subscriber.constructor.name}`);
         continue;
       }
       const staticName = (EventClass as unknown as { name: string }).name;
@@ -271,14 +266,12 @@ export class EventBus {
       const subscriberList = this.subscribers.get(eventName)!;
 
       if (subscriberList.includes(subscriber)) {
-        loggerQueueProcessor.info(
-          `Subscriber already registered for [${eventName}] - skipping`,
-        );
+        logger.info(`Subscriber already registered for [${eventName}] - skipping`);
         continue;
       }
 
       subscriberList.push(subscriber);
-      loggerQueueProcessor.info(`Subscriber registered for [${eventName}]`);
+      logger.info(`Subscriber registered for [${eventName}]`);
     }
   }
 
@@ -296,7 +289,7 @@ export class EventBus {
       const index = subscriberList.indexOf(subscriber);
       if (index > -1) {
         subscriberList.splice(index, 1);
-        loggerQueueProcessor.info(`Subscriber unregistered for [${eventName}]`);
+        logger.info(`Subscriber unregistered for [${eventName}]`);
       }
 
       if (subscriberList.length === 0) {
@@ -314,7 +307,7 @@ export class EventBus {
 
   static async publish(event: IntegrationEvent): Promise<void> {
     if (!event.correlationId) event.applyChain(event.uuid);
-    loggerQueueProcessor.info(`EVENT=${event.name} [${event.label}] - Published ASYNC`);
+    logger.info(`EVENT=${event.name} [${event.label}] - Published ASYNC`);
     await DomainEventRepository.save(event);
     this.triggerProcessing();
   }
@@ -326,7 +319,7 @@ export class EventBus {
    */
   static async publishSync(event: IntegrationEvent): Promise<void> {
     if (!event.correlationId) event.applyChain(event.uuid);
-    loggerQueueProcessor.info(`EVENT=${event.name} [${event.label}] - Published SYNC`);
+    logger.info(`EVENT=${event.name} [${event.label}] - Published SYNC`);
 
     event.markAsProcessing();
     await DomainEventRepository.save(event);
@@ -398,9 +391,9 @@ export class EventBus {
   static async clearQueue(): Promise<void> {
     try {
       await DomainEventRepository.clearAll();
-      loggerQueueProcessor.info("ProcessWorker queue cleared");
+      logger.info("ProcessWorker queue cleared");
     } catch (error) {
-      loggerQueueProcessor.warn("Failed to clear ProcessWorker queue:", error);
+      logger.warn("Failed to clear ProcessWorker queue", errorAttributes(error));
     }
   }
 

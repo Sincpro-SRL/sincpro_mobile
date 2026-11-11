@@ -1,6 +1,6 @@
+import { loggerAdapter } from "@sincpro/client-framework";
 import type { RepositoriesContainer } from "@sincpro/mobile/entrypoints/db/repositories";
 import { DomainAppError } from "@sincpro/mobile/exceptions";
-import { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
 /**
  * Repository facade reference that will be injected after initialization.
  * This avoids circular import issues by delaying the repository resolution.
@@ -28,7 +28,7 @@ let repositoryFacade: RepositoriesContainer | null = null;
  */
 export function initializeRepositoryFacade(repos: RepositoriesContainer): void {
   repositoryFacade = repos;
-  loggerRepositories.info("[Mapped] Repository facade initialized for @mapped decorator");
+  loggerAdapter.info("[Mapped] Repository facade initialized for @mapped decorator");
 }
 
 function resolveEntityInternal(
@@ -168,7 +168,7 @@ export function resolveEntity(
  */
 export function mapped(repositoryKey: string, foreignKey: string, remote: boolean = false) {
   return function (target: any, propertyKey: string, descriptor?: PropertyDescriptor) {
-    loggerRepositories.debug(
+    loggerAdapter.debug(
       `[Mapped] Setting up mapped relation for ${target.constructor.name}.${propertyKey} ` +
         `using repository "${repositoryKey}" and foreign key "${foreignKey}"`,
     );

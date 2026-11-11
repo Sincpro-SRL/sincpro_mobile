@@ -1,4 +1,4 @@
-import logger from "@sincpro/mobile/infrastructure/logger";
+import { logger } from "@sincpro/client-framework";
 import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
 
 /** A domain the app can show. Which route or screen it maps to is the host's decision. */

@@ -1,8 +1,9 @@
+import { logger } from "@sincpro/client-framework";
 import { defineBackgroundCrons } from "@sincpro/mobile/framework/background";
 import { createKernel, startApp } from "@sincpro/mobile/framework/createApp";
 import type { DomainModule } from "@sincpro/mobile/framework/domain_module";
 import type { Kernel } from "@sincpro/mobile/framework/kernel";
-import logger from "@sincpro/mobile/infrastructure/logger";
+import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import type { TelemetryConfig } from "@sincpro/mobile/infrastructure/telemetry";
 import { onceUntilFailure } from "@sincpro/mobile/tools/utils/once";
 import { DeviceNotices } from "@sincpro/mobile/ui/activity";
@@ -228,7 +229,7 @@ function useStart(shell: AppShellDefinition) {
         if (active) setStatus("ready");
       })
       .catch((error: unknown) => {
-        logger.error("[AppShell] The app could not start", error);
+        logger.error("[AppShell] The app could not start", errorAttributes(error));
         if (active) setStatus("failed");
       });
     return () => {
@@ -281,7 +282,7 @@ export function AppShell({
     if (fontError)
       logger.warn(
         "[AppShell] Fonts failed to load (icons or brand); using system fallbacks",
-        fontError,
+        errorAttributes(fontError),
       );
   }, [fontError]);
 
@@ -321,7 +322,9 @@ export function AppShell({
                       without it each overlay renders in place, clipped by its container. */}
                   <OverlayHost>
                     <ErrorBoundary
-                      onError={(error) => logger.error("[AppShell] Render failed", error)}
+                      onError={(error) =>
+                        logger.error("[AppShell] Render failed", errorAttributes(error))
+                      }
                     >
                       {withProviders(
                         config.providers ?? [],

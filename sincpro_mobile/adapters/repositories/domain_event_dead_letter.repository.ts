@@ -1,8 +1,8 @@
+import { loggerAdapter } from "@sincpro/client-framework";
 import { type IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
 import { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
-import { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
 
 import { type EventRow, readEvent } from "./event_row";
 
@@ -33,9 +33,7 @@ class DomainEventDeadLetterRepositoryImpl {
       event.sequence,
     );
 
-    loggerRepositories.debug(
-      `DomainEvent moved to dead letter: ${event.name} [${event.uuid}]`,
-    );
+    loggerAdapter.debug(`DomainEvent moved to dead letter: ${event.name} [${event.uuid}]`);
   }
 
   async findById(uuid: string): Promise<IntegrationEvent | null> {
@@ -99,7 +97,7 @@ class DomainEventDeadLetterRepositoryImpl {
       `DELETE FROM ${this.table} WHERE uuid = ?`,
       uuid,
     );
-    loggerRepositories.debug(`Dead letter removed: ${uuid}`);
+    loggerAdapter.debug(`Dead letter removed: ${uuid}`);
     return result.changes > 0;
   }
 
@@ -112,7 +110,7 @@ class DomainEventDeadLetterRepositoryImpl {
 
   async clearAll(): Promise<void> {
     await DBCursor.mutateDatabase(`DELETE FROM ${this.table}`);
-    loggerRepositories.info("Dead letter table cleared");
+    loggerAdapter.info("Dead letter table cleared");
   }
 
   async retry(uuid: string): Promise<IntegrationEvent | null> {

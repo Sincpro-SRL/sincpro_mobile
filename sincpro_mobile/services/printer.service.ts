@@ -1,3 +1,4 @@
+import { logger } from "@sincpro/client-framework";
 import { ReceiptExporterAdapter } from "@sincpro/mobile/adapters/ReceiptExporter.adapter";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
 import {
@@ -15,7 +16,7 @@ import { ECommonSetting } from "@sincpro/mobile/domain/settings";
 import { printNoticeKey } from "@sincpro/mobile/domain/webview/print_cycle";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
-import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import {
   createReconnector,
   RECONNECT_DELAYS_MS,
@@ -143,7 +144,7 @@ export class PrinterService {
 
       return true;
     } catch (error) {
-      loggerUseCases.error(`Failed to connect to printer: ${name}`, error);
+      logger.error(`Failed to connect to printer: ${name}`, errorAttributes(error));
 
       if (notify) {
         notifyDevice({
@@ -170,7 +171,7 @@ export class PrinterService {
         variant: "info",
       });
     } catch (error) {
-      loggerUseCases.error("Error disconnecting from printer", error);
+      logger.error("Error disconnecting from printer", errorAttributes(error));
     }
   }
 
@@ -227,7 +228,7 @@ export class PrinterService {
 
       return true;
     } catch (error) {
-      loggerUseCases.error("Error printing test page", error);
+      logger.error("Error printing test page", errorAttributes(error));
 
       notifyDevice({
         name: "printer.test_failed",
@@ -277,7 +278,7 @@ export class PrinterService {
       await getPrinterDriver().printImageBase64(base64Data);
       return true;
     } catch (firstError) {
-      loggerUseCases.warn("Print failed — attempting grace reconnect", firstError);
+      logger.warn("Print failed — attempting grace reconnect", errorAttributes(firstError));
 
       const reconnected = await this.forceReconnect();
       if (!reconnected) return false;
@@ -286,7 +287,7 @@ export class PrinterService {
         await getPrinterDriver().printImageBase64(base64Data);
         return true;
       } catch (retryError) {
-        loggerUseCases.error("Print retry after reconnect also failed", retryError);
+        logger.error("Print retry after reconnect also failed", errorAttributes(retryError));
         return false;
       }
     }
@@ -299,7 +300,7 @@ export class PrinterService {
     try {
       const imageBase64 = await ReceiptExporterAdapter.captureAsImageBase64(viewRef);
       if (!imageBase64) {
-        loggerUseCases.warn("Could not capture view for printing");
+        logger.warn("Could not capture view for printing");
         return false;
       }
 
@@ -314,7 +315,7 @@ export class PrinterService {
 
       return true;
     } catch (error) {
-      loggerUseCases.error("Error printing from view", error);
+      logger.error("Error printing from view", errorAttributes(error));
       return false;
     }
   }
@@ -326,15 +327,15 @@ export class PrinterService {
     try {
       const pdfBase64 = await this.htmlToPdfBase64(html);
       if (!pdfBase64) {
-        loggerUseCases.warn("Could not convert HTML to PDF");
+        logger.warn("Could not convert HTML to PDF");
         return false;
       }
 
-      loggerUseCases.info("PDF base64 length:", pdfBase64.length);
+      logger.info("PDF generated", { base64_length: pdfBase64.length });
       await getPrinterDriver().printPdfBase64(pdfBase64, 1);
       return true;
     } catch (error) {
-      loggerUseCases.error("Error printing HTML", error);
+      logger.error("Error printing HTML", errorAttributes(error));
       return false;
     }
   }
@@ -352,7 +353,7 @@ export class PrinterService {
 
       if (!uri) return null;
 
-      loggerUseCases.info("PDF generated at:", uri);
+      logger.info("PDF written", { uri });
 
       const file = new File(uri);
       const pdfBase64 = await file.base64();
@@ -361,7 +362,7 @@ export class PrinterService {
 
       return pdfBase64;
     } catch (error) {
-      loggerUseCases.error("Error converting HTML to PDF", error);
+      logger.error("Error converting HTML to PDF", errorAttributes(error));
       return null;
     }
   }
@@ -379,7 +380,7 @@ export class PrinterService {
         PRINT_CAPTURE_TIMEOUT_MS,
       ),
     );
-    loggerUseCases.info(`Print started: ${title || "untitled"} (${jobId})`);
+    logger.info(`Print started: ${title || "untitled"} (${jobId})`);
     notifyDevice({
       key: printNoticeKey(jobId),
       name: "printer.preparing",
@@ -392,7 +393,7 @@ export class PrinterService {
   /** The capture failed before reaching the printer: without this nothing was shown. */
   reportPrintFailed(title: string, reason: string, jobId: string = UNTRACKED_PAGE_JOB): void {
     this.settleCapture(jobId);
-    loggerUseCases.warn(`Print capture failed: ${reason} (${jobId})`);
+    logger.warn(`Print capture failed: ${reason} (${jobId})`);
     notifyDevice({
       key: printNoticeKey(jobId),
       name: "printer.capture_failed",
@@ -421,7 +422,7 @@ export class PrinterService {
     if (!printer) return true;
     const permissions = await this.bluetooth.checkPermissions();
     if (!permissions.isGranted) return true;
-    loggerUseCases.info(`Restoring printer connection: ${printer.name} (${printer.address})`);
+    logger.info(`Restoring printer connection: ${printer.name} (${printer.address})`);
     return this.connect(printer.address, printer.name, false);
   }
 
@@ -467,9 +468,7 @@ export class PrinterService {
     }
     const printer = await this.getSelectedPrinter();
     if (!printer) return false;
-    loggerUseCases.info(
-      `Grace reconnect: reconnecting to ${printer.name} (${printer.address})`,
-    );
+    logger.info(`Grace reconnect: reconnecting to ${printer.name} (${printer.address})`);
     return this.connect(printer.address, printer.name, false);
   }
 

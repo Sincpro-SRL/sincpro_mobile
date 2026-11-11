@@ -1,3 +1,4 @@
+import { logger } from "@sincpro/client-framework";
 import {
   type DocumentCriteria,
   rowsMatching,
@@ -8,7 +9,6 @@ import {
 } from "@sincpro/mobile/domain/events/domain_event";
 import { type IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
 import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
-import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
 import { convertToArray } from "@sincpro/mobile/tools/utils/collections";
 import { safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 
@@ -553,7 +553,7 @@ export class EntityCollection<T extends Entity> extends ValueObject {
     const existingEvent = this._recordedEvents.find((e) => e.hasSameBusinessPayload(event));
 
     if (existingEvent) {
-      loggerQueueProcessor.warn(
+      logger.warn(
         `EntityCollection - Event '${event.name}' is already recorded with the same payload. Skipping.`,
       );
       return existingEvent.uuid;

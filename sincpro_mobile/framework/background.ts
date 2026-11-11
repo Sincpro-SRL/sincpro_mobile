@@ -1,5 +1,6 @@
+import { logger } from "@sincpro/client-framework";
 import { EBuiltinCron } from "@sincpro/mobile/entrypoints/cron/EBuiltinCron";
-import { loggerCronJobs } from "@sincpro/mobile/infrastructure/logger";
+import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import {
   runBackgroundTelemetryFlush,
   type TelemetryConfig,
@@ -23,7 +24,10 @@ function inBackground(kernel: Kernel, taskName: string, work: () => Promise<bool
     try {
       await kernel.bootstrap();
     } catch (error) {
-      loggerCronJobs.error(`${taskName}: the app could not start in background`, error);
+      logger.error(
+        `${taskName}: the app could not start in background`,
+        errorAttributes(error),
+      );
       return false;
     }
     return work();

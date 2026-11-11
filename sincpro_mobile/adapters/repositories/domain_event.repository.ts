@@ -1,8 +1,8 @@
+import { loggerAdapter } from "@sincpro/client-framework";
 import { EEventStatus, type IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
 import { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
-import { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
 
 import { type EventRow, readEvent } from "./event_row";
 
@@ -26,7 +26,7 @@ class DomainEventRepositoryImpl {
     if (event.isPending) {
       const isDuplicate = await this.hasPendingDuplicate(event);
       if (isDuplicate) {
-        loggerRepositories.warn(`DomainEvent duplicated, skipping: ${event.name}`);
+        loggerAdapter.warn(`DomainEvent duplicated, skipping: ${event.name}`);
         return;
       }
     }
@@ -52,7 +52,7 @@ class DomainEventRepositoryImpl {
       event.sequence,
     );
 
-    loggerRepositories.debug(`DomainEvent saved: ${event.name} [${event.uuid}]`);
+    loggerAdapter.debug(`DomainEvent saved: ${event.name} [${event.uuid}]`);
   }
 
   async saveMany(events: IntegrationEvent[]): Promise<void> {
@@ -205,7 +205,7 @@ class DomainEventRepositoryImpl {
 
   async clearAll(): Promise<void> {
     await DBCursor.mutateDatabase(`DELETE FROM ${this.table}`);
-    loggerRepositories.info("DomainEvent table cleared");
+    loggerAdapter.info("DomainEvent table cleared");
   }
 
   async count(): Promise<number> {
@@ -243,7 +243,7 @@ class DomainEventRepositoryImpl {
 
   findByRemoteIdSync(remoteId: number | string): IntegrationEvent | null {
     // DomainEvents don't have remote IDs, return null
-    loggerRepositories.warn(
+    loggerAdapter.warn(
       `findByRemoteIdSync called on DomainEventRepository: ${remoteId} - DomainEvents don't have remote IDs`,
     );
     return null;
@@ -251,7 +251,7 @@ class DomainEventRepositoryImpl {
 
   findByRemoteIdsSync(remoteIds: (number | string)[]): IntegrationEvent[] {
     // DomainEvents don't have remote IDs, return empty array
-    loggerRepositories.warn(
+    loggerAdapter.warn(
       `findByRemoteIdsSync called on DomainEventRepository with ${remoteIds.length} ids - DomainEvents don't have remote IDs`,
     );
     return [];

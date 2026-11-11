@@ -1,5 +1,6 @@
+import { logger } from "@sincpro/client-framework";
 import { type LabelText } from "@sincpro/mobile/domain/events/label";
-import { loggerCronJobs } from "@sincpro/mobile/infrastructure/logger";
+import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import { publishActivity } from "@sincpro/mobile/infrastructure/ui/activity";
 import * as BackgroundTask from "expo-background-task";
 import * as TaskManager from "expo-task-manager";
@@ -76,12 +77,12 @@ export class CronWorker {
     this.isRegistering = true;
 
     try {
-      loggerCronJobs.info(`Schedule [every ${this.intervalMin} min]: task ${this.taskName}`);
+      logger.info(`Schedule [every ${this.intervalMin} min]: task ${this.taskName}`);
       if (!this.runsInBackground) {
         this.stopFn = this.createIntervalJob(this.job, this.intervalMin);
       } else {
         if (!TaskManager.isTaskDefined(this.taskName)) {
-          loggerCronJobs.warn(
+          logger.warn(
             `${this.taskName} defined after launch: it will not run while the app is closed. ` +
               "Return it from a DomainModule so the shell defines it at load time.",
           );
@@ -94,7 +95,7 @@ export class CronWorker {
       this.registrationError = undefined;
     } catch (error) {
       this.registrationError = error instanceof Error ? error : new Error(String(error));
-      loggerCronJobs.warn(`Failed to register task ${this.taskName}:`, error);
+      logger.warn(`Failed to register task ${this.taskName}`, errorAttributes(error));
       throw error;
     } finally {
       this.isRegistering = false;
@@ -118,9 +119,9 @@ export class CronWorker {
         await BackgroundTask.unregisterTaskAsync(this.taskName);
       }
 
-      loggerCronJobs.info(`Task ${this.taskName} unregistered successfully`);
+      logger.info(`Task ${this.taskName} unregistered successfully`);
     } catch (error) {
-      loggerCronJobs.warn(`Failed to unregister task ${this.taskName}:`, error);
+      logger.warn(`Failed to unregister task ${this.taskName}`, errorAttributes(error));
       throw error;
     }
   }
@@ -164,15 +165,13 @@ export class CronWorker {
     try {
       await Promise.resolve(job());
       const duration = Date.now() - startTime;
-      loggerCronJobs.debug(`${this.taskName} completed successfully in ${duration}ms`);
+      logger.debug(`${this.taskName} completed successfully in ${duration}ms`);
       this.publish("succeeded");
       return true;
     } catch (e) {
       const duration = Date.now() - startTime;
       const errorMessage = e instanceof Error ? e.message : String(e);
-      loggerCronJobs.error(
-        `${this.taskName} failed after ${duration}ms with error: ${errorMessage}`,
-      );
+      logger.error(`${this.taskName} failed after ${duration}ms with error: ${errorMessage}`);
       this.publish("failed", errorMessage);
       return false;
     } finally {
@@ -208,7 +207,7 @@ export class CronWorker {
     }
 
     if (this.isExecuting) {
-      loggerCronJobs.warn(`${this.taskName} waitForIdle timed out after 10s`);
+      logger.warn(`${this.taskName} waitForIdle timed out after 10s`);
     }
   }
 }

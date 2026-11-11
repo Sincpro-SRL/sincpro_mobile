@@ -5,8 +5,17 @@ import { trace } from "@opentelemetry/api";
 import { ExportResultCode } from "@opentelemetry/core";
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
 import { BasicTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import {
+  BoundedContext,
+  Command,
+  configureProcess,
+  Feature,
+  logger,
+  loggerAdapter,
+} from "@sincpro/client-framework";
+import { memoryTracer } from "@sincpro/client-framework/testing";
 
-// Loki-layer imports only — no expo deps, no logger static side-effects.
+import { mobileLogger } from "../../sincpro_mobile/infrastructure/logger.ts";
 import { LokiClient } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_client.ts";
 import {
   _resetLokiClient as _resetTelemetry,
@@ -84,6 +93,7 @@ function setupViaInit(): {
 } {
   const mock = mockLokiFetch();
   initTelemetry({ endpoint: "http://loki.test", labels: { app: "test-mobile" } });
+  configureProcess({ logger: { engine: mobileLogger } });
   return {
     streams: mock.streams.bind(mock),
     lines: mock.lines.bind(mock),
@@ -141,18 +151,14 @@ test("logger: GLOBAL context produces no prefix in Loki message", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// shouldLogRemote: ERROR/WARN bypass ENABLED_LOGS and IS_PRODUCTION
-// These are tested via the logger module itself.
+// Loki's policy: ERROR/WARN from any layer, INFO from enabled layers, DEBUG never —
+// whatever the console shows. Tested through the framework's layer loggers.
 // ---------------------------------------------------------------------------
 
-test("logger: error from disabled-console context (ODOO_CLIENT) still reaches Loki", async () => {
-  // loggerOdooClient has ENABLED_LOGS[ODOO_CLIENT] = false, so shouldLog() returns false.
-  // shouldLogRemote() for ERROR must return true regardless.
+test("logger: error from a disabled layer (adapter) still reaches Loki", async () => {
+  // The adapter layer is off by default; ERROR must reach Loki regardless.
   const { teardown, lines } = setupViaInit();
-
-  // We import the logger lazily to avoid circular/static issues in test runner
-  const { loggerOdooClient } = await import("../../sincpro_mobile/infrastructure/logger.ts");
-  loggerOdooClient.error("Odoo API returned 503");
+  loggerAdapter.error("Odoo API returned 503");
   await flushMicrotasks();
 
   const pushed = lines();
@@ -164,12 +170,9 @@ test("logger: error from disabled-console context (ODOO_CLIENT) still reaches Lo
   teardown();
 });
 
-test("logger: warn from disabled-console context (REPOSITORIES) still reaches Loki", async () => {
+test("logger: warn from a disabled layer (adapter) still reaches Loki", async () => {
   const { teardown, lines } = setupViaInit();
-
-  const { loggerRepositories } =
-    await import("../../sincpro_mobile/infrastructure/logger.ts");
-  loggerRepositories.warn("slow query detected");
+  loggerAdapter.warn("slow query detected");
   await flushMicrotasks();
 
   const pushed = lines();
@@ -181,11 +184,9 @@ test("logger: warn from disabled-console context (REPOSITORIES) still reaches Lo
   teardown();
 });
 
-test("logger: debug never reaches Loki regardless of context", async () => {
+test("logger: debug never reaches Loki, whatever the layer", async () => {
   const { teardown, lines } = setupViaInit();
-
-  const { loggerUseCases } = await import("../../sincpro_mobile/infrastructure/logger.ts");
-  loggerUseCases.debug("verbose debug trace");
+  logger.debug("verbose debug trace");
   await flushMicrotasks();
 
   const pushed = lines();
@@ -198,11 +199,9 @@ test("logger: debug never reaches Loki regardless of context", async () => {
   teardown();
 });
 
-test("logger: info from enabled context (USE_CASES) reaches Loki", async () => {
+test("logger: info from an enabled layer (infrastructure) reaches Loki", async () => {
   const { teardown, lines } = setupViaInit();
-
-  const { loggerUseCases } = await import("../../sincpro_mobile/infrastructure/logger.ts");
-  loggerUseCases.info("order ACM-001 synced");
+  logger.info("order ACM-001 synced");
   await flushMicrotasks();
 
   const pushed = lines();
@@ -214,11 +213,9 @@ test("logger: info from enabled context (USE_CASES) reaches Loki", async () => {
   teardown();
 });
 
-test("logger: info from disabled context (ODOO_CLIENT) does NOT reach Loki", async () => {
+test("logger: info from a disabled layer (adapter) does NOT reach Loki", async () => {
   const { teardown, lines } = setupViaInit();
-
-  const { loggerOdooClient } = await import("../../sincpro_mobile/infrastructure/logger.ts");
-  loggerOdooClient.info("fetching routes");
+  loggerAdapter.info("fetching routes");
   await flushMicrotasks();
 
   const pushed = lines();
@@ -231,17 +228,15 @@ test("logger: info from disabled context (ODOO_CLIENT) does NOT reach Loki", asy
   teardown();
 });
 
-test("logger: context prefix appears in Loki message for ODOO_CLIENT error", async () => {
+test("logger: the layer prefixes the Loki line of an adapter error", async () => {
   const { teardown, lines } = setupViaInit();
-
-  const { loggerOdooClient } = await import("../../sincpro_mobile/infrastructure/logger.ts");
-  loggerOdooClient.error("connection refused");
+  loggerAdapter.error("connection refused");
   await flushMicrotasks();
 
   const pushed = lines();
   assert.ok(
-    pushed.some((l) => l.line.includes("[ODOO_CLIENT]")),
-    `Expected '[ODOO_CLIENT]' prefix in Loki line. Got: ${JSON.stringify(pushed.map((l) => l.line))}`,
+    pushed.some((l) => l.line.startsWith("[adapter] connection refused")),
+    `Expected '[adapter]' prefix in Loki line. Got: ${JSON.stringify(pushed.map((l) => l.line))}`,
   );
 
   teardown();
@@ -277,7 +272,6 @@ test("logger: Loki message lleva trace_id y span_id cuando hay un span activo", 
     await import("../../sincpro_mobile/infrastructure/context_manager/index.ts");
   const { OTEL_CTX_KEY } =
     await import("../../sincpro_mobile/infrastructure/telemetry/context_keys.ts");
-  const { loggerUseCases } = await import("../../sincpro_mobile/infrastructure/logger.ts");
 
   // Inicia un span y lo activa manualmente en el framework context
   const tracer = trace.getTracer("test.logger.correlation");
@@ -291,7 +285,7 @@ test("logger: Loki message lleva trace_id y span_id cuando hay un span activo", 
   const frameworkCtx = manager.active().set(OTEL_CTX_KEY, spanOtelCtx);
   manager.push(frameworkCtx);
 
-  loggerUseCases.info("payment processed");
+  logger.info("payment processed");
 
   manager.pop();
   span.end();
@@ -325,9 +319,7 @@ test("logger: Loki message NO lleva trace_id cuando no hay span activo", async (
   const { _resetContextManager } =
     await import("../../sincpro_mobile/infrastructure/context_manager/index.ts");
   _resetContextManager();
-
-  const { loggerUseCases } = await import("../../sincpro_mobile/infrastructure/logger.ts");
-  loggerUseCases.info("order created without tracing");
+  logger.info("order created without tracing");
   await flushMicrotasks();
 
   const pushed = lines();
@@ -340,6 +332,41 @@ test("logger: Loki message NO lleva trace_id cuando no hay span activo", async (
   assert.ok(
     !targetLine.line.includes("trace_id="),
     `No debería haber 'trace_id=' cuando no hay span activo. Got: ${targetLine.line}`,
+  );
+
+  teardown();
+});
+
+class CommandQuote extends Command<number> {
+  constructor(readonly quantity: number) {
+    super();
+  }
+}
+
+class Quote extends Feature<CommandQuote, number> {
+  static readonly serviceName = "Quote";
+  execute(command: CommandQuote): number {
+    this.logger.info("quoted", { quantity: command.quantity });
+    return command.quantity * 10;
+  }
+}
+
+test("logger: a line inside a use case carries its layer, use case and the run's trace", async () => {
+  const { teardown, lines } = setupViaInit();
+  const tracer = memoryTracer();
+  configureProcess({ tracer, logger: { engine: mobileLogger } });
+  const salesBoundedContext = new BoundedContext("sales");
+  salesBoundedContext.feature(CommandQuote)(Quote);
+
+  assert.equal(await salesBoundedContext.execute(new CommandQuote(3)), 30);
+  await flushMicrotasks();
+
+  const [span] = tracer.spans;
+  const quoted = lines().find((l) => l.line.includes("quoted"));
+  assert.ok(quoted, `no line for the use case. Got: ${JSON.stringify(lines())}`);
+  assert.equal(
+    quoted.line,
+    `[feature] [sales.Quote] quoted quantity=3 trace_id=${span?.traceId} span_id=${span?.spanId}`,
   );
 
   teardown();

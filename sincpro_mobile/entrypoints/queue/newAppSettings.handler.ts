@@ -1,7 +1,7 @@
+import { logger } from "@sincpro/client-framework";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
 import { DomainEvent, NewAppSettingsEvent } from "@sincpro/mobile/domain/events";
 import { Subscriber } from "@sincpro/mobile/event_driven";
-import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 
 export class NewAppSettingsSubscriber extends Subscriber {
   listen = [NewAppSettingsEvent];
@@ -11,12 +11,12 @@ export class NewAppSettingsSubscriber extends Subscriber {
   }
 
   async process(event: NewAppSettingsEvent): Promise<void> {
-    loggerUseCases.info(`Setting ${event.settings.length} settings`);
+    logger.info(`Setting ${event.settings.length} settings`);
 
     for (const setting of event.settings) {
       await SettingsRepository.saveOneSetting(setting.key, setting.value);
     }
 
-    loggerUseCases.info(`${event.settings.length} settings saved successfully`);
+    logger.info(`${event.settings.length} settings saved successfully`);
   }
 }
