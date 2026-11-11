@@ -19,7 +19,11 @@ export class CheckConnectivity extends Feature<CommandCheckConnectivity, Network
       status.isConnected ? InternetIsUpEvent.eventName : InternetIsDownEvent.eventName,
       status.isConnected,
     );
-    if (!changed) return status;
+    if (changed) this.notifyChange(status);
+    return status;
+  }
+
+  private notifyChange(status: NetworkStatus): void {
     if (status.isConnected) {
       this.logger.info("Network is up", { type: status.type });
       this.notifier.notify({
@@ -37,6 +41,5 @@ export class CheckConnectivity extends Feature<CommandCheckConnectivity, Network
         variant: "danger",
       });
     }
-    return status;
   }
 }

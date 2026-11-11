@@ -1,7 +1,8 @@
 import { Command } from "@sincpro/client-framework";
 import type { BluetoothDevice } from "@sincpro/mobile/domain/print";
+import { BluetoothPermissionDenied } from "@sincpro/mobile/exceptions";
 import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
-import { toldBluetoothDenied } from "@sincpro/mobile/services/printer/common";
+import { BLUETOOTH_REQUIRED } from "@sincpro/mobile/services/printer/common";
 
 export class CommandScanPrinters extends Command<BluetoothDevice[]> {}
 
@@ -14,7 +15,8 @@ export class ScanPrinters extends Feature<CommandScanPrinters, BluetoothDevice[]
       this.span.set({ "printer.found": found.length });
       return found;
     } catch (error) {
-      toldBluetoothDenied(error, this.notifier);
+      if (error instanceof BluetoothPermissionDenied)
+        this.notifier.notify(BLUETOOTH_REQUIRED);
       throw error;
     }
   }

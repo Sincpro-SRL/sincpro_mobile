@@ -1,5 +1,5 @@
 import { logger } from "@sincpro/client-framework";
-import { combineScripts, type IInjectedScript } from "@sincpro/mobile/domain/webview";
+import type { IInjectedScript } from "@sincpro/mobile/domain/webview";
 import { useToast } from "@sincpro/mobile-ui/Feedback";
 import Spinner from "@sincpro/mobile-ui/Feedback/Feedback.Spinner";
 import { useBottomInset } from "@sincpro/mobile-ui/layouts/BottomInset";
@@ -36,6 +36,13 @@ const WebView = RawWebView as unknown as ComponentType<
 
 const STUCK_LOAD_MS = 15000;
 const CLEAR_CACHE_SETTLE_MS = 300;
+
+/** The scripts a page runs before its content, then the screen's own, as one. */
+function combineScripts(scripts?: IInjectedScript[], additionalScript?: string): string {
+  const parts = (scripts ?? []).map((script) => script.script);
+  if (additionalScript) parts.push(additionalScript);
+  return parts.join("\n\n");
+}
 
 export type WebViewErrorEvent = NativeSyntheticEvent<WebViewError>;
 

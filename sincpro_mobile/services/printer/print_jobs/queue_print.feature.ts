@@ -1,8 +1,10 @@
 import { Command } from "@sincpro/client-framework";
 import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/print/events";
-import { printNoticeKey } from "@sincpro/mobile/domain/webview/print_cycle";
 import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
-import { captureFailed } from "@sincpro/mobile/services/printer/print_jobs/common";
+import {
+  captureFailedNotice,
+  printNoticeKey,
+} from "@sincpro/mobile/services/printer/print_jobs/common";
 
 export class CommandQueuePrint extends Command<void> {
   constructor(
@@ -40,7 +42,7 @@ export class QueuePrint extends Feature<CommandQueuePrint, void> {
     try {
       await this.publisher.publish(event);
     } catch (error) {
-      this.notifier.notify(captureFailed(printNoticeKey(jobId), command.title));
+      this.notifier.notify(captureFailedNotice(printNoticeKey(jobId), command.title));
       throw error;
     }
   }

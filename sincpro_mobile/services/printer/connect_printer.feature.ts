@@ -1,8 +1,9 @@
 import { Command } from "@sincpro/client-framework";
+import { BluetoothPermissionDenied } from "@sincpro/mobile/exceptions";
 import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
 import {
+  BLUETOOTH_REQUIRED,
   PRINT_NOTICE_ACTIONS,
-  toldBluetoothDenied,
 } from "@sincpro/mobile/services/printer/common";
 
 export class CommandConnectPrinter extends Command<void> {
@@ -28,15 +29,7 @@ export class ConnectPrinter extends Feature<CommandConnectPrinter, void> {
     try {
       await this.printer.connect(command.address, command.name);
     } catch (error) {
-      if (!toldBluetoothDenied(error, this.notifier)) {
-        this.notifier.notify({
-          name: "printer.connect_failed",
-          title: "Error de conexión",
-          message: `No se pudo conectar a ${command.name}`,
-          variant: "danger",
-          actions: [PRINT_NOTICE_ACTIONS.printer],
-        });
-      }
+      this.notifyNotConnected(command.name, error);
       throw error;
     }
     this.notifier.notify({
@@ -44,6 +37,20 @@ export class ConnectPrinter extends Feature<CommandConnectPrinter, void> {
       title: "Impresora conectada",
       message: `Conectado a ${command.name}`,
       variant: "success",
+    });
+  }
+
+  private notifyNotConnected(name: string, error: unknown): void {
+    if (error instanceof BluetoothPermissionDenied) {
+      this.notifier.notify(BLUETOOTH_REQUIRED);
+      return;
+    }
+    this.notifier.notify({
+      name: "printer.connect_failed",
+      title: "Error de conexión",
+      message: `No se pudo conectar a ${name}`,
+      variant: "danger",
+      actions: [PRINT_NOTICE_ACTIONS.printer],
     });
   }
 }

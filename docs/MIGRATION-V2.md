@@ -256,6 +256,18 @@ aviso, y nunca se reportan. Un error inesperado del driver termina `failed` y se
 | `ProcessWebViewMessage` (Feature)                                                                                                                    | ApplicationService (`*.app_service.ts`): compone `CommandQueuePrint` como hija                                                                                                                                          |
 | —                                                                                                                                                    | `reporter` en `defineAppShell`, `createApp` y `createKernel`: `sentryReporter(Sentry)` sobre el cliente que la app inicializó (GlitchTip habla Sentry). Sin él no se reporta nada                                       |
 
+## Después de 2.2.0
+
+La lógica de aplicación sale de `domain/` (que queda con entidades, puertos, DTOs y eventos):
+
+| 2.2.0                                                                                        | Ahora                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parseWebViewMessage`, `isPrintImageMessage` en `@sincpro/mobile/domain/webview`             | Métodos privados de `ProcessWebViewMessage`, su único uso                                                                                                                                                                                       |
+| `combineScripts` en `@sincpro/mobile/domain/webview`                                         | Función de `InjectableWebView`, su único uso                                                                                                                                                                                                    |
+| `routePrintMessage`, `PrintCycleHandlers` en `domain/webview/print_cycle`                    | `entrypoints/webview/print_cycle.ts`: la puerta del ciclo de impresión                                                                                                                                                                          |
+| `printNoticeKey` en `domain/webview/print_cycle`                                             | `services/printer/print_jobs/common.ts`                                                                                                                                                                                                         |
+| `printFollowed`, `toldBluetoothDenied`, `sendBack` (helpers con dependencias en `common.ts`) | Eliminados: cada caso de uso avisa, imprime y reintenta con sus dependencias, desglosado en métodos privados; `common.ts` arma los avisos (`printingNotice`, `printFailedNotice`, `printedNotice`, `captureFailedNotice`, `BLUETOOTH_REQUIRED`) |
+
 ## Comportamiento nuevo, sin cambio de API
 
 - **La cola (`eventDelivery`, sobre `storedQueue`):**

@@ -1,13 +1,15 @@
 import { Command } from "@sincpro/client-framework";
 import {
-  isPrintImageMessage,
-  parseWebViewMessage,
-} from "@sincpro/mobile/domain/webview/messages";
+  EWebViewMessageType,
+  type IPrintImageMessage,
+  type TWebViewMessage,
+} from "@sincpro/mobile/domain/webview";
 import {
   ApplicationService,
   commonBoundedContext,
 } from "@sincpro/mobile/infrastructure/framework";
 import { CommandQueuePrint } from "@sincpro/mobile/services/printer/print_jobs/queue_print.feature";
+import { safeJsonParse } from "@sincpro/mobile/tools/utils/serializer";
 
 export class CommandProcessWebViewMessage extends Command<void> {
   constructor(readonly raw: string) {
@@ -16,8 +18,10 @@ export class CommandProcessWebViewMessage extends Command<void> {
 }
 
 /**
- * A message a page posted: a print image is queued to print (`CommandQueuePrint`, a child of
- * this run); anything else is ignored.
+ * A message a page posted:
+ * 1. It is read; anything that is not JSON with a string `type` is ignored.
+ * 2. Anything that is not a print image is ignored.
+ * Final: the image is queued to print (`CommandQueuePrint`, a child of this run).
  */
 @commonBoundedContext.appService(CommandProcessWebViewMessage)
 export class ProcessWebViewMessage extends ApplicationService<
@@ -25,8 +29,9 @@ export class ProcessWebViewMessage extends ApplicationService<
   void
 > {
   async execute(command: CommandProcessWebViewMessage): Promise<void> {
-    const message = parseWebViewMessage(command.raw);
-    if (!message || !isPrintImageMessage(message)) return;
+    const message = this.read(command.raw);
+    this.span.set({ "webview.message": message?.type ?? "unreadable" });
+    if (!message || !this.isPrintImage(message)) return;
     await this.featureBus.execute(
       new CommandQueuePrint(
         message.image,
@@ -36,5 +41,18 @@ export class ProcessWebViewMessage extends ApplicationService<
         message.jobId ?? "",
       ),
     );
+  }
+
+  private read(raw: string): TWebViewMessage | null {
+    try {
+      const parsed = safeJsonParse(raw) as TWebViewMessage | null;
+      return parsed && typeof parsed.type === "string" ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private isPrintImage(message: TWebViewMessage): message is IPrintImageMessage {
+    return message.type === EWebViewMessageType.PRINT_IMAGE;
   }
 }

@@ -23,8 +23,10 @@ import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 import { deviceNotifier } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 import type { DomainSwitch } from "@sincpro/mobile/services/domains/common";
-import type { EventDelivery } from "@sincpro/mobile/services/events/common";
 import type { SettingsStore } from "@sincpro/mobile/services/settings/apply_app_settings.feature";
+
+/** The stored queue as the event use cases need it: deliver what waits. */
+export type EventDelivery = { drain(): Promise<void> };
 
 /**
  * What every use case of the core's bounded context finds on `this` — the backend's
