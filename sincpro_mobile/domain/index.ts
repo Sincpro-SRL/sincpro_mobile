@@ -3,6 +3,7 @@ export * from "@sincpro/mobile/domain/database";
 export * from "@sincpro/mobile/domain/entity";
 export * from "@sincpro/mobile/domain/events";
 export * from "@sincpro/mobile/domain/icon";
+export * from "@sincpro/mobile/domain/notifier";
 export * from "@sincpro/mobile/domain/receipt";
 export * from "@sincpro/mobile/domain/repositories";
 export * from "@sincpro/mobile/domain/settings";

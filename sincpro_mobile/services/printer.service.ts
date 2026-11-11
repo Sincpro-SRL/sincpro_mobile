@@ -15,6 +15,7 @@ import {
 import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/print/events";
 import { ECommonSetting } from "@sincpro/mobile/domain/settings";
 import { printNoticeKey } from "@sincpro/mobile/domain/webview/print_cycle";
+import { PrinterNotSelected, PrinterUnavailable } from "@sincpro/mobile/exceptions";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
 import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
@@ -57,7 +58,9 @@ export interface PrinterOptions {
  * - `configure()` tunes its policies;
  * - `driver` gives the native driver for low-level work;
  * - `class MyPrinter extends PrinterService` overrides any method, registered with `setPrinterService`;
- * - event interceptors (`DomainModule.interceptors`) wrap the print subscriber.
+ * - `commonBoundedContext.interceptor(CommandPrintImage)` wraps the print use case, and
+ *   `commonBoundedContext.feature([CommandPrintImage, PrintImageRequestedEvent], { replaces: PrintImage })`
+ *   replaces it.
  */
 export class PrinterService {
   private readonly bluetooth = bluetoothService;
@@ -271,27 +274,51 @@ export class PrinterService {
     }
   }
 
+  /**
+   * Prints an image, or fails saying why — what a use case calls:
+   * 1. No printer saved: `PrinterNotSelected` (domain) — the person picks one, then retries.
+   * 2. Not connected: connects to the saved one, silently; it does not answer:
+   *    `PrinterUnavailable` (off, out of reach) — a retry may print.
+   * 3. The print fails on a stale link: one reconnect and one more try; failing again:
+   *    `PrinterUnavailable`.
+   */
+  async printImage(base64Data: string): Promise<void> {
+    if (!this.isConnected()) {
+      const printer = await this.getSelectedPrinter();
+      if (!printer) throw new PrinterNotSelected("No printer is selected");
+      if (!(await this.connect(printer.address, printer.name, false)))
+        throw new PrinterUnavailable(`${printer.name} did not answer`);
+    }
+    try {
+      await getPrinterDriver().printImageBase64(base64Data);
+      return;
+    } catch (firstError) {
+      logger.warn("Print failed — attempting grace reconnect", errorAttributes(firstError));
+    }
+    if (!(await this.forceReconnect()))
+      throw new PrinterUnavailable("The printer link was lost and did not come back");
+    try {
+      await getPrinterDriver().printImageBase64(base64Data);
+    } catch (retryError) {
+      throw new PrinterUnavailable(
+        retryError instanceof Error
+          ? retryError.message
+          : "The print failed after reconnecting",
+      );
+    }
+  }
+
+  /** Prints an image from a screen: `true` when it came out; why not is in the notices. */
   async printImageBase64(base64Data: string): Promise<boolean> {
     const connected = await this.ensureConnected();
     if (!connected) return false;
-
-    try {
-      await getPrinterDriver().printImageBase64(base64Data);
-      return true;
-    } catch (firstError) {
-      logger.warn("Print failed — attempting grace reconnect", errorAttributes(firstError));
-
-      const reconnected = await this.forceReconnect();
-      if (!reconnected) return false;
-
-      try {
-        await getPrinterDriver().printImageBase64(base64Data);
-        return true;
-      } catch (retryError) {
-        logger.error("Print retry after reconnect also failed", errorAttributes(retryError));
+    return this.printImage(base64Data).then(
+      () => true,
+      (error: unknown) => {
+        logger.error("Print failed", errorAttributes(error));
         return false;
-      }
-    }
+      },
+    );
   }
 
   async printFromView(viewRef: RefObject<View | null>): Promise<boolean> {

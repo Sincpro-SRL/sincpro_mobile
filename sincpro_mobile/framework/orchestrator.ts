@@ -44,12 +44,17 @@ class Orchestrator {
   }
 
   /**
-   * Who hears events is the active domains' parties; whether one that needs a session may go
-   * is the session's. Then what waits is delivered.
+   * Who hears events is the active domains' `Subscriber`; whether one that needs a session may go
+   * is the session's. Nothing is awaited: a use case the queue is running may call this.
    */
-  private async orchestrateQueue(): Promise<void> {
-    eventDelivery.use(this.requireKernel().partiesFor(this.activeDomains));
+  private listenToActiveDomains(): void {
+    eventDelivery.listen(this.requireKernel().subscriberFor(this.activeDomains));
     eventDelivery.setSession(this.authenticated);
+  }
+
+  /** Who hears, then what waits is delivered. */
+  private async orchestrateQueue(): Promise<void> {
+    this.listenToActiveDomains();
     await eventDelivery.drain();
   }
 
@@ -117,9 +122,10 @@ class Orchestrator {
     if (this.activeDomains.has(key)) return;
     this.activeDomains.add(key);
     await this.withMutex(async () => {
-      await this.orchestrateQueue();
+      this.listenToActiveDomains();
       await this.orchestrateCron();
     });
+    void eventDelivery.drain();
   }
 
   async disableDomain(key: string): Promise<void> {
@@ -127,9 +133,10 @@ class Orchestrator {
     if (!this.activeDomains.has(key)) return;
     this.activeDomains.delete(key);
     await this.withMutex(async () => {
-      await this.orchestrateQueue();
+      this.listenToActiveDomains();
       await this.orchestrateCron();
     });
+    void eventDelivery.drain();
   }
 
   isSessionAuthenticated(): boolean {

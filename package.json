@@ -11,7 +11,13 @@
     "dist",
     "README.md"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/services/index.js",
+    "./dist/services/**/*.feature.js",
+    "./dist/entrypoints/queue/index.js",
+    "./dist/entrypoints/queue/*.handler.js",
+    "./dist/framework/base_module.js"
+  ],
   "prettier": {
     "printWidth": 94
   },
@@ -43,7 +49,7 @@
     "tailwind-variants": "^3.2.2"
   },
   "peerDependencies": {
-    "@sincpro/client-framework": "^1.2.0",
+    "@sincpro/client-framework": "^1.4.0",
     "@sincpro/mobile-ui": "^3.3.0",
     "expo-background-task": "*",
     "expo-clipboard": "*",
@@ -79,7 +85,7 @@
     "@opentelemetry/api": "^1.9.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@shopify/flash-list": "2.3.2",
-    "@sincpro/client-framework": "^1.2.0",
+    "@sincpro/client-framework": "^1.4.0",
     "@sincpro/mobile-ui": "^3.3.0",
     "@storybook/addon-ondevice-actions": "10.7.1",
     "@storybook/react-native": "10.7.1",
@@ -141,7 +147,6 @@
     "./domain/entity": "./dist/domain/entity/index.js",
     "./domain/events": "./dist/domain/events/index.js",
     "./domain/repositories": "./dist/domain/repositories/index.js",
-    "./event_driven": "./dist/event_driven/index.js",
     "./domain/database": "./dist/domain/database/index.js",
     "./domain/connectivity": "./dist/domain/connectivity/index.js",
     "./domain/print": "./dist/domain/print/index.js",
@@ -149,6 +154,7 @@
     "./entrypoints/db": "./dist/entrypoints/db/index.js",
     "./infrastructure/database": "./dist/infrastructure/database/index.js",
     "./infrastructure/workers": "./dist/infrastructure/workers/index.js",
+    "./services": "./dist/services/index.js",
     "./ui": "./dist/ui/index.js",
     "./ui/components/atoms": "./dist/ui/components/atoms/index.js",
     "./ui/components/molecules": "./dist/ui/components/molecules/index.js",

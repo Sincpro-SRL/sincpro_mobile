@@ -2,34 +2,45 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
 import {
-  type BoundedContext,
-  BoundedContext as Context,
+  BoundedContext,
   Command,
+  commandMessageOf,
+  CommandNotConsumed,
   DomainEvent,
   envelopeOf,
-  EventSubscriber,
   Feature,
-  Subscriptions,
+  Subscriber,
 } from "@sincpro/client-framework";
 
 import { eventStore } from "../../sincpro_mobile/adapters/repositories/sqlite_event_store.ts";
 import { InternetIsDownEvent } from "../../sincpro_mobile/domain/connectivity/events.ts";
 import { newEvent } from "../../sincpro_mobile/domain/events/delivery.ts";
+import type { Notice, Notifier } from "../../sincpro_mobile/domain/notifier.ts";
 import { PrintImageRequestedEvent } from "../../sincpro_mobile/domain/print/events.ts";
 import MIGRATIONS from "../../sincpro_mobile/entrypoints/db/migrations.ts";
-import { commonSubscriptions } from "../../sincpro_mobile/entrypoints/queue/index.ts";
+import { OnPrintImageRequested } from "../../sincpro_mobile/entrypoints/queue/print_image.handler.ts";
 import {
   DomainNetworkError,
   DomainValidationError,
+  PrinterNotSelected,
+  PrinterUnavailable,
   RepeatableFailure,
 } from "../../sincpro_mobile/exceptions.ts";
 import { DomainModule } from "../../sincpro_mobile/framework/domain_module.ts";
 import { Kernel } from "../../sincpro_mobile/framework/kernel.ts";
-import { commonBoundedContext } from "../../sincpro_mobile/infrastructure/bounded_context.ts";
 import { eventDelivery } from "../../sincpro_mobile/infrastructure/events/delivery.ts";
 import { eventOutbox } from "../../sincpro_mobile/infrastructure/events/outbox.ts";
 import { storedEventOf } from "../../sincpro_mobile/infrastructure/events/stored.ts";
+import {
+  ACTIVITY_EVENT,
+  type ActivityFact,
+} from "../../sincpro_mobile/infrastructure/ui/activity.ts";
 import { UIEventBus } from "../../sincpro_mobile/infrastructure/ui/UIEventBus.ts";
+import {
+  CommandPrintImage,
+  PrintImage,
+} from "../../sincpro_mobile/services/print/print_image.feature.ts";
+import type { PrinterService } from "../../sincpro_mobile/services/printer.service.ts";
 
 const heard: string[] = [];
 const failures: unknown[] = [];
@@ -52,24 +63,35 @@ class NetworkEvent extends DomainEvent {
   value = "";
 }
 
-/** A use case of each event: it records what it heard, failing first when told to. */
-function hears<E extends DomainEvent & { value: string }>(
-  serviceName: string,
-): (new () => Feature<E, void>) & { readonly serviceName: string } {
-  return class extends Feature<E, void> {
-    static readonly serviceName = serviceName;
-    execute(event: E): void {
-      const failure = failures.shift();
-      if (failure !== undefined) throw failure;
-      heard.push(`${event.name}:${event.value}`);
-    }
-  };
+/** Records what it heard, failing first when told to. */
+function hear(event: DomainEvent & { value: string }): void {
+  const failure = failures.shift();
+  if (failure !== undefined) throw failure;
+  heard.push(`${event.name}:${event.value}`);
 }
 
-const testsBoundedContext = new Context("tests");
-testsBoundedContext.feature(SessionEvent)(hears("HearSession"));
-testsBoundedContext.feature(OfflineEvent)(hears("HearOffline"));
-testsBoundedContext.feature(NetworkEvent)(hears("HearNetwork"));
+class HearSession extends Feature<SessionEvent, void> {
+  execute(event: SessionEvent): void {
+    hear(event);
+  }
+}
+
+class HearOffline extends Feature<OfflineEvent, void> {
+  execute(event: OfflineEvent): void {
+    hear(event);
+  }
+}
+
+class HearNetwork extends Feature<NetworkEvent, void> {
+  execute(event: NetworkEvent): void {
+    hear(event);
+  }
+}
+
+const testsBoundedContext = new BoundedContext("tests");
+testsBoundedContext.feature(SessionEvent)(HearSession);
+testsBoundedContext.feature(OfflineEvent)(HearOffline);
+testsBoundedContext.feature(NetworkEvent)(HearNetwork);
 
 const publish = async (event: DomainEvent) => {
   await eventDelivery.publisher.publish(event);
@@ -87,7 +109,7 @@ beforeEach(async () => {
   await eventStore.clear();
   heard.length = 0;
   failures.length = 0;
-  eventDelivery.use([testsBoundedContext]);
+  eventDelivery.listen(new Subscriber(testsBoundedContext));
   eventDelivery.setOnline(true);
   eventDelivery.setSession(true);
 });
@@ -155,34 +177,22 @@ class OrderPaid extends DomainEvent {
   order = "";
 }
 
-class CommandRegisterPayment extends Command<void> {
+class CommandRegisterPayment extends Command<string> {
   constructor(readonly order: string) {
     super();
   }
 }
 
-class RegisterPayment extends Feature<CommandRegisterPayment, void> {
-  static readonly serviceName = "RegisterPayment";
-  execute(command: CommandRegisterPayment): void {
-    heard.push(`payment:${command.order}`);
+/** One use case, two inputs: a screen executes the Command, the queue delivers the event. */
+class RegisterPayment extends Feature<CommandRegisterPayment | OrderPaid, string> {
+  execute(input: CommandRegisterPayment | OrderPaid): string {
+    heard.push(`payment:${input.order}`);
+    return `paid:${input.order}`;
   }
 }
 
-class OrderPaidSubscriber extends EventSubscriber<OrderPaid> {
-  static readonly subscriberName = "OrderPaid";
-  declare readonly salesBoundedContext: BoundedContext;
-  async handle(event: OrderPaid): Promise<void> {
-    await this.salesBoundedContext.execute(new CommandRegisterPayment(event.order));
-  }
-}
-
-const salesBoundedContext = new Context("sales");
-salesBoundedContext.feature(CommandRegisterPayment)(RegisterPayment);
-const salesSubscriptions = new Subscriptions<{ salesBoundedContext: BoundedContext }>(
-  "sales-subscriptions",
-);
-salesSubscriptions.addDependency("salesBoundedContext", salesBoundedContext);
-salesSubscriptions.subscribe(OrderPaid)(OrderPaidSubscriber);
+const salesBoundedContext = new BoundedContext("sales");
+salesBoundedContext.feature([CommandRegisterPayment, OrderPaid])(RegisterPayment);
 
 class SalesModule extends DomainModule {
   readonly key = "SALES";
@@ -190,31 +200,100 @@ class SalesModule extends DomainModule {
   override boundedContexts() {
     return [salesBoundedContext];
   }
-  override subscribers() {
-    return [salesSubscriptions];
+  override consumes() {
+    return [CommandRegisterPayment];
   }
 }
 
-test("a module's subscriptions hear an event while its domain is active", async () => {
+test("the queue hands an event to the bounded contexts of the active modules only", async () => {
   const kernel = new Kernel([new SalesModule()]);
-  eventDelivery.use(kernel.partiesFor(new Set()));
+  eventDelivery.listen(kernel.subscriberFor(new Set()));
   await publish(newEvent(OrderPaid, { order: "o-1" }));
   assert.deepEqual(heard, [], "an inactive domain hears nothing");
 
-  eventDelivery.use(kernel.partiesFor(new Set(["SALES"])));
+  eventDelivery.listen(kernel.subscriberFor(new Set(["SALES"])));
   await publish(newEvent(OrderPaid, { order: "o-2" }));
   assert.deepEqual(heard, ["payment:o-2"]);
   const [delivered] = await eventStore.inState("delivered");
   assert.equal(delivered?.name, "sales.order.v1.paid");
 });
 
-test("the core's subscriptions set aside a print request whose image is gone", async () => {
-  eventDelivery.use([commonBoundedContext, commonSubscriptions]);
-  await publish(newEvent(PrintImageRequestedEvent, { imageBase64: "", title: "ticket" }));
-  const [failed] = await eventStore.inState("set_aside");
-  assert.equal(failed?.name, "common.print.v1.image_requested");
-  assert.equal(failed?.failures[0]?.boundedContext, "common-subscriptions");
-  assert.equal(failed?.failures[0]?.kind, "invalid");
+test("a use case registered for a Command and an event answers both", async () => {
+  eventDelivery.listen(new Subscriber(salesBoundedContext));
+  assert.equal(
+    await salesBoundedContext.execute(new CommandRegisterPayment("o-3")),
+    "paid:o-3",
+  );
+  await publish(newEvent(OrderPaid, { order: "o-4" }));
+  assert.deepEqual(heard, ["payment:o-3", "payment:o-4"]);
+});
+
+test("a message from outside: an event is stored in its flow, a Command runs only when consumed", async () => {
+  const kernel = new Kernel([new SalesModule()]);
+  eventDelivery.listen(kernel.subscriberFor(new Set(["SALES"])));
+  const answered = await eventDelivery.receive({
+    headers: {
+      ce_id: "0193a000000070008000000000000001",
+      ce_type: "sales.order.v1.paid",
+      ce_correlationid: "0193a000000070008000000000000000",
+    },
+    body: JSON.stringify({ name: "sales.order.v1.paid", order: "o-5" }),
+  });
+  assert.deepEqual(answered, [], "an event is stored, then delivered");
+  await eventDelivery.drain();
+  assert.deepEqual(heard, ["payment:o-5"]);
+  const [stored] = await eventStore.inState("delivered");
+  assert.equal(stored?.correlationId, "0193a000000070008000000000000000");
+
+  const [ran] = await eventDelivery.receive(
+    commandMessageOf(new CommandRegisterPayment("o-6")),
+  );
+  assert.deepEqual(ran, { boundedContext: "sales", answer: "paid:o-6" });
+
+  eventDelivery.listen(new Subscriber(salesBoundedContext));
+  await assert.rejects(
+    eventDelivery.receive(commandMessageOf(new CommandRegisterPayment("o-7"))),
+    CommandNotConsumed,
+  );
+});
+
+test("a use case the queue runs may change who hears; the next event goes to the new one, once", async () => {
+  class TurnSalesOn extends DomainEvent {
+    static readonly eventName = "test.domain.v1.sales_on";
+    static readonly requiresSession = false;
+  }
+  class SwitchToSales extends Feature<TurnSalesOn, void> {
+    execute(): void {
+      heard.push("switch");
+      eventDelivery.listen(new Subscriber(salesBoundedContext));
+    }
+  }
+  const switchBoundedContext = new BoundedContext("switch");
+  switchBoundedContext.feature(TurnSalesOn)(SwitchToSales);
+  eventDelivery.listen(new Subscriber(switchBoundedContext));
+
+  await eventDelivery.publisher.publish(new TurnSalesOn());
+  await eventDelivery.publisher.publish(newEvent(OrderPaid, { order: "o-8" }));
+  await eventDelivery.drain();
+  await eventDelivery.drain();
+  assert.deepEqual(heard, ["switch", "payment:o-8"]);
+  assert.equal((await eventStore.inState("pending")).length, 0);
+});
+
+test("the activity of a delivery is told by the process, from its use case's run", async () => {
+  eventDelivery.start();
+  const facts: ActivityFact[] = [];
+  const off = UIEventBus.on(ACTIVITY_EVENT, (fact: ActivityFact) => facts.push(fact), {
+    debounce: false,
+  });
+  failures.push(new DomainValidationError("no"));
+  await publish(newEvent(OfflineEvent, { value: "a" }));
+  await publish(newEvent(OfflineEvent, { value: "b" }));
+  off();
+  const statuses = facts
+    .filter((fact) => fact.name === "test.offline.v1.fine")
+    .map((fact) => fact.status);
+  assert.deepEqual(statuses, ["running", "failed", "running", "succeeded"]);
 });
 
 test("a repository's outbox keeps the message in its transaction, delivered after", async () => {
@@ -226,4 +305,102 @@ test("a repository's outbox keeps the message in its transaction, delivered afte
   await eventDelivery.drain();
   assert.equal(await stateOf("outbox"), "delivered");
   assert.deepEqual(heard, ["test.offline.v1.fine:outbox"]);
+});
+
+/** The print use case over a printer and a notifier of the test's. */
+function printing(outcome: () => Promise<void>) {
+  const notices: Notice[] = [];
+  const notifier: Notifier = { notify: (notice) => void notices.push(notice) };
+  const printer = {
+    printImage: outcome,
+    printFailureActions: () => [{ label: "Impresora", intent: "printer" }],
+  } as unknown as PrinterService;
+  const printBoundedContext = new BoundedContext<{
+    printer: PrinterService;
+    notifier: Notifier;
+  }>("print");
+  printBoundedContext.addDependency("printer", printer);
+  printBoundedContext.addDependency("notifier", notifier);
+  printBoundedContext.feature(CommandPrintImage)(PrintImage);
+  // The core's handler of the event, on this bounded context: it executes CommandPrintImage here.
+  printBoundedContext.handler([PrintImageRequestedEvent])(OnPrintImageRequested);
+  eventDelivery.listen(new Subscriber(printBoundedContext));
+  return { notices, printBoundedContext };
+}
+
+const printRequest = (imageBase64: string) =>
+  newEvent(PrintImageRequestedEvent, { imageBase64, title: "Ticket 7", jobId: "" });
+
+test("a print whose printer is off fails unavailable and waits to be retried, keyed by its message", async () => {
+  const { notices } = printing(() => Promise.reject(new PrinterUnavailable("no answer")));
+  const envelope = await eventDelivery.publisher.publish(printRequest("abc"));
+  await eventDelivery.drain();
+  const [waiting] = await eventStore.inState("pending");
+  assert.equal(waiting?.failures[0]?.kind, "unavailable");
+  assert.equal(waiting?.attempts, 1);
+  assert.deepEqual(
+    notices.map((notice) => notice.name),
+    ["printer.printing", "printer.print_failed"],
+  );
+  assert.equal(notices[0]?.key, `print:${envelope.id}`, "the request's id keys its notice");
+  assert.deepEqual(notices[1]?.actions, [{ label: "Impresora", intent: "printer" }]);
+});
+
+test("a print without its image is invalid and set aside; without a printer, domain", async () => {
+  printing(() => Promise.reject(new PrinterNotSelected("none")));
+  await publish(printRequest(""));
+  await publish(printRequest("abc"));
+  const kinds = (await eventStore.inState("set_aside"))
+    .map((failed) => failed.failures[0]?.kind)
+    .sort();
+  assert.deepEqual(kinds, ["domain", "invalid"]);
+});
+
+test("a print from a screen answers once printed, its notice its own", async () => {
+  const { notices, printBoundedContext } = printing(() => Promise.resolve());
+  await printBoundedContext.execute(new CommandPrintImage("abc", "Ticket 8"));
+  assert.deepEqual(
+    notices.map((notice) => `${notice.name}:${notice.message}`),
+    ["printer.printing:Ticket 8", "printer.printed:Ticket 8"],
+  );
+  assert.match(notices[0]?.key ?? "", /^print:[0-9a-f]{32}$/);
+});
+
+test("the core's use cases are registered by their decorators, for their Command and event", async () => {
+  const { baseModule } = await import("../../sincpro_mobile/framework/base_module.ts");
+  const { commonBoundedContext, CommandPrintImage: CorePrintCommand } =
+    await import("../../sincpro_mobile/services/index.ts");
+  const subscriber = new Kernel([baseModule]).subscriberFor(new Set(["COMMON"]));
+  for (const name of [
+    "common.print.v1.image_requested",
+    "common.webview.v1.message_received",
+    "common.settings.added",
+    "common.domain.activate",
+    "common.domain.deactivate",
+  ]) {
+    assert.ok(subscriber.eventTypeOf(name), `${name} is heard by the core`);
+  }
+  assert.ok(commonBoundedContext.handlerOf(CorePrintCommand));
+});
+
+test("the network cron is an entrypoint: each tick executes the core's use case", async () => {
+  const { commonBoundedContext } = await import("../../sincpro_mobile/services/index.ts");
+  const { networkUseCases } =
+    await import("../../sincpro_mobile/services/network.service.ts");
+  const { default: cron } =
+    await import("../../sincpro_mobile/entrypoints/cron/checkNetworkStatus.cron.ts");
+  let checks = 0;
+  const fake = Object.assign(Object.create(networkUseCases), {
+    getNetworkStatus: async () => {
+      checks++;
+      return { isConnected: true, isInternetReachable: true, type: "WIFI" };
+    },
+  });
+  commonBoundedContext.addDependency("connectivity", fake, { replaces: networkUseCases });
+  try {
+    assert.equal(await cron.runOnce(), true);
+    assert.equal(checks, 1);
+  } finally {
+    commonBoundedContext.addDependency("connectivity", networkUseCases, { replaces: fake });
+  }
 });

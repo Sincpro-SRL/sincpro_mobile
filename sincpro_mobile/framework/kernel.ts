@@ -1,5 +1,9 @@
-import type { HearingContext } from "@sincpro/client-framework";
-import { logger, loggerAdapter } from "@sincpro/client-framework";
+import {
+  type CommandType,
+  logger,
+  loggerAdapter,
+  Subscriber,
+} from "@sincpro/client-framework";
 import type { IMigration } from "@sincpro/mobile/domain/database";
 import {
   applyMigrationStep,
@@ -26,7 +30,6 @@ import { type LifecycleHook, runLifecycle } from "./lifecycle";
 export class Kernel {
   private readonly modules: DomainModule[];
   private crons?: Record<string, CronWorker[]>;
-  private parties?: Record<string, readonly HearingContext[]>;
   private extensionsRegistered = false;
   private readonly prepare = onceUntilFailure(async () => {
     repos.register(this.repositories());
@@ -61,28 +64,25 @@ export class Kernel {
     return this.modules.flatMap((module) => module.persistOnReset());
   }
 
-  /** Read once: each module's bounded contexts and subscriptions — who hears events. */
-  partiesByKey(): Record<string, readonly HearingContext[]> {
-    if (!this.parties) {
-      const map: Record<string, readonly HearingContext[]> = {};
-      for (const module of this.modules) {
-        map[module.key] = [...module.boundedContexts(), ...module.subscribers()];
-      }
-      this.parties = map;
-    }
-    return this.parties;
-  }
-
-  /** Who hears events while these domains are active: each party once, the core's first. */
-  partiesFor(activeDomains: ReadonlySet<string>): HearingContext[] {
-    const parties: HearingContext[] = [];
-    for (const module of this.modules) {
-      if (!activeDomains.has(module.key)) continue;
-      for (const party of this.partiesByKey()[module.key] ?? []) {
-        if (!parties.includes(party)) parties.push(party);
+  /**
+   * The queue's one entrypoint while these domains are active: a `Subscriber` that delivers to
+   * their modules' bounded contexts — each once, the core's first: their use cases and event
+   * handlers — and takes the Commands they consume.
+   */
+  subscriberFor(activeDomains: ReadonlySet<string>): Subscriber {
+    const commands: CommandType[] = [];
+    const active = this.modules.filter((module) => activeDomains.has(module.key));
+    for (const module of active) {
+      for (const command of module.consumes()) {
+        if (!commands.includes(command)) commands.push(command);
       }
     }
-    return parties;
+    const subscriber = new Subscriber("mobile", { commands });
+    for (const module of active) {
+      for (const boundedContext of module.boundedContexts())
+        subscriber.addBus(boundedContext);
+    }
+    return subscriber;
   }
 
   /**

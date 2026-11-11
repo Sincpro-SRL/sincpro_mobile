@@ -2,6 +2,7 @@ import {
   type Cause,
   type DomainEvent,
   type Envelope,
+  type RemoteEvent,
   type StoredEvent,
   valuesOf,
 } from "@sincpro/client-framework";
@@ -25,7 +26,10 @@ export function envelopeOfRecorded(recorded: Recorded, cause?: Cause): Envelope 
  * `event` as the stored queue keeps it, waiting — what `storedQueue`'s `put` stores, written here
  * so a repository can store it inside its own transaction and ask for the delivery after.
  */
-export function storedEventOf(event: DomainEvent, envelope: Envelope): StoredEvent {
+export function storedEventOf(
+  event: DomainEvent | RemoteEvent,
+  envelope: Envelope,
+): StoredEvent {
   return {
     envelope,
     payload: valuesOf(event),

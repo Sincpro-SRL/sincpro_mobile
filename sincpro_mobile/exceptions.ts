@@ -7,6 +7,8 @@
  *     ValidationError, ChecksFailed  invalid   the input is wrong: fix it, never retried
  *     StaleAggregate               conflict    refresh and retry
  *     NetworkError, RepeatableFailure  unavailable  retried after a wait
+ *     PrinterUnavailable           unavailable  the printer is off or out of reach: retried
+ *     PrinterNotSelected           domain       no printer chosen: set aside until one is
  *     BackendError, AppError       internal    a fault: reported
  *
  * A bare `DomainException` declares nothing: an unexpected failure, reported.
@@ -88,6 +90,26 @@ export class RepeatableFailure extends DomainException {
   constructor(message: string) {
     super(message);
     this.name = "RepeatableFailure";
+  }
+}
+
+/** The printer is off, out of reach or lost its link: a retry may print. */
+export class PrinterUnavailable extends DomainException {
+  static readonly failureKind = "unavailable";
+  static readonly reason = "PRINTER_UNAVAILABLE";
+  constructor(message: string) {
+    super(message);
+    this.name = "PrinterUnavailable";
+  }
+}
+
+/** No printer was chosen: nothing prints until the person picks one and retries. */
+export class PrinterNotSelected extends DomainException {
+  static readonly failureKind = "domain";
+  static readonly reason = "PRINTER_NOT_SELECTED";
+  constructor(message: string) {
+    super(message);
+    this.name = "PrinterNotSelected";
   }
 }
 

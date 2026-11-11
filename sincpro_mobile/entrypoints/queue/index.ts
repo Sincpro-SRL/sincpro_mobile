@@ -1,36 +1,9 @@
-import { type BoundedContext, Subscriptions } from "@sincpro/client-framework";
-import {
-  ActivateDomainEvent,
-  DeactivateDomainEvent,
-  NewAppSettingsEvent,
-  PrintImageRequestedEvent,
-  WebViewMessageReceivedEvent,
-} from "@sincpro/mobile/domain/events";
-import {
-  commonBoundedContext,
-  type CommonDependencies,
-} from "@sincpro/mobile/infrastructure/bounded_context";
-
-import {
-  DomainActivatedSubscriber,
-  DomainDeactivatedSubscriber,
-} from "./domain_activation.subscriber";
-import { NewAppSettingsSubscriber } from "./new_app_settings.subscriber";
-import { PrintImageSubscriber } from "./print_image.subscriber";
-import { WebViewMessageSubscriber } from "./web_view_message.subscriber";
-
-export type CommonEntrypoints = { commonBoundedContext: BoundedContext<CommonDependencies> };
-
 /**
- * The core's subscribers: each hears one event and executes its Command on `common`. An app
- * replaces one with `commonSubscriptions.subscribe(Event, { replaces: Subscriber })(Its own)`.
+ * The core's event handlers — the entrypoints the queue delivers its events to: each translates
+ * an event into a Command of `commonBoundedContext`. Importing this registers them (their
+ * decorators run when their modules load); `services` registers the use cases they execute.
  */
-export const commonSubscriptions = new Subscriptions<CommonEntrypoints>(
-  "common-subscriptions",
-);
-commonSubscriptions.addDependency("commonBoundedContext", commonBoundedContext);
-commonSubscriptions.subscribe(ActivateDomainEvent)(DomainActivatedSubscriber);
-commonSubscriptions.subscribe(DeactivateDomainEvent)(DomainDeactivatedSubscriber);
-commonSubscriptions.subscribe(NewAppSettingsEvent)(NewAppSettingsSubscriber);
-commonSubscriptions.subscribe(PrintImageRequestedEvent)(PrintImageSubscriber);
-commonSubscriptions.subscribe(WebViewMessageReceivedEvent)(WebViewMessageSubscriber);
+export { OnDomainSwitched } from "@sincpro/mobile/entrypoints/queue/domain_activation.handler";
+export { OnNewAppSettings } from "@sincpro/mobile/entrypoints/queue/new_app_settings.handler";
+export { OnPrintImageRequested } from "@sincpro/mobile/entrypoints/queue/print_image.handler";
+export { OnWebViewMessage } from "@sincpro/mobile/entrypoints/queue/web_view_message.handler";

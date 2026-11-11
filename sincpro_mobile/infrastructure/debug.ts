@@ -34,7 +34,7 @@ async function persistLayers(): Promise<void> {
  * Two levels:
  * 1. Master switch — INFO/DEBUG console output (`setEnabled`).
  * 2. Per-layer mask — which layers may speak when the master is on (`layers.setEnabled`,
- *    `layers.set`, …): infrastructure, adapter, entrypoint, bounded context, application
+ *    `layers.set`, …): infrastructure, adapter, bounded context, application
  *    service, feature.
  *
  * ERROR/WARN always print. Loki INFO also respects the layer mask.

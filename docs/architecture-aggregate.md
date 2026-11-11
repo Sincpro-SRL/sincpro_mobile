@@ -1,6 +1,6 @@
 # Agregado, evento y repositorio
 
-El estado de un agregado es el documento SQLite. El evento es el hecho que ese documento registró. El repositorio es quien escribe el documento, corre las reglas y, si el evento es de integración, lo deja en la cola. No es event sourcing: no se reconstruye el estado leyendo el log. No es un broker: los suscriptores corren en el mismo proceso.
+El estado de un agregado es el documento SQLite. El evento es el hecho que ese documento registró. El repositorio es quien escribe el documento, corre las reglas y deja en la cola lo que el agregado registró. No es event sourcing: no se reconstruye el estado leyendo el log. No es un broker: los casos de uso y los event handlers registrados para un evento corren en el mismo proceso.
 
 Un teléfono que ya tiene las tablas de eventos no las tira. El store crea la tabla del documento si no existe, y si ya existe agrega `version`, `data` o una columna declarada que falte. Las migraciones de infraestructura corren una vez, anotadas por nombre en `schema_migrations`. El SQL y el nombre se confirman en la misma transacción: si el paso se corta, no queda ninguno de los dos. Una base que ya tiene un nombre que esta app no conoce no se abre. Un wipe olvida solo los nombres de las tablas que borró y las vuelve a correr. El padre guarda los ids de cada `@relation`; la fila del hijo está en su tabla.
 
@@ -15,16 +15,15 @@ Un teléfono que ya tiene las tablas de eventos no las tira. El store crea la ta
 | `@relation`           | `domain/entity/relations.ts`                     | Otra entidad que viaja con esta. El segundo argumento es `RelationCascade`          |
 | `@mapped`             | `infrastructure/database/mapped.ts`              | Puntero por ids a una entidad que vive sola. Cada lectura reconsulta. No se escribe |
 | `withChangeTracking`  | `domain/entity/change_tracking.ts`               | Diff contra la última lectura. Emite `entity.updated`                               |
-| `DomainEvent`         | `domain/events/`                                 | El hecho. Se queda en el agregado                                                   |
-| `IntegrationEvent`    | `domain/events/integration_event.ts`             | El mismo hecho, entregable. Va a la cola                                            |
-| `Subscriber`          | `event_driven/subscriber.ts`                     | Quién escucha un hecho ya encolado                                                  |
+| `DomainEvent`         | `@sincpro/client-framework`                      | El hecho que el agregado registra (`record`), con su `eventName`                    |
+| `Subscriber`          | `@sincpro/client-framework` (`subscriberFor`)    | Quién ejecuta un hecho ya guardado: los bounded contexts que lo registraron         |
 | `Hook`                | `domain/repositories/hooks.ts`                   | Qué corre el repositorio alrededor de leer, guardar y borrar                        |
 | `IRepository`         | `domain/repositories/repository.ts`              | El puerto: guardar, upsert, borrar, publicar, leer                                  |
 | `DocumentRepository`  | `adapters/repositories/document.repository.ts`   | Ese puerto sobre un `DocumentStore`                                                 |
 | `SqliteDocumentStore` | `adapters/repositories/sqlite_document_store.ts` | La fila real: `uuid`, `version`, `data`, columnas declaradas                        |
-| `Outbox`              | `domain/repositories/document_store.ts`          | `save` del evento y `schedule` de la cola                                           |
+| `Outbox`              | `domain/repositories/document_store.ts`          | `save` del evento en `stored_events` y `schedule` de la entrega (`eventOutbox()`)   |
 
-`StoreMode.LOCAL` guarda el documento y no encola. `StoreMode.RELAY` guarda el documento y deja cada `IntegrationEvent` en el outbox, dentro de la misma transacción.
+`StoreMode.LOCAL` guarda el documento y no encola. `StoreMode.RELAY` guarda el documento y deja cada evento que el agregado registró en el outbox, dentro de la misma transacción.
 
 ## Cómo se relacionan
 
@@ -41,7 +40,6 @@ flowchart TB
 
   subgraph hechos [Hechos]
     domainEvent[DomainEvent]
-    integrationEvent[IntegrationEvent]
   end
 
   subgraph puerto [Repositorio]
@@ -52,8 +50,9 @@ flowchart TB
   end
 
   subgraph despues [Después del commit]
-    bus[EventBus]
+    queue["eventDelivery (storedQueue)"]
     subscriber[Subscriber]
+    useCase["casos de uso y event handlers registrados para el evento"]
   end
 
   entity --> checks
@@ -62,15 +61,14 @@ flowchart TB
   entity --> tracked
   entity --> values
   entity -->|record| domainEvent
-  entity -->|record| integrationEvent
   repo --> hooks
   repo --> checks
   repo --> relation
   repo --> store
-  integrationEvent -->|releaseDeliverable| outbox
-  domainEvent -->|se queda en el agregado| entity
-  outbox -->|schedule| bus
-  bus --> subscriber
+  domainEvent -->|releaseRecorded| outbox
+  outbox -->|schedule| queue
+  queue --> subscriber
+  subscriber --> useCase
 ```
 
 ## Guardar
@@ -99,7 +97,7 @@ sequenceDiagram
     Repo-->>App: StaleAggregate
   else sigue
     Repo->>DB: version + 1 y el JSON, relaciones como ids
-    Repo->>Box: IntegrationEvent, si hay outbox
+    Repo->>Box: lo que registró el agregado, si hay outbox
     Repo->>Hook: after_create o after_update
     Repo->>Hook: after_save
     Repo->>Box: schedule, después del commit, si deliver
@@ -130,18 +128,18 @@ En Distribution, `mergeRemoteCustomers` hoy pisa el JSON y `pushCustomersToBacke
 
 ## Eventos
 
-`record` nombra la clase una vez y deduplica por el mismo payload de negocio. El hecho queda en el agregado con `entityType`, `aggregateId`, `sequence` y la cadena de correlación.
+`record` nombra la clase una vez y deduplica por el mismo payload de negocio. El hecho queda en el agregado con su id (el que llevará su sobre), su `sequence` y el `correlationId` del flujo: el id del primero que registró antes del guardado.
 
-En el guardado, `releaseDeliverable` saca los `IntegrationEvent` y deja los `DomainEvent`. Los ids que salieron también salen de `eventIds`, así el documento no acumula cada hecho ya entregado. En `LOCAL` sin outbox esos hechos vuelven al agregado y sus ids también.
+En el guardado, `releaseRecorded` saca todo lo que el agregado registró. Los ids que salieron también salen de `eventIds`, así el documento no acumula cada hecho ya entregado. En `LOCAL` sin outbox esos hechos vuelven al agregado y sus ids también. Un repositorio inyectado en un caso de uso está atado a esa ejecución (`BIND`): lo que guarda sigue su flujo y queda causado por ella.
 
-| Modo                               | Qué pasa con el IntegrationEvent                                                                     |
+| Modo                               | Qué pasa con lo que el agregado registró                                                             |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `RELAY` con outbox                 | Se escribe en la cola dentro de la transacción. `schedule` corre después, si `deliver` no es `false` |
 | `LOCAL` sin outbox                 | Vuelve al agregado. No hay cola                                                                      |
-| `publish(events)`                  | Puerta explícita. Los escribe y llama `schedule`                                                     |
+| `publish(events)`                  | Puerta explícita. Los guarda como un flujo y llama `schedule`                                        |
 | `save(entity, { deliver: false })` | Los persiste y no arranca el drenado. `kick()` lo arranca después                                    |
 
-`entity.updated` extiende `DomainEvent`. No entra a la cola. El primer guardado de un agregado nuevo no lo emite: no había snapshot.
+`entity.updated` (`EntityUpdated`) es un evento más: en `RELAY` entra a la cola y, si ningún bounded context registró un caso de uso para él, queda entregado sin que nadie lo ejecute. El primer guardado de un agregado nuevo no lo emite: no había snapshot.
 
 ## Versión
 

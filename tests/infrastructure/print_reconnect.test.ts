@@ -112,5 +112,5 @@ test("a failed print tells the user before it goes to the failed queue", async (
     "utf8",
   );
   const failed = source.slice(source.indexOf('name: "printer.print_failed"'));
-  assert.ok(failed.indexOf("actions:") < failed.indexOf("throw new"));
+  assert.ok(failed.indexOf("actions:") < failed.indexOf("throw error"));
 });
