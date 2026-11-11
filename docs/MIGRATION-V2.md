@@ -162,10 +162,9 @@ sincpro_framework. Un bounded context se arma como en el backend (`dependencies.
 
 ## Comportamiento nuevo, sin cambio de API
 
-- **EventBus:**
-  - El polling de respaldo (800 ms) se pausa con la app en segundo plano y drena al volver. `publish()` sigue drenando al instante.
-  - Un `InternetIsUp` ya no reinicia el polling de un bus detenido.
-  - El payload del log de debug solo se serializa con el debug activo.
+- **La cola (`eventDelivery`, sobre `storedQueue`):**
+  - No hay polling. Entrega al publicar, al volver la red (`InternetIsUp`), al empezar una sesión y al volver la app a primer plano.
+  - Un reintento espera su backoff con un timer propio (1 s que se duplica hasta 60 s, 10 intentos), sin despertar la cola entera.
 - **Providers raíz:**
   - Al volver a primer plano, `CommonProvider` relee el permiso de ubicación sin re-renderizar a todos los consumidores.
   - `DomainSwitcherProvider` y `DatabaseProvider` memoizan su valor.
@@ -175,7 +174,7 @@ sincpro_framework. Un bounded context se arma como en el backend (`dependencies.
   - El flush de telemetría de fondo (`TELEMETRY_FLUSH`, 15 min por defecto) también se define al cargar: con la app cerrada prepara la base, arranca la telemetría sin volver a registrarse y vacía las colas.
   - Nuevas APIs: `createKernel(config)` (sin IO), `startApp(kernel, options)`, `defineBackgroundCrons(kernel, { telemetry })`, `runBackgroundTelemetryFlush(config)` y la opción `initTelemetry(config, { scheduleBackground })`. `createApp(config)` sigue igual y las usa.
   - `Kernel.cronsByKey()` lee los crons de cada módulo una sola vez, así que `crons` de `AppConfig` configura las mismas instancias que arranca el orquestador.
-- **Impresión:** la imagen viaja en memoria y no en `domain_events`. Se guardan como máximo 5 pendientes.
+- **Impresión:** la imagen viaja en el evento (`PrintImageRequestedEvent`) guardado en `stored_events`. Una impresión que no salió queda apartada con su imagen, para verla y reintentarla. Los entregados se borran pasados `eventRetentionDays` (7 por defecto, `pruneHistory`), y el logout limpia la cola.
 - **Componentes:** los 9 que usaban el `Pressable` de RN con `className` pasan al primitivo del DS.
 - **Build:** la capa React (`ui/**`, `entrypoints/ui/**`) se publica compilada con React Compiler.
 - **Proceso:** `createKernel` configura el proceso del framework (`configureObservability`): cada caso de uso es un span del tracer global de OpenTelemetry — el provider que registra `initTelemetry`, sin nada que registrar si la telemetría está apagada — y cada línea pasa por `mobileLogger` (consola + Loki).
