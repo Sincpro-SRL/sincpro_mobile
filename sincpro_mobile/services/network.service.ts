@@ -12,9 +12,9 @@ export class NetworkUseCases {
   async getNetworkStatus(): Promise<NetworkStatus> {
     const networkStatus = await NetworkAdapter.getStatus();
     if (networkStatus.isConnected) {
-      UIEventBus.emit(InternetIsUpEvent.name, true);
+      UIEventBus.emit(InternetIsUpEvent.eventName, true);
     } else {
-      UIEventBus.emit(InternetIsDownEvent.name, false);
+      UIEventBus.emit(InternetIsDownEvent.eventName, false);
     }
     this.notifyOnChange(networkStatus);
     this.networkStatus = networkStatus;

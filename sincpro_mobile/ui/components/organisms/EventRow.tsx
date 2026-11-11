@@ -1,4 +1,4 @@
-import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/events";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
 import {
   eventStatusBadge,
   eventStatusIcon,
@@ -12,9 +12,9 @@ import { memo } from "react";
 import { View } from "react-native";
 
 interface EventRowProps {
-  item: IntegrationEvent;
+  item: EventRecord;
   /** The screen owns the one action sheet; a row never mounts an overlay. */
-  onOpen: (event: IntegrationEvent) => void;
+  onOpen: (event: EventRecord) => void;
 }
 
 function EventRow({ item, onOpen }: EventRowProps) {
@@ -22,7 +22,7 @@ function EventRow({ item, onOpen }: EventRowProps) {
 
   if (!item) return null;
 
-  const failed = item.status === EEventStatus.FAILED;
+  const failed = item.state === "set_aside";
 
   return (
     <View className="border-b border-border-default bg-bg-card">
@@ -34,7 +34,7 @@ function EventRow({ item, onOpen }: EventRowProps) {
       >
         <Display.Icon
           color={failed ? theme.danger : theme.text.secondary}
-          name={eventStatusIcon(item.status)}
+          name={eventStatusIcon(item.state)}
           size={16}
         />
         <View className="min-w-0 flex-1">
@@ -46,12 +46,12 @@ function EventRow({ item, onOpen }: EventRowProps) {
             relative
             showTime={false}
             textVariant="caption"
-            value={item.createdAt}
+            value={item.publishedAt}
           />
         </View>
         <Display.Badge
-          label={eventStatusLabel(item.status)}
-          variant={eventStatusBadge(item.status)}
+          label={eventStatusLabel(item.state)}
+          variant={eventStatusBadge(item.state)}
         />
       </Pressable>
     </View>

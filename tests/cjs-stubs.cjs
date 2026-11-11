@@ -28,6 +28,7 @@ const STUBS = {
   "expo-background-task": path.join(STUBS_DIR, "expo-background-task.cjs"),
   "expo-clipboard": path.join(STUBS_DIR, "__empty__.cjs"),
   "expo-sharing": path.join(STUBS_DIR, "__empty__.cjs"),
+  "react-native-view-shot": path.join(STUBS_DIR, "__empty__.cjs"),
   "expo-print": path.join(STUBS_DIR, "__empty__.cjs"),
   "react-native": path.join(STUBS_DIR, "__empty__.cjs"),
 };

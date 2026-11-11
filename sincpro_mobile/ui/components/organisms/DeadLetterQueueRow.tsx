@@ -1,4 +1,4 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/events";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
 import { Display } from "@sincpro/mobile-ui/Display";
 import { Pressable } from "@sincpro/mobile-ui/primitives/Pressable";
 import { useTheme } from "@sincpro/mobile-ui/theme";
@@ -7,17 +7,17 @@ import { memo } from "react";
 import { View } from "react-native";
 
 interface DeadLetterQueueRowProps {
-  item: IntegrationEvent;
+  item: EventRecord;
   /** What the row calls the event; its label by default. */
   title?: string;
   /** The screen owns the one action sheet; a row never mounts an overlay. */
-  onOpen: (event: IntegrationEvent) => void;
+  onOpen: (event: EventRecord) => void;
 }
 
 function DeadLetterQueueRow({ item, title, onOpen }: DeadLetterQueueRowProps) {
   const theme = useTheme();
 
-  if (!item || typeof item !== "object" || !item.name || !item.createdAt) {
+  if (!item || typeof item !== "object" || !item.name || !item.publishedAt) {
     return null;
   }
 
@@ -42,7 +42,7 @@ function DeadLetterQueueRow({ item, title, onOpen }: DeadLetterQueueRowProps) {
             numberOfLines={1}
             variant="caption"
           >
-            {item.errorMessage || attemptsLabel}
+            {item.error || attemptsLabel}
           </Typography.Text>
         </View>
         <Typography.Text className="text-text-tertiary" variant="caption">

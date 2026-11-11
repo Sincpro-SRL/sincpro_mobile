@@ -1,14 +1,16 @@
+import { DomainEvent } from "@sincpro/client-framework";
 import { type Entity } from "@sincpro/mobile/domain/entity/entity";
-import { DomainEvent } from "@sincpro/mobile/domain/events/domain_event";
 
 import { type AnyClass, heldEntities } from "./relations";
 
 const SKIPPED = new Set(["uuid", "version", "createdAt", "updatedAt", "eventIds"]);
 
+/** What changed in an entity since it was read: recorded by `withChangeTracking` on save. */
 export class EntityUpdated extends DomainEvent {
-  public readonly name = "entity.updated";
-  public readonly label = "Updated";
-  public changes: Record<string, { from: string; to: string }> = {};
+  static readonly eventName = "entity.updated";
+  static readonly label = "Updated";
+
+  changes: Record<string, { from: string; to: string }> = {};
 }
 
 export function fieldSnapshot(

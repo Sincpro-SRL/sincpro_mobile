@@ -8,56 +8,54 @@
 
 ## The client, shared with the web
 
-The process a screen runs in is `@sincpro/client-framework`. The web app calls it from
-its `main`. This package is the phone shell around that same process: SQLite, the queue,
-cron, `AppShell`. It does not own a second client.
+The process a screen runs in is `@sincpro/client-framework` (a `peerDependency`, `^1.2.0`):
+the bounded contexts, their Features and ApplicationServices, the domain events, the stored
+queue that delivers them, failure kinds, the tracer and the layer loggers. This package is the
+phone shell around that same process: SQLite, the stored queue's table, cron, `AppShell`, the
+telemetry exporters. It does not own a second client.
 
-| Already on `main`                                                                 | Still this package, before a release                                         |
-| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `generateUUID` is `newEntityId` (32 hex). An old id with hyphens stays a text key | A screen shows money with `formatTwoDecimals`, from the rounded decimal text |
-| Document JSON and `cleanData` go through `valuesOf` / `readValues`                | The SHA-256 and the sorted canonical form stay here                          |
-| `isDay` / `dayOf` decide a calendar day. `formatDate` still draws it              | Dependency is `^0.6.0`: `screensTransport`, `reportError`, `this.span`       |
-| `toDecimal`, `discountOf` and `calculateDiscountedTotal` answer a `Decimal`       | `dayjs` stays for drawing a date. It does not decide what a day is           |
+- `createKernel` configures the process once (`configureObservability`): spans through
+  OpenTelemetry's global tracer (this package's SQLite → OTLP queue), lines through the console
+  and Loki (`mobileLogger`).
+- Events are the framework's `DomainEvent` (`static eventName`); delivery is its
+  `storedQueue` over `SqliteEventStore`; who hears them is the active modules' bounded
+  contexts and `Subscriptions`.
+- Still not built: a `ContextStore` (MMKV) and a `Transport` over SQLite for
+  `screensTransport`.
 
-What is not built, in this order, and is not a release by itself:
-
-1. `configureProcess` in the app `main`, with this package's span queue wrapped by `openTelemetryTracer`. Loki stays a log client. It is not a `Tracer`.
-2. A `ContextStore`. The app keeps it (MMKV is synchronous, which the port asks). A screen that must reread when the company changes listens to `processContext`; this package does not ship a React hook for that.
-3. One `UseBoundedContext` inside a `DomainModule`. The module keeps migrations, subscribers and crons. `Feature` here still names a span with the class name. That name is minified in a release build, so contexts move one at a time.
-4. A `Transport` over SQLite, so `screensTransport` can wrap offline the way it wraps REST. That object does not exist yet.
-
-`sincpro-client check` applies to an app laid out as `domains/<context>/<layer>`, not to this shell. Distribution still calls `addDomainEvent` / `publishAllDomainEvents`, which this package no longer has. That adoption is the app's.
+`sincpro-client check` applies to an app laid out as `domains/<context>/<layer>`, not to this shell.
 
 ---
 
-## 1. The big picture — two buses, one persistent queue
+## 1. The big picture — one stored queue, one UI signal bus
 
-The single most important thing to understand: there are **two event systems**, and they
-do different jobs.
+There are **two message paths**, and they do different jobs.
 
-|              | `EventBus` (domain)                                            | `UIEventBus` (UI signals)                                                                      |
-| ------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Backing      | **SQLite** (`domain_events` table) — survives restarts         | In-memory (`mitt`) — ephemeral                                                                 |
-| Carries      | Business domain events (durable, at-least-once, dead-lettered) | Activity facts, device notices, `InternetIsUp/Down`, and the event name (screens reload on it) |
-| Failure mode | Retry → dead-letter queue                                      | Fire-and-forget. Screen listeners debounce 300 ms. Activity does not.                          |
+|              | Stored queue (domain)                                               | `UIEventBus` (UI signals)                                                                      |
+| ------------ | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Backing      | **SQLite** (`stored_events`) — survives restarts                    | In-memory (`mitt`) — ephemeral                                                                 |
+| Carries      | Domain events (durable, at-least-once, in order)                    | Activity facts, device notices, `InternetIsUp/Down`, and the event name (screens reload on it) |
+| Failure mode | Retried when a retry may fix it, else set aside (the failed events) | Fire-and-forget. Screen listeners debounce 300 ms. Activity does not.                          |
 
-The `EventBus` **emits to** and **listens from** the `UIEventBus` (e.g. it flips offline
-on a `DomainNetworkError` and gates draining on `InternetIsUp/Down`). Business-critical
-data lives only in the `EventBus`/SQLite path — never in telemetry or UI signals.
+The stored queue is `@sincpro/client-framework`'s `storedQueue`; this package plugs its store
+(`SqliteEventStore`) and its delivery (`eventDelivery`), which **emits to** and **listens
+from** the `UIEventBus` (it marks the phone offline on a `NETWORK_DOWN` failure and lets what
+needs a connection go on `InternetIsUp`). Business-critical data lives only in the stored
+queue — never in telemetry or UI signals.
 
 ```mermaid
 flowchart TB
     subgraph DATA["Data layer (infrastructure/database, domain, adapters)"]
         entity["Entity (aggregate root)<br/>record · version · @relation"]
-        vo["ValueObject / DomainEvent<br/>JSON-serializable, UUIDv7"]
+        vo["ValueObject · DomainEvent (client-framework)<br/>JSON-serializable, UUIDv7"]
         mapped["@mapped + resolveEntity<br/>lazy FK resolution (sync, no cache)"]
         cursor["DBCursor<br/>mutex-serialized SQLite (WAL, FK on)"]
-        repos["Repositories (singletons)<br/>DomainEvent · DeadLetter · Settings · DatabaseTable"]
+        repos["Repositories (singletons)<br/>SqliteEventStore · Settings · DatabaseTable"]
     end
 
     subgraph RUNTIME["Runtime layer (workers, framework)"]
-        bus["EventBus (static)<br/>poll 800ms · backoff ×1.5→30s · dead-letter"]
-        qp["QueueProcessor<br/>declarative reconciler (auth/domain gate)"]
+        bus["storedQueue (client-framework)<br/>in order · retry · set aside"]
+        qp["eventDelivery<br/>active modules · ready by the event's class"]
         cron["CronWorker + cron registry<br/>&lt;15m setInterval · ≥15m OS task"]
         orch["Orchestrator<br/>bootstrap · auth · domain enable/disable"]
         kernel["Kernel<br/>aggregates DomainModules"]
@@ -69,15 +67,15 @@ flowchart TB
     entity -->|reads FKs via| mapped
     mapped --> repos
     repos --> cursor
-    entity -->|save delivers IntegrationEvent| bus
-    bus -->|save / read pending| repos
-    bus -->|dispatch| qp
+    entity -->|save stores its events through the outbox| repos
+    bus -->|add / next / save| repos
+    qp -->|subscriber · ready · onSettled| bus
     bus <-->|emit / gate| uibus
     cron -->|feeds connectivity| uibus
     orch --> kernel
     orch -->|reconcile| qp
     orch -->|reconcile| cron
-    kernel -->|migrations · subscribers · crons · repos| orch
+    kernel -->|migrations · bounded contexts · subscriptions · crons · repos| orch
 ```
 
 ---
@@ -121,12 +119,15 @@ into entities — **every access, no caching**.
 ## 3. Entity model
 
 An **`Entity`** is a document aggregate (`domain/entity/entity.ts`). Its state is the row.
-`record` keeps the fact on the instance. `DocumentRepository.save` writes the row and, in
-relay mode, flushes `IntegrationEvent`s to the outbox inside the same transaction.
-`DomainEvent`s stay on the aggregate. The full sequence — checks, hooks, relations,
-version, explicit `publish` — is [architecture-aggregate.md](architecture-aggregate.md).
+`record(EventClass, values)` keeps a framework `DomainEvent` on the instance, with its id and
+its place in the flow (`RecordedEvents`: one save, one `correlationId`). In relay mode
+`DocumentRepository.save` writes the row and stores every recorded event through the outbox —
+`SqliteEventStore.add`, on the same connection, inside the same transaction —, then asks
+for the delivery after the commit. Bound to a run (`BIND`), the repository's events continue
+that run's flow. The full sequence — checks, hooks, relations, version, explicit `publish` —
+is [architecture-aggregate.md](architecture-aggregate.md).
 
-`entity.events` still resolves recorded ids live from `domain_events` via `@mapped`.
+`entity.events` resolves the ids it still names live from `stored_events` via `@mapped`.
 
 ---
 
@@ -137,51 +138,46 @@ settings and table introspection stay hand-written singletons over `DBCursor`. T
 not the aggregate port. `IRepository` / `IRemoteRepository` live in
 `domain/repositories/repository.ts`.
 
-| Repository                        | Table                       | Role                                                                                                                                              |
-| --------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DomainEventRepository`           | `domain_events`             | Backs the event queue: `save` (dedup pending), `findNextPending(online)`, `findByStatus/Correlation/Aggregate`, sync `findByIdSync` for `@mapped` |
-| `DomainEventDeadLetterRepository` | `domain_events_dead_letter` | Permanently-failed events; `retry(uuid)` / `retryByCorrelationId` move them back to PENDING                                                       |
-| `SettingsRepository`              | `settings`                  | Typed key/value store (`JSON.stringify` + `type` column)                                                                                          |
-| `DatabaseTableRepository`         | `sqlite_master`             | Introspection only (list tables, dump rows)                                                                                                       |
-
-`findNextPending(internetConnected)` is the connectivity gate: when offline the SQL appends
-`AND requires_network = 0`, so only local events drain — network events stay PENDING.
+| Repository                | Table           | Role                                                                                                                                      |
+| ------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `SqliteEventStore`        | `stored_events` | The stored queue's `EventStore` (`add`, `next`, `save`), and what the screens read: recent, failed (`set_aside`), retry, prune, `@mapped` |
+| `SettingsRepository`      | `settings`      | Typed key/value store (`JSON.stringify` + `type` column)                                                                                  |
+| `DatabaseTableRepository` | `sqlite_master` | Introspection only (list tables, dump rows)                                                                                               |
 
 ---
 
-## 5. EventBus + QueueProcessor — persistent processing, declared not imperative
+## 5. Stored queue + delivery — the framework's rules, the phone's needs
 
-**`EventBus`** (static, `infrastructure/workers/EventBus.ts`) polls `domain_events` every
-**800 ms**, draining until empty. On failure it backs off `min(800 × 1.5^failures, 30000)` ms.
-A `DomainNetworkError` flips it offline and emits `InternetIsDownEvent`; `InternetIsUp` resets
-it to 800 ms and resumes. Each event runs all matching subscribers; success → acknowledged,
-failure → dead-lettered.
+**`storedQueue`** (`@sincpro/client-framework`) delivers what `SqliteEventStore` keeps, one
+at a time and in the order added, to every party that hears it and does not have it yet. A
+failure a retry may fix (`unavailable`, `unknown_outcome`…) is retried after a backoff and holds
+the line; one that never will (`invalid`, `domain`, `not_found`…) is set aside and never holds
+back the rest; after ten attempts the rest is set aside too. Delivery is at least once.
 
-> **Caveat worth knowing:** `MAX_ATTEMPTS = 1`. A subscriber that throws (including on a
-> transient `DomainNetworkError`) is dead-lettered rather than retried in place — recovery
-> is via `DeadLetterRepository.retry()`. Connectivity gating prevents network events from
-> _starting_ while offline, but an in-flight network failure dead-letters.
+**`eventDelivery`** (`infrastructure/events/delivery.ts`) is what the phone adds:
 
-**`QueueProcessor`** (`entrypoints/queue/QueueProcessor.ts`) is a **declarative reconciler**
-in front of the imperative bus. You never call `EventBus.on/off` directly — you declare
-subscribers on a `DomainModule`, and `sync(activeDomains, isAuthenticated, subscribersByKey)`
-diffs desired-vs-current and registers/unregisters accordingly. Two gates:
-
-- **Domain gate** — only active domains' subscribers run.
-- **Auth gate** — a subscriber with `requiresAuth` (default `true`) runs only once authenticated.
+- **Who hears.** The orchestrator puts the active domains' parties behind one `Subscribes`
+  (`use(kernel.partiesFor(activeDomains))`): their bounded contexts — use cases whose input is
+  the event — and their `Subscriptions` — the `EventSubscriber` entrypoints that build a
+  Command. One queue, one drainer, for the life of the app.
+- **When.** `ready` asks the event's **class**: `requiresNetwork` waits for a connection,
+  `requiresSession` (the default) for a signed-in session. It waits while the rest go on and
+  goes as soon as what it needs comes back — `InternetIsUp`, a login, the app in the foreground.
+- **What it tells.** `onSettled` publishes the activity, emits the event's name on the
+  `UIEventBus` for the screens, and marks the phone offline on a `NETWORK_DOWN` failure.
 
 ```mermaid
 flowchart LR
-    mod["DomainModule.subscribers()"] --> sync["QueueProcessor.sync()"]
-    sync -->|stop + waitForIdle| bus1["EventBus quiesced"]
-    sync -->|"diff desired vs current<br/>(domain + auth gates)"| diff
-    diff -->|off removed / on added| bus2["EventBus subscriber set"]
-    sync -->|start| bus3["EventBus polling resumes"]
+    mod["DomainModule.boundedContexts() · subscribers()"] --> parties["kernel.partiesFor(active)"]
+    parties --> use["eventDelivery.use()"]
+    store[("stored_events")] --> queue["storedQueue"]
+    use --> queue
+    queue -->|ready: class needs · online · session| queue
+    queue -->|onSettled| ui["activity · UIEventBus · offline"]
 ```
 
-**Why a reconciler:** domains can be enabled/disabled and sessions can log in/out at runtime;
-expressing the subscriber set as a pure function of `(domains, auth)` makes those transitions
-idempotent and race-free (it quiesces the bus, diffs, then restarts).
+A caller that needs the answer does not publish: it executes the use case on its bounded
+context (`xBoundedContext.execute(new Command(...))`), which answers or throws.
 
 ---
 
@@ -203,27 +199,28 @@ the job. Registering with the scheduler stays with `cron.sync`, so domain and au
 decide whether the OS calls it at all. A background cron created later (outside any
 `DomainModule`) is defined on `start()` with a warning: it works in foreground only.
 
-The **`cron`** registry mirrors `QueueProcessor`: `cron.sync(domains, auth, cronsByKey)` reconciles
+The **`cron`** registry is a reconciler: `cron.sync(domains, auth, cronsByKey)` reconciles
 the running cron set, with the same domain + auth gates, calling `waitForIdle()` before
 unregistering. Example: `CHECK_NETWORK` runs every 2.5 min (setInterval path, no auth) and
-feeds the `InternetIsUp/Down` signals that gate the EventBus and the telemetry flush.
+feeds the `InternetIsUp/Down` signals that the delivery and the telemetry flush read.
 
 ---
 
 ## 7. Composition & boot — AppShell → Orchestrator → Kernel
 
-- **`DomainModule`** — a bounded context. Hooks: `repositories()`, `migrations()`,
-  `subscribers()`, `crons()`, `persistOnReset()`. `shared` modules sort first and can't be disabled.
+- **`DomainModule`** — a module of the app. Hooks: `repositories()`, `migrations()`,
+  `boundedContexts()`, `subscribers()` (its `Subscriptions`), `crons()`, `persistOnReset()`.
+  `shared` modules sort first and can't be disabled.
 - **`BaseModule`** (`key="COMMON"`, `shared`) — always on; provides the base repositories,
-  migrations, the system subscribers, and `CHECK_NETWORK`. It marks `telemetry_queue` + `spans_queue`
+  migrations, `commonBoundedContext` with `commonSubscriptions`, and `CHECK_NETWORK`. It marks `telemetry_queue` + `spans_queue`
   as `persistOnReset` so telemetry generated during logout still ships.
 - **`Kernel`** — aggregates modules (shared-first), merges their hooks, and runs migrations.
   Each migration commits its SQL and its name in one transaction. A database that already
   has a name this app does not know does not open. `restartDatabase()` drops all but
   `persistOnReset` tables on logout-with-wipe.
 - **`Orchestrator`** — the runtime brain: `bootstrap()`, `authenticateSession()`, runtime
-  `enableDomain/disableDomain` (mutex-serialized), and an AppState watcher that re-reconciles
-  queue + cron whenever the app foregrounds.
+  `enableDomain/disableDomain` (mutex-serialized), and an AppState watcher that puts the
+  active parties behind the queue, drains it and reconciles cron whenever the app foregrounds.
 
 ```mermaid
 sequenceDiagram
@@ -234,7 +231,7 @@ sequenceDiagram
     participant CA as startApp
     participant K as Kernel
     participant O as Orchestrator
-    participant QP as QueueProcessor
+    participant QP as eventDelivery
     participant CR as cron
     participant Tel as initTelemetry
 
@@ -247,12 +244,12 @@ sequenceDiagram
     CA->>O: configure(kernel) — all domains active, unauthenticated
     CA->>O: bootstrap()
     O->>K: bootstrap() → register repos → init facade → run migrations
-    O->>QP: start() + sync() — poll 800ms, register non-auth subscribers
+    O->>QP: start() + use(partiesFor(active)) + drain — what needs no session goes
     O->>CR: sync() — start non-auth crons, e.g. CHECK_NETWORK
     O->>O: initAppStateWatcher()  (re-reconcile on foreground)
     CA->>Tel: initTelemetry(config)  (AFTER migrations — telemetry_queue exists)
     Shell-->>Entry: splash until fonts + minDuration + ready, then the host's router (or a retry screen if start failed)
-    Note over O: at login → authenticateSession() re-syncs queue+cron → requiresAuth subscribers/crons register
+    Note over O: at login → authenticateSession() → setSession(true): what needs a session goes; crons re-sync
 ```
 
 **Why telemetry inits last:** migrations must have created `telemetry_queue`/`spans_queue`
@@ -262,13 +259,13 @@ first, or the first buffered span/log would fail.
 
 ## 8. Consolidated design rationale
 
-| Decision                                             | Rationale                                                                                                                                                                                     |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Two buses (durable EventBus vs ephemeral UIEventBus) | Business data must survive restarts and be retried/dead-lettered; UI signals must be cheap and disposable. Conflating them would either make UI signals expensive or make domain events lossy |
-| Persist domain event before processing               | Offline-first: the change survives a crash/restart and processes on recovery                                                                                                                  |
-| Subscribers, not inline side effects                 | Decouples side effects (print, sync) from the transaction; failures retry/dead-letter independently                                                                                           |
-| Declarative reconcilers (QueueProcessor / cron)      | Runtime domain + auth transitions become idempotent pure functions of state, not imperative wiring                                                                                            |
-| Mutex-serialized DBCursor                            | One writer; prevents interleaved-write corruption across concurrent flows                                                                                                                     |
-| `@mapped` sync + no cache                            | Always-fresh reads, no stale-cache class of bugs; accepted main-thread cost for simple FK lookups                                                                                             |
-| `MAX_ATTEMPTS = 1` + dead-letter                     | Bounded, predictable failure handling; recovery is explicit via `retry()`. (Trade-off: transient failures dead-letter rather than auto-retry in place)                                        |
-| `persistOnReset` for telemetry tables                | Telemetry produced during logout must still be delivered; the flush is auth-independent                                                                                                       |
+| Decision                                                 | Rationale                                                                                                                                                                                 |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Two paths (durable stored queue vs ephemeral UIEventBus) | Business data must survive restarts and be retried/set aside; UI signals must be cheap and disposable. Conflating them would either make UI signals expensive or make domain events lossy |
+| Persist domain event before processing                   | Offline-first: the change survives a crash/restart and processes on recovery                                                                                                              |
+| Subscribers are entrypoints; work is a use case          | A subscriber builds a Command; the Feature or ApplicationService decides — the same use case a screen or a cron executes                                                                  |
+| Readiness declared by the event's class                  | Whether a fact may be delivered (network, session) is about the fact, not about who hears it; the queue waits for it while the rest go on                                                 |
+| Mutex-serialized DBCursor                                | One writer; prevents interleaved-write corruption across concurrent flows                                                                                                                 |
+| `@mapped` sync + no cache                                | Always-fresh reads, no stale-cache class of bugs; accepted main-thread cost for simple FK lookups                                                                                         |
+| Failure kinds decide retries                             | `failureOf` says what an error is: retryable ones wait and retry, permanent ones are set aside at once, the rest after ten attempts; a person retries a set-aside one once per failure    |
+| `persistOnReset` for telemetry tables                    | Telemetry produced during logout must still be delivered; the flush is auth-independent                                                                                                   |

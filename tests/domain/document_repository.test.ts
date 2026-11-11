@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { DomainEvent, type StoredEvent } from "@sincpro/client-framework";
 import { criteria, selection } from "@sincpro/criteria";
 
 import { DocumentRepository } from "../../sincpro_mobile/adapters/repositories/document.repository.ts";
@@ -16,7 +17,6 @@ import {
 } from "../../sincpro_mobile/domain/entity/entity.ts";
 import { relation, RelationCascade } from "../../sincpro_mobile/domain/entity/relations.ts";
 import { valueRule } from "../../sincpro_mobile/domain/entity/values.ts";
-import { IntegrationEvent } from "../../sincpro_mobile/domain/events/integration_event.ts";
 import {
   type Outbox,
   StoreMode,
@@ -38,10 +38,10 @@ class Note extends Entity {
   title = "";
 }
 
-class Placed extends IntegrationEvent {
-  public readonly name = "NotePlaced";
-  public readonly label = "Placed";
-  public title = "";
+class Placed extends DomainEvent {
+  static readonly eventName = "test.note.v1.placed";
+  static readonly label = "Placed";
+  title = "";
 }
 
 class Line extends Entity {
@@ -90,11 +90,11 @@ class FakeOutbox implements Outbox {
 
   constructor(private readonly database: FakeDocumentDatabase) {}
 
-  async save(event: IntegrationEvent): Promise<void> {
+  async save(stored: StoredEvent): Promise<void> {
     await new FakeDocumentStore(this.database, "events").upsert({
-      uuid: event.uuid,
+      uuid: stored.envelope.id,
       version: 1,
-      data: event.asJSON(),
+      data: JSON.stringify(stored),
       columns: {},
     });
   }
@@ -282,8 +282,8 @@ test("publish is the explicit door", async () => {
   const repository = notes(database, { outbox });
   const note = Note.make();
   note.record(Placed, { title: "hand" });
-  const events = note.pullEvents();
-  await repository.publish(events as Placed[]);
+  const events = note.pullEvents().map((recorded) => recorded.event);
+  await repository.publish(events);
   assert.equal(outbox.scheduled, 1);
   assert.equal((await new FakeDocumentStore(database, "events").list()).length, 1);
 });
@@ -301,8 +301,8 @@ test("change tracking emits one update after a read, and nothing for a new aggre
   const loaded = await repository.findById(note.uuid);
   loaded!.title = "b";
   await repository.save(loaded!);
-  const [event] = loaded!.pullEvents();
-  assert.equal(event.name, "entity.updated");
+  const [recorded] = loaded!.pullEvents();
+  assert.equal(recorded.event.name, "entity.updated");
 });
 
 test("a value rule rejects what it does not hold", () => {
@@ -595,7 +595,7 @@ test("a line change is part of the order diff", async () => {
   const loaded = await orders.findById(order.uuid);
   loaded!.lines[0].amount = 9;
   await orders.save(loaded!);
-  const event = loaded!.pullEvents()[0] as EntityUpdated;
+  const event = loaded!.pullEvents()[0].event as EntityUpdated;
   assert.equal(event.name, "entity.updated");
   assert.equal(event.changes.lines.to.includes("9"), true);
 });

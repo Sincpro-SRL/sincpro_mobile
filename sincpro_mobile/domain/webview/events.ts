@@ -1,14 +1,10 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
+import { DomainEvent } from "@sincpro/client-framework";
 
-export class WebViewMessageReceivedEvent extends IntegrationEvent {
-  static readonly name = "common.webview.v1.message_received";
+export class WebViewMessageReceivedEvent extends DomainEvent {
+  static readonly eventName = "common.webview.v1.message_received";
   static readonly label = "Procesando datos de la web";
-  static readonly requiresNetwork = false;
+  static readonly requiresSession = false;
 
-  public readonly name = WebViewMessageReceivedEvent.name;
-  public readonly label = WebViewMessageReceivedEvent.label;
-  public readonly requiresNetwork = WebViewMessageReceivedEvent.requiresNetwork;
-
-  public raw: string = "";
-  public source: string = "";
+  raw: string = "";
+  source: string = "";
 }

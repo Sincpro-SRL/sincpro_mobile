@@ -25,15 +25,18 @@ npx expo install @sincpro/mobile @sincpro/mobile-ui
 ```tsx
 // 1. Define your domain module
 import { DomainModule } from "@sincpro/mobile/framework/domain_module";
-import type { Subscriber } from "@sincpro/mobile/event_driven";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 
 class SalesModule extends DomainModule {
   readonly key = "SALES";
   readonly name = "Sales";
 
-  override subscribers(): Subscriber[] {
-    return SalesSubscribers;
+  // @sincpro/client-framework: the bounded context and the subscriptions of entrypoints/queue
+  override boundedContexts() {
+    return [salesBoundedContext];
+  }
+  override subscribers() {
+    return [salesSubscriptions];
   }
   override crons(): CronWorker[] {
     return SalesCronJobs;
@@ -94,7 +97,7 @@ None of this is hard in isolation. All of it together, across iOS and Android, f
 
 AI tools can generate code faster than ever. That makes the absence of a framework _more_ dangerous, not less. When there is no shared architecture, AI-generated code is consistent only with itself — each prompt produces a different pattern, a different naming convention, a different approach to the same problem. The velocity is real. The maintenance cost is also real.
 
-With `@sincpro/mobile`, AI tools have clear patterns to follow: `DomainModule`, `defineAppShell`, `Subscriber`, `CronWorker`, `Entity.addDomainEvent`. Code generated within the framework is framework-compliant by default. Human reviewers can audit it quickly. The codebase stays navigable.
+With `@sincpro/mobile`, AI tools have clear patterns to follow: `DomainModule`, `defineAppShell`, `BoundedContext`, `EventSubscriber`, `CronWorker`, `Entity.record`. Code generated within the framework is framework-compliant by default. Human reviewers can audit it quickly. The codebase stays navigable.
 
 ### The Multi-Platform Bet
 
@@ -128,9 +131,9 @@ The framework is organized in strict layers with enforced one-way dependency flo
 │                                                     │
 │  framework/      DomainModule · Kernel · Orchestrator│
 │  domain/         Entity · Event Sourcing · Ports    │
-│  infrastructure/ EventBus · CronWorker · DLQ        │
+│  infrastructure/ stored queue · CronWorker · SQLite │
 │  adapters/       Network · Bluetooth · Geo · WebView│
-│  services/       Printer · DLQ · Events · Network  │
+│  services/       Printer · Events · Network        │
 │  entrypoints/    AppShell · DB · Queue · Cron       │
 └────────────────────────┬────────────────────────────┘
                          │
@@ -144,12 +147,12 @@ The framework is organized in strict layers with enforced one-way dependency flo
 
 - **Hexagonal Architecture (Ports and Adapters).** The domain layer defines interfaces (`IPrinterDriver`, `IRepository`). Concrete implementations live outside and are injected. The core never imports hardware SDKs.
 - **Domain-Driven Design.** Each bounded context is a `DomainModule`. The framework orchestrates them; they never know about each other.
-- **Offline-First.** Every domain event is persisted to SQLite before it is processed. Events survive app restarts and process them on recovery.
+- **Offline-First.** Every domain event is stored in SQLite before it is delivered (`storedQueue` of `@sincpro/client-framework`). Events survive app restarts and are delivered on recovery.
 - **Strict layer boundaries.** A lower layer cannot import from a higher one. `mobile-ui` has no imports from `@sincpro/mobile`.
 
 ### Base infrastructure — events, queues, repositories, orchestrator
 
-`createApp` configures the **Orchestrator**, which bootstraps the **Kernel** (the set of `DomainModule`s). Each module contributes subscribers, crons, repositories and migrations; the orchestrator wires them and starts the workers. Everything durable is a SQLite-backed queue drained by a worker — offline-first by construction.
+`createApp` configures the **Orchestrator**, which bootstraps the **Kernel** (the set of `DomainModule`s). Each module contributes bounded contexts, subscriptions, crons, repositories and migrations; the orchestrator puts the active modules behind the stored queue and starts the crons. Everything durable is SQLite — offline-first by construction.
 
 ```mermaid
 flowchart TB
@@ -157,27 +160,24 @@ flowchart TB
     orch --> kernel["Kernel<br/>aggregates DomainModules"]
 
     subgraph MODULES["DomainModule(s) — bounded contexts"]
-        mod["module.key / name<br/>subscribers() · crons()<br/>repositories() · migrations()"]
+        mod["module.key / name<br/>boundedContexts() · subscribers() · crons()<br/>repositories() · migrations()"]
     end
     kernel --> mod
 
     subgraph WORKERS["Background workers"]
-        qp["EventBus / QueueProcessor<br/>polls + dispatches, connectivity-gated"]
+        qp["storedQueue (client-framework)<br/>ready: the event's network/session needs"]
         crons["CronWorker(s)<br/>cron.sync — setInterval &lt;15m / OS task ≥15m"]
     end
 
     subgraph STORE["SQLite (migrations on bootstrap)"]
-        ev[("event_queue")]
-        de[("domain_events")]
-        dlq[("dead_letter_queue")]
-        ddl[("domain_events_dead_letter")]
+        de[("stored_events")]
         settings[("settings")]
         tq[("telemetry_queue")]
         sq[("spans_queue")]
     end
 
     subgraph REPOS["Repositories (adapters/ports)"]
-        repo["Entity & queue repositories<br/>DomainEventDeadLetterRepository · …"]
+        repo["Entity repositories · SqliteEventStore (EventStore)"]
     end
 
     netcron["CHECK_NETWORK cron"] -->|emits| netev["InternetIsUp / Down<br/>(UIEventBus)"]
@@ -186,7 +186,7 @@ flowchart TB
     orch --> qp
     orch --> crons
     kernel -->|migrations| STORE
-    mod -->|subscribers| qp
+    mod -->|bounded contexts · subscriptions| qp
     mod -->|crons| crons
     mod -->|repositories| repo
 
@@ -234,8 +234,12 @@ class InvoiceModule extends DomainModule {
     return [CreateInvoicesTable, CreateInvoiceLinesTable];
   }
 
-  override subscribers(): Subscriber[] {
-    return [InvoiceCreatedSubscriber, InvoiceVoidedSubscriber, SyncInvoiceSubscriber];
+  override boundedContexts() {
+    return [invoicesBoundedContext];
+  }
+
+  override subscribers() {
+    return [invoicesSubscriptions]; // InvoiceCreated, InvoiceVoided, SyncInvoice subscribers
   }
 
   override crons(): CronWorker[] {
@@ -251,52 +255,47 @@ class InvoiceModule extends DomainModule {
 
 ### ✅ Offline-First Event Queue
 
-Every domain event is persisted to SQLite before any subscriber processes it. If the app is killed mid-processing, the event is replayed on restart. Events requiring network connectivity are held until connectivity returns.
+Events travel through `@sincpro/client-framework`'s `storedQueue` over SQLite (`stored_events`): stored first — inside the repository's own transaction when an aggregate records it —, then delivered in order to every bounded context and `Subscriptions` of the active modules that hears it. A failure a retry may fix waits and is tried again (the order holds); one that never will (`invalid`, `domain`, `not_found`…) is set aside — the failed events — and never holds back the rest. Delivery is at least once.
 
-**Poll cycle:** EventBus polls every **800ms**, with exponential backoff (×1.5 multiplier, max **30s**) when the queue is empty or the device is offline. The interval resets immediately when a new event is published or connectivity is restored.
+Whether an event may go now is the **event's** to say: its class declares whether it needs a connection or a signed-in session; it waits while the rest go on, and is delivered as soon as what it needs comes back (the network up, a login, the app in the foreground).
 
 ```tsx
-import { Entity } from "@sincpro/mobile/domain/entity";
+import { BoundedContext, DomainEvent, EventSubscriber } from "@sincpro/client-framework";
+
+class OrderConfirmedEvent extends DomainEvent {
+  static readonly eventName = "sales.order.v1.confirmed";
+  static readonly label = "Pedido confirmado";
+  static readonly requiresNetwork = true; // waits for a connection
+  orderId = "";
+}
 
 class Order extends Entity {
-  status = "pending";
-
   confirm() {
     this.status = "confirmed";
-    // Persisted to SQLite before processig — survives app restart
-    this.addDomainEvent(OrderConfirmedEvent, { orderId: this.uuid });
+    this.record(OrderConfirmedEvent, { orderId: this.uuid }); // stored with the order
   }
 }
 
-// Subscriber processes the event asynchronously
-class OrderConfirmedSubscriber extends Subscriber {
-  listen = [OrderConfirmedEvent];
-  requiresAuth = true;
-
-  async process(event: OrderConfirmedEvent): Promise<void> {
-    await syncOrderToServer(event.orderId);
+// entrypoints/queue/order-confirmed.subscriber.ts — an entrypoint: builds the Command
+class OrderConfirmedSubscriber extends EventSubscriber<OrderConfirmedEvent> {
+  static readonly subscriberName = "OrderConfirmed";
+  declare readonly salesBoundedContext: BoundedContext<SalesDependencies>;
+  async handle(event: OrderConfirmedEvent) {
+    await this.salesBoundedContext.execute(new CommandSyncOrder(event.orderId));
   }
 }
 ```
 
-### ✅ Dead Letter Queue (DLQ)
+### ✅ Failed events
 
-Events that exceed the maximum retry attempts (`MAX_ATTEMPTS = 1` per cycle) are automatically moved to the dead letter queue with the full error message and failure timestamp. Operations teams can inspect, retry in bulk, or permanently delete failed events.
+What the queue set aside is the failed list (`state: "set_aside"`): a person retries — once per failure —, or deletes it.
 
 ```tsx
-import { deadLetterQueueUseCases } from "@sincpro/mobile/services/dlq.service";
+import { eventService } from "@sincpro/mobile/services/event.service";
 
-// Inspect failed events
-const failed = await deadLetterQueueUseCases.getFailedEvents();
-
-// Retry a single event (fresh uuid, reset attempts)
-await deadLetterQueueUseCases.retryFailedEvent(failed[0]);
-
-// Bulk retry — returns { success: number, failed: number }
-const result = await deadLetterQueueUseCases.retryMultipleFailedEvents(failed);
-
-// Remove permanently
-await deadLetterQueueUseCases.deleteFailedEvent(failed[0]);
+const failed = await eventService.listFailedEvents();
+const retried = await eventService.retryEvents(failed); // how many went back to the queue
+await eventService.deleteEvents([failed[0]]);
 ```
 
 ### ✅ Domain Entity with Event Sourcing
@@ -417,11 +416,12 @@ All state transitions are protected by a mutex — concurrent calls are serializ
 
 ### ✅ Connectivity Awareness
 
-The framework knows whether the device has internet access and routes work accordingly. Events marked `requiresNetwork = true` are held in the queue until connectivity is confirmed. Subscribers can respond directly to connectivity changes via domain events.
+The framework knows whether the device has internet access and routes work accordingly. An event whose class declares `requiresNetwork = true` waits in the queue until connectivity is confirmed.
 
 ```tsx
 class SyncOrderEvent extends DomainEvent {
-  static requiresNetwork = true; // Won't process while offline
+  static readonly eventName = "sales.order.v1.sync_requested";
+  static readonly requiresNetwork = true; // waits while offline
 }
 
 // Check status at any point
@@ -431,7 +431,7 @@ const status = await networkUseCases.getNetworkStatus();
 // { isConnected: boolean, isInternetReachable: boolean | null, type: "wifi"|"cellular"|…, ipAddress }
 ```
 
-The EventBus subscribes to `InternetIsDownEvent` / `InternetIsUpEvent` internally — when connectivity is lost it increases the poll interval, and when it is restored it resets to 800ms and drains any held events immediately.
+The delivery hears `InternetIsDownEvent` / `InternetIsUpEvent` (`UIEventBus`): offline, what needs a connection waits; back online, what waits is delivered at once. A delivery that fails because there is no connection (`DomainNetworkError`) marks the phone offline too.
 
 ### ✅ Telemetry & Observability (OpenTelemetry + Loki)
 
@@ -535,9 +535,10 @@ import { WebViewAdapter } from "@sincpro/mobile/adapters/webview";
     .map((s) => s.script)
     .join("\n")}
   onMessage={({ nativeEvent }) => {
-    // Framework base_module handles PRINT_IMAGE automatically
-    // via ProcessWebViewMessageSubscriber → PrintImageSubscriber
-    EventBus.publishSync(new WebViewMessageReceivedEvent({ raw: nativeEvent.data }));
+    // The base module handles PRINT_IMAGE: WebViewMessageSubscriber → PrintImage
+    void eventDelivery.publisher.publish(
+      newEvent(WebViewMessageReceivedEvent, { raw: nativeEvent.data }),
+    );
   }}
 />;
 ```
@@ -628,7 +629,6 @@ A `DomainModule` is the primary building block. Here is how to create one from s
 
 ```tsx
 import { DomainModule } from "@sincpro/mobile/framework/domain_module";
-import type { Subscriber } from "@sincpro/mobile/event_driven";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 import type { IMigration } from "@sincpro/mobile/domain/database";
 
@@ -647,8 +647,12 @@ export class TicketsModule extends DomainModule {
     return [CreateTicketsTable, CreateTicketLinesTable];
   }
 
-  override subscribers(): Subscriber[] {
-    return [TicketCreatedSubscriber, TicketPrintSubscriber, SyncTicketSubscriber];
+  override boundedContexts() {
+    return [ticketsBoundedContext]; // its use cases, those of events included
+  }
+
+  override subscribers() {
+    return [ticketsSubscriptions]; // entrypoints/queue: each event → its Command
   }
 
   override crons(): CronWorker[] {
@@ -666,13 +670,14 @@ export const ticketsModule = new TicketsModule();
 
 ### Step 2 — Module hook reference
 
-| Hook               | Returns                       | When it runs              | Can assume         |
-| ------------------ | ----------------------------- | ------------------------- | ------------------ |
-| `repositories()`   | `Record<string, IRepository>` | Kernel bootstrap          | Nothing yet        |
-| `migrations()`     | `IMigration[]`                | After repos registered    | Repos registered   |
-| `subscribers()`    | `Subscriber[]`                | After migrations          | DB schema ready    |
-| `crons()`          | `CronWorker[]`                | After subscribers         | Queue running      |
-| `persistOnReset()` | `string[]` table names        | On `unauthenticate(true)` | Called during wipe |
+| Hook                | Returns                       | When it runs               | Can assume         |
+| ------------------- | ----------------------------- | -------------------------- | ------------------ |
+| `repositories()`    | `Record<string, IRepository>` | Kernel bootstrap           | Nothing yet        |
+| `migrations()`      | `IMigration[]`                | After repos registered     | Repos registered   |
+| `boundedContexts()` | `HearingContext[]`            | While the domain is active | DB schema ready    |
+| `subscribers()`     | `Subscriptions[]`             | While the domain is active | DB schema ready    |
+| `crons()`           | `CronWorker[]`                | After the queue            | Queue running      |
+| `persistOnReset()`  | `string[]` table names        | On `unauthenticate(true)`  | Called during wipe |
 
 All hooks return safe empty defaults. Override only what your domain needs.
 
@@ -711,7 +716,7 @@ sincpro_mobile_myapp/
 │   ├── entrypoints/
 │   │   ├── main.tsx         ← DomainModule class + defineAppShell()
 │   │   ├── cron/            ← CronWorker definitions
-│   │   ├── queue/           ← Subscriber definitions
+│   │   ├── queue/           ← EventSubscribers + their Subscriptions
 │   │   └── ui/
 │   │       ├── App.tsx      ← root screen component
 │   │       └── theme/
@@ -908,7 +913,10 @@ abstract class DomainModule {
   migrations(): IMigration[] {
     return [];
   }
-  subscribers(): Subscriber[] {
+  boundedContexts(): readonly HearingContext[] {
+    return [];
+  }
+  subscribers(): readonly Subscriptions[] {
     return [];
   }
   crons(): CronWorker[] {
@@ -1061,7 +1069,7 @@ Telemetry is delivered by a single `FlushTelemetry` use case that drains **both*
 
 ### Retention — bounded, coherent, severity-aware
 
-Telemetry is **best-effort and bounded by nature** — a device offline for days cannot buffer forever. The framework's job is to lose data _intelligently and visibly_, never silently. Business-critical data does **not** belong here; it goes through the durable `event_queue` / `domain_events` path with its dead-letter queue.
+Telemetry is **best-effort and bounded by nature** — a device offline for days cannot buffer forever. The framework's job is to lose data _intelligently and visibly_, never silently. Business-critical data does **not** belong here; it goes through the durable stored queue (`stored_events`) and its failed events.
 
 Both buffers are capped by **row count and payload bytes** (predictable storage regardless of attribute size). When a cap is exceeded:
 
@@ -1083,18 +1091,17 @@ import { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 import { Kernel } from "@sincpro/mobile/framework/kernel";
 
 // Domain layer
-import type { Subscriber } from "@sincpro/mobile/event_driven";
 import { Entity } from "@sincpro/mobile/domain/entity";
 import { RemoteEntity } from "@sincpro/mobile/domain/entity";
 import type { IMigration } from "@sincpro/mobile/domain/database";
 
 // Infrastructure
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
-import { EventBus } from "@sincpro/mobile/infrastructure/workers";
+import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 
 // Services
 import { printerService } from "@sincpro/mobile/services/printer.service";
-import { deadLetterQueueUseCases } from "@sincpro/mobile/services/dlq.service";
+import { eventService } from "@sincpro/mobile/services/event.service";
 import { networkUseCases } from "@sincpro/mobile/services/network.service";
 
 // Adapters

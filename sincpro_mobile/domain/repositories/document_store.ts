@@ -1,5 +1,5 @@
+import type { StoredEvent } from "@sincpro/client-framework";
 import { type CompiledCriteria } from "@sincpro/mobile/domain/database/criteria_sql";
-import { type IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
 
 export enum StoreMode {
   LOCAL = "local",
@@ -32,7 +32,11 @@ export interface DocumentStore {
   transaction<T>(work: () => Promise<T>): Promise<T>;
 }
 
+/**
+ * Where a repository leaves what its aggregates recorded: `save` keeps one stored event inside
+ * the repository's own transaction; `schedule`, after the commit, asks for its delivery.
+ */
 export interface Outbox {
-  save(event: IntegrationEvent): Promise<void>;
+  save(stored: StoredEvent): Promise<void>;
   schedule(): void;
 }

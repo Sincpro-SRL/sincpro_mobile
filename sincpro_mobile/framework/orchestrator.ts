@@ -1,6 +1,7 @@
 import { logger } from "@sincpro/client-framework";
+import { eventStore } from "@sincpro/mobile/adapters/repositories/sqlite_event_store";
 import { cron } from "@sincpro/mobile/entrypoints/cron/Cron";
-import { QueueProcessor } from "@sincpro/mobile/entrypoints/queue/QueueProcessor";
+import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 import { AppState, AppStateStatus } from "react-native";
 
 import type { Kernel } from "./kernel";
@@ -42,12 +43,14 @@ class Orchestrator {
     }
   }
 
+  /**
+   * Who hears events is the active domains' parties; whether one that needs a session may go
+   * is the session's. Then what waits is delivered.
+   */
   private async orchestrateQueue(): Promise<void> {
-    await QueueProcessor.sync(
-      this.activeDomains,
-      this.authenticated,
-      this.requireKernel().subscribersByKey(),
-    );
+    eventDelivery.use(this.requireKernel().partiesFor(this.activeDomains));
+    eventDelivery.setSession(this.authenticated);
+    await eventDelivery.drain();
   }
 
   private async orchestrateCron(): Promise<void> {
@@ -77,7 +80,7 @@ class Orchestrator {
 
   async bootstrap(): Promise<void> {
     await this.requireKernel().bootstrap();
-    QueueProcessor.start();
+    eventDelivery.start();
     await this.orchestrateQueue();
     await this.orchestrateCron();
     this.initAppStateWatcher();
@@ -105,7 +108,7 @@ class Orchestrator {
     await this.orchestrateQueue();
     await this.orchestrateCron();
     if (cleanData) {
-      await QueueProcessor.clearQueue();
+      await eventStore.clear();
       await this.requireKernel().restartDatabase();
     }
   }

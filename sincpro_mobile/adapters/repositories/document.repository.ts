@@ -1,3 +1,10 @@
+import {
+  BIND,
+  type Cause,
+  type DomainEvent,
+  type Execution,
+  newEntityId,
+} from "@sincpro/client-framework";
 import { type DocumentCriteria } from "@sincpro/mobile/domain/database/criteria";
 import {
   compileCriteria,
@@ -21,8 +28,7 @@ import {
   applyAcknowledgement,
   takeAcceptedWrite,
 } from "@sincpro/mobile/domain/entity/remote_sync";
-import { type DomainEvent } from "@sincpro/mobile/domain/events/domain_event";
-import { type IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
+import type { Recorded } from "@sincpro/mobile/domain/events/recorded";
 import {
   type ColumnValue,
   type DocumentRow,
@@ -39,9 +45,12 @@ import {
 } from "@sincpro/mobile/domain/repositories/hooks";
 import { type IRepository } from "@sincpro/mobile/domain/repositories/repository";
 import { DomainAppError, StaleAggregate } from "@sincpro/mobile/exceptions";
-import { EventBus } from "@sincpro/mobile/infrastructure/workers";
+import { eventOutbox } from "@sincpro/mobile/infrastructure/events/outbox";
+import {
+  envelopeOfRecorded,
+  storedEventOf,
+} from "@sincpro/mobile/infrastructure/events/stored";
 
-import { DomainEventRepository } from "./domain_event.repository";
 import { SqliteDocumentStore } from "./sqlite_document_store";
 
 type EntityType<T extends Entity> = AnyClass<T>;
@@ -58,7 +67,7 @@ interface Remembered {
   version: number;
   updatedAt: string | null;
   createdAt: string;
-  events: DomainEvent[];
+  events: Recorded[];
   eventIds: string[];
 }
 
@@ -77,6 +86,8 @@ export class DocumentRepository<T extends Entity> implements IRepository<
   EntityCollection<T>
 > {
   private readonly inflight = new Map<string, T>();
+  /** The run this view of the repository saves for (`BIND`): its events continue that flow. */
+  private readonly cause: Cause | undefined = undefined;
 
   constructor(
     readonly type: EntityType<T>,
@@ -122,11 +133,31 @@ export class DocumentRepository<T extends Entity> implements IRepository<
     });
   }
 
-  async publish(events: readonly IntegrationEvent[]): Promise<void> {
+  /**
+   * This repository as `execution` uses it — what it is as a dependency of a bounded context: the
+   * events it stores continue that run's flow (its `correlationId`, caused by it). The same
+   * store, outbox and in-flight aggregates.
+   */
+  [BIND](execution: Execution): this {
+    const cause: Cause = { id: execution.id, correlationId: execution.correlationId };
+    return Object.assign(Object.create(this) as this, { cause });
+  }
+
+  /** Stores `events` — one flow — and asks for their delivery. */
+  async publish(events: readonly DomainEvent[]): Promise<void> {
     this.assertCanWrite();
     const outbox = this.outbox();
+    const flow = newEntityId();
     await this.store.transaction(async () => {
-      for (const event of events) await outbox.save(event);
+      for (const [index, event] of events.entries()) {
+        const recorded: Recorded = {
+          id: index === 0 ? flow : newEntityId(),
+          event,
+          sequence: index + 1,
+          correlationId: flow,
+        };
+        await outbox.save(storedEventOf(event, envelopeOfRecorded(recorded, this.cause)));
+      }
     });
     outbox.schedule();
   }
@@ -428,17 +459,19 @@ export class DocumentRepository<T extends Entity> implements IRepository<
   }
 
   private async flush(entity: T, session: Session): Promise<void> {
-    const events = entity.releaseDeliverable();
-    if (events.length === 0) return;
+    const recorded = entity.releaseRecorded();
+    if (recorded.length === 0) return;
     const outbox = this.options.outbox;
     if (!outbox) {
       if ((this.options.mode ?? StoreMode.LOCAL) === StoreMode.RELAY) {
         throw new DomainAppError("a relay repository needs an outbox");
       }
-      entity.restoreRecorded(events);
+      entity.restoreRecorded(recorded);
       return;
     }
-    for (const event of events) await outbox.save(event);
+    for (const item of recorded) {
+      await outbox.save(storedEventOf(item.event, envelopeOfRecorded(item, this.cause)));
+    }
     if (session.deliver) session.outboxes.add(outbox);
   }
 
@@ -745,14 +778,7 @@ export function sqliteDocuments<T extends Entity>(
   return new DocumentRepository(type, new SqliteDocumentStore(table, names, integers), {
     mode,
     hooks: spec.hooks,
-    outbox: spec.outbox ?? (mode === StoreMode.RELAY ? sqliteOutbox() : undefined),
+    outbox: spec.outbox ?? (mode === StoreMode.RELAY ? eventOutbox() : undefined),
     columns: names.length > 0 ? readColumns : undefined,
   });
-}
-
-function sqliteOutbox(): Outbox {
-  return {
-    save: (event) => DomainEventRepository.save(event),
-    schedule: () => EventBus.schedule(),
-  };
 }

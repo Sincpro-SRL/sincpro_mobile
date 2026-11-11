@@ -57,11 +57,13 @@ test("a print is one notice that changes: preparing, printing, then printed or t
     /this\.settleCapture\(jobId\);[\s\S]*?jobId,\s*\}\);/,
   );
 
-  const subscriber = read("sincpro_mobile/entrypoints/queue/printImage.subscriber.ts");
-  assert.match(subscriber, /const key = printNoticeKey\(event\.jobId \|\| event\.uuid\);/);
-  const notices = subscriber.match(/notifyDevice\(\{\s*key,/g) ?? [];
+  const subscriber = read("sincpro_mobile/entrypoints/queue/print_image.subscriber.ts");
+  assert.match(subscriber, /event\.jobId \|\| this\.execution\.causationId/);
+  const feature = read("sincpro_mobile/services/print/print_image.feature.ts");
+  assert.match(feature, /const key = printNoticeKey\(command\.jobId\);/);
+  const notices = feature.match(/notifyDevice\(\{\s*key,/g) ?? [];
   assert.equal(notices.length, 4);
-  assert.match(subscriber, /title: "Imprimiendo",[\s\S]*?variant: "loading"/);
+  assert.match(feature, /title: "Imprimiendo",[\s\S]*?variant: "loading"/);
 
   const deviceNotices = read("sincpro_mobile/ui/activity/DeviceNotices.tsx");
   assert.equal(deviceNotices.match(/id: notice\.key,/g)?.length, 2);
@@ -117,13 +119,13 @@ test("a failed print offers both the failed list and the printer", () => {
     read("sincpro_mobile/entrypoints/ui/AppShell.tsx"),
     /<DeviceNotices onAction=\{config\.onNoticeAction\} \/>/,
   );
-  const subscriber = read("sincpro_mobile/entrypoints/queue/printImage.subscriber.ts");
-  const failure = subscriber.slice(subscriber.indexOf('name: "printer.print_failed"'));
+  const feature = read("sincpro_mobile/services/print/print_image.feature.ts");
+  const failure = feature.slice(feature.indexOf('name: "printer.print_failed"'));
   assert.ok(
-    failure.indexOf("actions: printerService.printFailureActions()") <
+    failure.indexOf("actions: this.printer.printFailureActions()") <
       failure.indexOf("throw new"),
   );
-  assert.match(subscriber, /name: "printer\.printed"/);
+  assert.match(feature, /name: "printer\.printed"/);
   const service = read("sincpro_mobile/services/printer.service.ts");
   assert.match(service, /failed: \{ label: "Ver fallidas", intent: "failed-prints" \}/);
   assert.match(service, /printer: \{ label: "Impresora", intent: "printer" \}/);

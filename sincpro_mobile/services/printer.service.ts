@@ -1,6 +1,7 @@
 import { logger } from "@sincpro/client-framework";
 import { ReceiptExporterAdapter } from "@sincpro/mobile/adapters/ReceiptExporter.adapter";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
+import { newEvent } from "@sincpro/mobile/domain/events/delivery";
 import {
   type BluetoothDevice,
   getPrinterDriver,
@@ -16,13 +17,13 @@ import { ECommonSetting } from "@sincpro/mobile/domain/settings";
 import { printNoticeKey } from "@sincpro/mobile/domain/webview/print_cycle";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
+import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import {
   createReconnector,
   RECONNECT_DELAYS_MS,
 } from "@sincpro/mobile/infrastructure/print/reconnect";
 import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
-import { EventBus } from "@sincpro/mobile/infrastructure/workers";
 import { File } from "expo-file-system";
 import * as Print from "expo-print";
 import type { RefObject } from "react";
@@ -255,7 +256,7 @@ export class PrinterService {
     const jobId = input.jobId ?? generateUUID();
     this.settleCapture(jobId);
     // The image travels in the event and stays in its history: retention and logout clean it.
-    const event = PrintImageRequestedEvent.create({
+    const event = newEvent(PrintImageRequestedEvent, {
       imageBase64: input.imageBase64,
       width: input.width,
       height: input.height,
@@ -263,7 +264,7 @@ export class PrinterService {
       jobId,
     });
     try {
-      await EventBus.publish(event);
+      await eventDelivery.publisher.publish(event);
     } catch (error) {
       this.reportPrintFailed(input.title, "the print could not be queued", jobId);
       throw error;

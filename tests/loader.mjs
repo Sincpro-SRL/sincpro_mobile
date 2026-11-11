@@ -36,6 +36,7 @@ const EMPTY_STUBS = new Set([
   "expo-clipboard",
   "expo-sharing",
   "expo-print",
+  "react-native-view-shot",
 ]);
 
 function resolveAlias(specifier) {

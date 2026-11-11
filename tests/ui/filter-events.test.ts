@@ -9,34 +9,34 @@ import {
 const NOW = new Date(2026, 4, 8, 15, 0, 0);
 
 function item(
-  partial: Partial<EventListItem> & Pick<EventListItem, "name" | "createdAt">,
+  partial: Partial<EventListItem> & Pick<EventListItem, "name" | "publishedAt">,
 ): EventListItem {
-  return { status: "PENDING", ...partial };
+  return { state: "pending", ...partial };
 }
 
 const EVENTS: EventListItem[] = [
   item({
     name: "sale.order.confirmed",
     label: "Pedido confirmado",
-    createdAt: "2026-05-08T10:00:00",
+    publishedAt: "2026-05-08T10:00:00",
   }),
   item({
     name: "stock.picking.done",
     label: "Entrega validada",
-    status: "FAILED",
-    createdAt: "2026-05-05T10:00:00",
+    state: "set_aside",
+    publishedAt: "2026-05-05T10:00:00",
   }),
   item({
     name: "account.move.posted",
     label: "Factura publicada",
-    status: "ACKNOWLEDGED",
-    createdAt: "2026-04-20T10:00:00",
+    state: "delivered",
+    publishedAt: "2026-04-20T10:00:00",
   }),
   item({
     name: "account.payment.posted",
     label: "Pago registrado",
-    status: "CANCELLED",
-    createdAt: "2026-03-01T10:00:00",
+    state: "set_aside",
+    publishedAt: "2026-03-01T10:00:00",
   }),
 ];
 
@@ -84,20 +84,20 @@ test("filterEvents applies a custom condition together with the quick filters", 
     ["account.move.posted"],
   );
   assert.deepEqual(
-    filterEvents(EVENTS, { status: "FAILED", custom }, NOW).map((event) => event.name),
+    filterEvents(EVENTS, { status: "set_aside", custom }, NOW).map((event) => event.name),
     [],
   );
 });
 
 test("filterEvents combines status, name and date", () => {
   assert.deepEqual(
-    filterEvents(EVENTS, { status: "FAILED", query: "entrega", range: "week" }, NOW).map(
+    filterEvents(EVENTS, { status: "set_aside", query: "entrega", range: "week" }, NOW).map(
       (event) => event.name,
     ),
     ["stock.picking.done"],
   );
   assert.deepEqual(
-    filterEvents(EVENTS, { status: "FAILED", query: "pedido", range: "today" }, NOW),
+    filterEvents(EVENTS, { status: "set_aside", query: "pedido", range: "today" }, NOW),
     [],
   );
 });
@@ -110,7 +110,7 @@ test("filterEvents reads each event's text once while the user keeps typing", ()
       reads += 1;
       return "Sincronización de facturas";
     },
-    createdAt: new Date().toISOString(),
+    publishedAt: new Date().toISOString(),
   };
   for (const query of ["s", "si", "sin", "sinc", "factura", "x"]) {
     filterEvents([event], { query });

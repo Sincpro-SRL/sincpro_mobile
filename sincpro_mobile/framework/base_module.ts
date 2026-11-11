@@ -1,7 +1,7 @@
+import type { HearingContext, Subscriptions } from "@sincpro/client-framework";
 import { DatabaseTableRepository } from "@sincpro/mobile/adapters/repositories/database_table.repository";
-import { DomainEventRepository } from "@sincpro/mobile/adapters/repositories/domain_event.repository";
-import { DomainEventDeadLetterRepository } from "@sincpro/mobile/adapters/repositories/domain_event_dead_letter.repository";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
+import { eventStore } from "@sincpro/mobile/adapters/repositories/sqlite_event_store";
 import type { IMigration } from "@sincpro/mobile/domain/database";
 import { hasPrinterDriver } from "@sincpro/mobile/domain/print";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
@@ -9,11 +9,8 @@ import { EWebViewMessageType, type TWebViewMessage } from "@sincpro/mobile/domai
 import { routePrintMessage } from "@sincpro/mobile/domain/webview/print_cycle";
 import cronCheckNetworkStatus from "@sincpro/mobile/entrypoints/cron/checkNetworkStatus.cron";
 import MIGRATIONS, { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
-import { ActivateDomainSubscriber } from "@sincpro/mobile/entrypoints/queue/activateDomain.subscriber";
-import { NewAppSettingsSubscriber } from "@sincpro/mobile/entrypoints/queue/newAppSettings.handler";
-import { PrintImageSubscriber } from "@sincpro/mobile/entrypoints/queue/printImage.subscriber";
-import { ProcessWebViewMessageSubscriber } from "@sincpro/mobile/entrypoints/queue/processWebViewMessage.subscriber";
-import type { Subscriber } from "@sincpro/mobile/event_driven";
+import { commonSubscriptions } from "@sincpro/mobile/entrypoints/queue";
+import { commonBoundedContext } from "@sincpro/mobile/infrastructure/bounded_context";
 import type {
   WebViewMessage,
   WebViewMessageHandler,
@@ -31,8 +28,7 @@ export class BaseModule extends DomainModule {
   override repositories(): Record<string, object> {
     return {
       [ECommonRepository.DATABASE_TABLE]: DatabaseTableRepository,
-      [ECommonRepository.DOMAIN_EVENT]: DomainEventRepository,
-      [ECommonRepository.DOMAIN_EVENT_DEAD_LETTER]: DomainEventDeadLetterRepository,
+      [ECommonRepository.STORED_EVENTS]: eventStore,
       [ECommonRepository.SETTINGS]: SettingsRepository,
     };
   }
@@ -41,13 +37,12 @@ export class BaseModule extends DomainModule {
     return MIGRATIONS;
   }
 
-  override subscribers(): Subscriber[] {
-    return [
-      new ActivateDomainSubscriber(),
-      new ProcessWebViewMessageSubscriber(),
-      new PrintImageSubscriber(),
-      new NewAppSettingsSubscriber(),
-    ];
+  override boundedContexts(): readonly HearingContext[] {
+    return [commonBoundedContext];
+  }
+
+  override subscribers(): readonly Subscriptions[] {
+    return [commonSubscriptions];
   }
 
   override crons(): CronWorker[] {

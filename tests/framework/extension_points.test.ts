@@ -3,115 +3,20 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, test } from "node:test";
 
-import type { IntegrationEvent } from "@sincpro/mobile/domain/events";
 import { runLifecycle } from "@sincpro/mobile/framework/lifecycle";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
-import { withoutReplaced } from "@sincpro/mobile/framework/replaces";
 import {
   clearWebViewHandlers,
   dispatchWebViewMessage,
   registerWebViewHandler,
 } from "@sincpro/mobile/infrastructure/webview/message_handlers";
-import {
-  ANY_EVENT,
-  clearEventInterceptors,
-  interceptEvent,
-  runIntercepted,
-} from "@sincpro/mobile/infrastructure/workers/interceptors";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const read = (file: string) => readFileSync(path.join(root, file), "utf8");
-const event = (name: string) => ({ name }) as IntegrationEvent;
 
-afterEach(() => clearEventInterceptors());
-
-test("interceptors wrap a subscriber from outside, the generic ones outermost", async () => {
-  const calls: string[] = [];
-  interceptEvent("print.requested", async (_event, next) => {
-    calls.push("named:before");
-    await next();
-    calls.push("named:after");
-  });
-  interceptEvent(ANY_EVENT, async (_event, next, { subscriber }) => {
-    calls.push(`any:before:${subscriber}`);
-    await next();
-    calls.push("any:after");
-  });
-
-  await runIntercepted(event("print.requested"), "PrintImageSubscriber", async () => {
-    calls.push("subscriber");
-  });
-
-  assert.deepEqual(calls, [
-    "any:before:PrintImageSubscriber",
-    "named:before",
-    "subscriber",
-    "named:after",
-    "any:after",
-  ]);
-});
-
-test("an interceptor can veto the work or observe its failure", async () => {
-  let ran = false;
-  const remove = interceptEvent("print.requested", async () => {});
-  await runIntercepted(event("print.requested"), "S", async () => {
-    ran = true;
-  });
-  assert.equal(ran, false, "not calling next vetoes the subscriber");
-  remove();
-
-  let seen = "";
-  interceptEvent("print.requested", async (_event, next) => {
-    try {
-      await next();
-    } catch (error) {
-      seen = (error as Error).message;
-      throw error;
-    }
-  });
-  await assert.rejects(
-    runIntercepted(event("print.requested"), "S", async () => {
-      throw new Error("printer off");
-    }),
-    /printer off/,
-  );
-  assert.equal(seen, "printer off");
-});
-
-test("events without interceptors run their subscriber as before", async () => {
-  let ran = false;
-  await runIntercepted(event("other"), "S", async () => {
-    ran = true;
-  });
-  assert.equal(ran, true);
-});
-
-test("an app subscriber that replaces a core one stops the core one", () => {
-  class CoreSubscriber {}
-  class AppSubscriber {
-    static replaces = CoreSubscriber;
-  }
-  class Unrelated {}
-  const result = withoutReplaced({
-    BASE: [new CoreSubscriber(), new Unrelated()],
-    APP: [new AppSubscriber()],
-  });
-  assert.deepEqual(
-    result.BASE.map((item) => item.constructor),
-    [Unrelated],
-  );
-  assert.deepEqual(
-    result.APP.map((item) => item.constructor),
-    [AppSubscriber],
-  );
-});
+afterEach(() => clearWebViewHandlers());
 
 test("the core wires the extension points instead of concrete behavior", () => {
-  assert.match(
-    read("sincpro_mobile/infrastructure/workers/EventBus.ts"),
-    /runIntercepted\(event, subscriber\.constructor\.name, \(\) =>/,
-  );
-  assert.match(read("sincpro_mobile/framework/kernel.ts"), /return withoutReplaced\(map\);/);
   assert.match(
     read("sincpro_mobile/framework/createApp.ts"),
     /kernel\.registerExtensions\(\);/,
@@ -205,11 +110,4 @@ test("the core passes data raw and lets the app configure it", () => {
     read("sincpro_mobile/entrypoints/ui/AppShell.tsx"),
     /eventRetentionDays: config\.eventRetentionDays/,
   );
-});
-
-test("an event nobody consumes is acknowledged, never a failure", () => {
-  const bus = read("sincpro_mobile/infrastructure/workers/EventBus.ts");
-  assert.doesNotMatch(bus, /postProcess\([a-z]+, \["No subscribers registered"\]\)/);
-  assert.match(bus, /await this\.postProcess\(event, \[\]\);/);
-  assert.match(bus, /await this\.postProcess\(current, \[\]\);/);
 });

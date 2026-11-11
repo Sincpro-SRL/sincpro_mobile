@@ -1,5 +1,5 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/events";
-import { deadLetterQueueUseCases } from "@sincpro/mobile/services/dead_letter_queue.service";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
+import { eventService } from "@sincpro/mobile/services/event.service";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import React, {
   createContext,
@@ -11,17 +11,17 @@ import React, {
 } from "react";
 
 interface IDeadLetterQueueContext {
-  events: IntegrationEvent[];
-  enrichedEvents: IntegrationEvent[];
+  events: EventRecord[];
+  enrichedEvents: EventRecord[];
   selectedEvents: Set<string>;
   isLoading: boolean;
   isRetrying: boolean;
   isDeleting: boolean;
   loadEvents: () => Promise<void>;
   /** False when the event was no longer failed: someone else already retried it. */
-  retryEvent: (event: IntegrationEvent) => Promise<boolean>;
+  retryEvent: (event: EventRecord) => Promise<boolean>;
   retrySelectedEvents: () => Promise<{ success: number; failed: number }>;
-  deleteEvent: (event: IntegrationEvent) => Promise<void>;
+  deleteEvent: (event: EventRecord) => Promise<void>;
   deleteSelectedEvents: () => Promise<{ success: number; failed: number }>;
   toggleSelection: (eventId: string) => void;
   selectAll: () => void;
@@ -37,19 +37,19 @@ interface IDeadLetterQueueContext {
 const DeadLetterQueueContext = createContext<IDeadLetterQueueContext | null>(null);
 
 export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
-  const [events, setEvents] = useState<IntegrationEvent[]>([]);
+  const [events, setEvents] = useState<EventRecord[]>([]);
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
-  const [pagedEvents, setPagedEvents] = useState<IntegrationEvent[]>([]);
+  const [pagedEvents, setPagedEvents] = useState<EventRecord[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const paginate = useCallback(
-    (list: IntegrationEvent[], nextPage: number) => {
+    (list: EventRecord[], nextPage: number) => {
       const slice = list.slice(0, nextPage * pageSize);
       setPagedEvents(slice);
       setHasMore(slice.length < list.length);
@@ -62,7 +62,7 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     return withCleanup(
       async () => {
-        const fetched = await deadLetterQueueUseCases.getFailedEvents();
+        const fetched = await eventService.listFailedEvents();
         setEvents(fetched);
         setSelectedEvents(new Set());
         paginate(fetched, 1);
@@ -72,11 +72,11 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
   }, [paginate]);
 
   const retryEvent = useCallback(
-    async (event: IntegrationEvent) => {
+    async (event: EventRecord) => {
       setIsRetrying(true);
       return withCleanup(
         async () => {
-          const retried = await deadLetterQueueUseCases.retryFailedEvent(event);
+          const retried = (await eventService.retryEvents([event])) > 0;
           await loadEvents();
           return retried;
         },
@@ -104,8 +104,9 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
     setIsRetrying(true);
     return withCleanup(
       async () => {
-        const eventsToRetry = events.filter((event) => selectedEvents.has(event.uuid));
-        const result = await deadLetterQueueUseCases.retryMultipleFailedEvents(eventsToRetry);
+        const eventsToRetry = events.filter((event) => selectedEvents.has(event.id));
+        const moved = await eventService.retryEvents(eventsToRetry);
+        const result = { success: moved, failed: eventsToRetry.length - moved };
         await loadEvents();
         return result;
       },
@@ -114,11 +115,11 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
   }, [events, selectedEvents, loadEvents]);
 
   const deleteEvent = useCallback(
-    async (event: IntegrationEvent) => {
+    async (event: EventRecord) => {
       setIsDeleting(true);
       return withCleanup(
         async () => {
-          await deadLetterQueueUseCases.deleteFailedEvent(event);
+          await eventService.deleteEvents([event]);
           await loadEvents();
         },
         () => setIsDeleting(false),
@@ -134,11 +135,10 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
     setIsDeleting(true);
     return withCleanup(
       async () => {
-        const eventsToDelete = events.filter((event) => selectedEvents.has(event.uuid));
-        const result =
-          await deadLetterQueueUseCases.deleteMultipleFailedEvents(eventsToDelete);
+        const eventsToDelete = events.filter((event) => selectedEvents.has(event.id));
+        await eventService.deleteEvents(eventsToDelete);
         await loadEvents();
-        return result;
+        return { success: eventsToDelete.length, failed: 0 };
       },
       () => setIsDeleting(false),
     );
@@ -157,7 +157,7 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const selectAll = useCallback(() => {
-    setSelectedEvents(new Set(events.map((event) => event.uuid)));
+    setSelectedEvents(new Set(events.map((event) => event.id)));
   }, [events]);
 
   const clearSelection = useCallback(() => {

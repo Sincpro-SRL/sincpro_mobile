@@ -36,6 +36,8 @@ export class DomainValidationError extends DomainException {
 
 export class DomainNetworkError extends DomainException {
   static readonly failureKind = "unavailable";
+  /** What the delivery reads to mark the phone offline (`NETWORK_DOWN`). */
+  static readonly reason = "NETWORK_DOWN";
   constructor(message: string) {
     super(message);
     this.name = "NetworkError";

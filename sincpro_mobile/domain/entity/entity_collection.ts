@@ -1,13 +1,14 @@
-import { logger } from "@sincpro/client-framework";
+import { type DomainEvent, logger } from "@sincpro/client-framework";
 import {
   type DocumentCriteria,
   rowsMatching,
 } from "@sincpro/mobile/domain/database/criteria";
 import {
-  type DomainEventClass,
-  type EventData,
-} from "@sincpro/mobile/domain/events/domain_event";
-import { type IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
+  type EventValues,
+  newEvent,
+  type RecordableEvent,
+} from "@sincpro/mobile/domain/events/delivery";
+import { type Recorded, RecordedEvents } from "@sincpro/mobile/domain/events/recorded";
 import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
 import { convertToArray } from "@sincpro/mobile/tools/utils/collections";
 import { safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
@@ -39,8 +40,7 @@ export class EntityCollection<T extends Entity> extends ValueObject {
   public uuid: string;
   public eventIds: string[] = [];
   private entities: T[] = [];
-  private _recordedEvents: IntegrationEvent[] = [];
-  private _correlationId: string | null = null;
+  private _recorded = new RecordedEvents();
 
   constructor(entities: T[] = []) {
     super();
@@ -534,60 +534,42 @@ export class EntityCollection<T extends Entity> extends ValueObject {
     return this.toMap((e) => e.uuid);
   }
 
-  record<C extends DomainEventClass<IntegrationEvent>>(
-    EventClass: C,
-    payload: EventData<InstanceType<C>>,
+  record<E extends DomainEvent>(
+    EventClass: RecordableEvent<E>,
+    values: EventValues<E>,
   ): string {
-    return this.stageDomainEvent(EventClass.create(payload));
+    return this.stage(newEvent(EventClass, values));
   }
 
-  recordEntities<C extends DomainEventClass<IntegrationEvent>>(EventClass: C): string {
-    return this.stageDomainEvent(
-      EventClass.create({
-        records: this.entities.map((e) => e.asJSON()),
-      } as unknown as EventData<InstanceType<C>>),
+  /** Records `EventClass` carrying every entity of the set, each as its JSON text. */
+  recordEntities<E extends DomainEvent>(EventClass: RecordableEvent<E>): string {
+    return this.stage(
+      newEvent(EventClass, {
+        records: this.entities.map((entity) => entity.asJSON()),
+      } as unknown as EventValues<E>),
     );
   }
 
-  private stageDomainEvent(event: IntegrationEvent): string {
-    const existingEvent = this._recordedEvents.find((e) => e.hasSameBusinessPayload(event));
-
-    if (existingEvent) {
-      logger.warn(
-        `EntityCollection - Event '${event.name}' is already recorded with the same payload. Skipping.`,
-      );
-      return existingEvent.uuid;
+  private stage(event: DomainEvent): string {
+    const { id, repeated } = this._recorded.record(event);
+    if (repeated) {
+      logger.warn("An event recorded twice with the same values is kept once", {
+        collection: this.uuid,
+        event: event.name,
+      });
+      return id;
     }
-
-    if (!this._correlationId) {
-      this._correlationId = generateUUID();
-    }
-
-    event
-      .withEntityType(this.constructor.name)
-      .withAggregateId(this.uuid)
-      .withSequence(this._recordedEvents.length + 1)
-      .applyChain(this._correlationId);
-
-    this._recordedEvents.push(event);
-    this.eventIds.push(event.uuid);
-
-    for (const entity of this.entities) {
-      entity.eventIds.push(event.uuid);
-    }
-
-    return event.uuid;
+    this.eventIds.push(id);
+    for (const entity of this.entities) entity.eventIds.push(id);
+    return id;
   }
 
-  recordedEvents(): readonly IntegrationEvent[] {
-    return this._recordedEvents.map((event) => event.clone());
+  recordedEvents(): readonly Recorded[] {
+    return this._recorded.list();
   }
 
-  pullEvents(): IntegrationEvent[] {
-    const events = this._recordedEvents;
-    this._recordedEvents = [];
-    this._correlationId = null;
-    return events;
+  pullEvents(): Recorded[] {
+    return this._recorded.take();
   }
 
   /**

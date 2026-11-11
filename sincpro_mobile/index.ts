@@ -1,4 +1,5 @@
 export { EBuiltinCron } from "@sincpro/mobile/entrypoints/cron/EBuiltinCron";
+export { commonSubscriptions } from "@sincpro/mobile/entrypoints/queue";
 export type {
   AppShellConfig,
   AppShellDefinition,
@@ -23,6 +24,9 @@ export { createApp, createKernel, startApp } from "@sincpro/mobile/framework/cre
 export { DomainModule } from "@sincpro/mobile/framework/domain_module";
 export { Kernel } from "@sincpro/mobile/framework/kernel";
 export { orchestrator } from "@sincpro/mobile/framework/orchestrator";
+export { commonBoundedContext } from "@sincpro/mobile/infrastructure/bounded_context";
+export { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
+export { eventOutbox } from "@sincpro/mobile/infrastructure/events/outbox";
 export { installGlobalErrorHandler } from "@sincpro/mobile/infrastructure/ui/errorHandler";
 
 // Observability — opt-in, tree-shakeable
