@@ -1,17 +1,14 @@
-import { logger } from "@sincpro/client-framework";
 import { EBuiltinCron } from "@sincpro/mobile/entrypoints/cron/EBuiltinCron";
 import { CronWorker } from "@sincpro/mobile/infrastructure/workers";
-import { networkUseCases } from "@sincpro/mobile/services/network.service";
+import { commonBoundedContext } from "@sincpro/mobile/services";
+import { CommandCheckConnectivity } from "@sincpro/mobile/services/connectivity/check_connectivity.feature";
 
-async function checkNetworkStatus(): Promise<void> {
-  logger.info("Checking network status");
-  await networkUseCases.getNetworkStatus();
-  logger.info("Finished checking network status");
-}
-
+/** An entrypoint: each tick executes the use case, traced and reported as any other. */
 const cronCheckNetworkStatus = new CronWorker(
   EBuiltinCron.CHECK_NETWORK,
-  checkNetworkStatus,
+  async () => {
+    await commonBoundedContext.execute(new CommandCheckConnectivity());
+  },
   2.5,
 );
 

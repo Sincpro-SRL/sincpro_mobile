@@ -379,3 +379,25 @@ test("the core's use cases are registered by their decorators, for their Command
   }
   assert.ok(commonBoundedContext.handlerOf(CorePrintCommand));
 });
+
+test("the network cron is an entrypoint: each tick executes the core's use case", async () => {
+  const { commonBoundedContext } = await import("../../sincpro_mobile/services/index.ts");
+  const { networkUseCases } =
+    await import("../../sincpro_mobile/services/network.service.ts");
+  const { default: cron } =
+    await import("../../sincpro_mobile/entrypoints/cron/checkNetworkStatus.cron.ts");
+  let checks = 0;
+  const fake = Object.assign(Object.create(networkUseCases), {
+    getNetworkStatus: async () => {
+      checks++;
+      return { isConnected: true, isInternetReachable: true, type: "WIFI" };
+    },
+  });
+  commonBoundedContext.addDependency("connectivity", fake, { replaces: networkUseCases });
+  try {
+    assert.equal(await cron.runOnce(), true);
+    assert.equal(checks, 1);
+  } finally {
+    commonBoundedContext.addDependency("connectivity", networkUseCases, { replaces: fake });
+  }
+});

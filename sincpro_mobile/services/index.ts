@@ -5,6 +5,10 @@
  */
 export { commonBoundedContext } from "@sincpro/mobile/infrastructure/framework";
 export {
+  CheckConnectivity,
+  CommandCheckConnectivity,
+} from "@sincpro/mobile/services/connectivity/check_connectivity.feature";
+export {
   ActivateDomain,
   CommandActivateDomain,
   CommandDeactivateDomain,

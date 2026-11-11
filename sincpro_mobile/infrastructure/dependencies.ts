@@ -5,6 +5,10 @@ import { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 import { deviceNotifier } from "@sincpro/mobile/infrastructure/ui/activity";
 import type { DomainSwitch } from "@sincpro/mobile/services/domains/activate_domain.feature";
 import {
+  type NetworkUseCases,
+  networkUseCases,
+} from "@sincpro/mobile/services/network.service";
+import {
   type PrinterService,
   printerService,
 } from "@sincpro/mobile/services/printer.service";
@@ -24,6 +28,7 @@ export interface CommonDependencies {
   printer: PrinterService;
   webView: WebViewService;
   notifier: Notifier;
+  connectivity: NetworkUseCases;
 }
 
 /** Supplies each dependency at runtime; an app replaces one with `addDependency(…, { replaces })`. */
@@ -35,5 +40,6 @@ export function registerDependencies(
   boundedContext.addDependency("printer", printerService);
   boundedContext.addDependency("webView", webViewService);
   boundedContext.addDependency("notifier", deviceNotifier);
+  boundedContext.addDependency("connectivity", networkUseCases);
   return boundedContext;
 }
