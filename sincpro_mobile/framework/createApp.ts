@@ -3,6 +3,7 @@ import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import { configureObservability } from "@sincpro/mobile/infrastructure/observability";
 import type { TelemetryConfig } from "@sincpro/mobile/infrastructure/telemetry";
 import { initTelemetry } from "@sincpro/mobile/infrastructure/telemetry";
+import { installWebCrypto } from "@sincpro/mobile/infrastructure/web_crypto";
 import type { CronWorkerOpts } from "@sincpro/mobile/infrastructure/workers";
 import { commonBoundedContext } from "@sincpro/mobile/services";
 import { CommandPruneEventHistory } from "@sincpro/mobile/services/events/prune_event_history.feature";
@@ -37,13 +38,16 @@ export interface AppConfig {
 }
 
 /**
- * Builds the kernel without IO: safe to call while the bundle loads. It also configures the
+ * Builds the kernel without IO: safe to call while the bundle loads. It installs Web Crypto's
+ * random source (`installWebCrypto`), which every run's id needs, and configures the
  * process every bounded context runs with (`configureObservability`), so a background task the
  * OS wakes runs traced and logged the same way.
  */
 export function createKernel(
   config: Pick<AppConfig, "domains" | "crons" | "reporter"> = {},
 ): Kernel {
+  // Every run needs an id before anything else, and Hermes has no Web Crypto.
+  installWebCrypto();
   configureObservability({ reporter: config.reporter });
   const kernel = new Kernel([baseModule, ...(config.domains ?? [])]);
   if (config.crons) kernel.applyCronConfig(config.crons);

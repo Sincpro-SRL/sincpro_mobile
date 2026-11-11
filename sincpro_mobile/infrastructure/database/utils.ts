@@ -1,6 +1,6 @@
 import { isEntityId, momentOf, newEntityId } from "@sincpro/client-framework";
+import { installWebCrypto } from "@sincpro/mobile/infrastructure/web_crypto";
 import { convertToArray } from "@sincpro/mobile/tools/utils/collections";
-import * as Crypto from "expo-crypto";
 
 export { isEntityId, momentOf };
 
@@ -30,15 +30,8 @@ export function getPlaceholders(field: string, data: any | any[]): [string, stri
   return [`${field} IN (${placeholders})`, values];
 }
 
-function ensureRandom(): void {
-  if (typeof globalThis.crypto?.getRandomValues === "function") return;
-  Object.defineProperty(globalThis, "crypto", {
-    value: { getRandomValues: Crypto.getRandomValues },
-    configurable: true,
-  });
-}
-
+/** An entity's id; Web Crypto is installed first, for an entity made before any kernel. */
 export function generateUUID(): string {
-  ensureRandom();
+  installWebCrypto();
   return newEntityId();
 }

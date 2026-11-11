@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID as nodeRandomUUID } from "node:crypto";
 
 export function getRandomBytes(n: number): Uint8Array {
   return new Uint8Array(randomBytes(n));
@@ -15,7 +15,7 @@ export function getRandomValues<T extends ArrayBufferView>(typedArray: T): T {
 }
 
 export function randomUUID(): string {
-  return crypto.randomUUID();
+  return nodeRandomUUID();
 }
 
 export async function digestStringAsync(): Promise<string> {
