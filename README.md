@@ -179,7 +179,7 @@ flowchart TB
         repo["Entity repositories · SqliteEventStore (EventStore)"]
     end
 
-    netcron["CHECK_NETWORK cron"] -->|emits| netev["InternetIsUp / Down<br/>(UIEventBus)"]
+    netcron["CHECK_NETWORK cron<br/>CommandCheckConnectivity"] -->|emits| netev["InternetIsUp / Down<br/>(UIEventBus)"]
     netev -.->|gates draining| qp
 
     orch --> qp
@@ -189,11 +189,9 @@ flowchart TB
     mod -->|crons| crons
     mod -->|repositories| repo
 
-    qp -->|read/ack| de
-    qp -->|on failure| ddl
+    qp -->|next · save: delivered, pending to retry, set_aside| de
     repo --> de
-    repo --> dlq
-    entity["Domain Entity<br/>addDomainEvent()"] -->|persist before process| de
+    entity["Domain Entity<br/>record()"] -->|stored with the entity, in its transaction| de
 ```
 
 ---
@@ -302,42 +300,49 @@ const retried = await eventService.retryEvents(failed); // how many went back to
 await eventService.deleteEvents([failed[0]]);
 ```
 
-### ✅ Domain Entity with Event Sourcing
+### ✅ Domain Entity and its events
 
-`Entity` is the aggregate root. It collects domain events during a business operation and publishes them atomically. Events carry tracing fields (`correlationId`, `aggregateId`, `sequence`) for transaction support and SAGA patterns.
+`Entity` is the aggregate root. It **records** the events of a business operation and never
+publishes them: its repository stores them in the same transaction as the entity (the outbox)
+and the queue delivers them after the commit, so a rollback never announces what did not
+happen. The events one entity records before a save are one flow — they share a
+`correlationId` and keep their order (`sequence`) —, and the same event with the same values
+recorded twice is kept once.
 
-```tsx
+```ts
 import { Entity } from "@sincpro/mobile/domain/entity";
 
 class Invoice extends Entity {
-  remoteId?: string;
-  status: "draft" | "sent" | "paid" = "draft";
+  status: "draft" | "sent" = "draft";
   lines: InvoiceLine[] = [];
 
   addLine(line: InvoiceLine) {
     this.lines.push(line);
-    // correlationId groups all events from this operation
-    this.addDomainEvent(InvoiceLineAddedEvent, { invoiceId: this.uuid, lineId: line.uuid });
+    this.record(InvoiceLineAddedEvent, { invoiceId: this.uuid, lineId: line.uuid });
   }
 
   send() {
     this.status = "sent";
-    // All events from this call share the same correlationId and sequence
-    this.addDomainEvent(InvoiceSentEvent, { invoiceId: this.uuid, sentAt: new Date() });
-    await this.publishAllDomainEvents();
+    this.record(InvoiceSentEvent, { invoiceId: this.uuid });
   }
 }
+
+// In a Feature: one save stores the invoice and what it recorded, in one transaction.
+invoice.send();
+await this.invoices.save(invoice);
 ```
 
-**Entity lifecycle methods:**
+| Method                     | Description                                                   |
+| -------------------------- | ------------------------------------------------------------- |
+| `record(Event, values?)`   | Records an event; answers the id its envelope will carry      |
+| `recordEntity(Event)`      | Records an event carrying the whole entity as JSON (`record`) |
+| `recordedEvents()`         | What it recorded and was not stored yet (copies)              |
+| `pullEvents()`             | Takes every record: the entity starts a new flow              |
+| `copyRecordedFrom(source)` | Records what another entity recorded (re-aggregating)         |
 
-| Method                            | Description                                                                   |
-| --------------------------------- | ----------------------------------------------------------------------------- |
-| `addDomainEvent(Event, payload?)` | Enqueues an event with auto-assigned aggregateId, correlationId, and sequence |
-| `addDomainEventWithEntity(Event)` | Enqueues event with the entire entity as the `record` field                   |
-| `publishAllDomainEvents()`        | Async: persists all pending events, clears the internal queue                 |
-| `publishAllDomainEventsSync()`    | Sync: publishes immediately, throws on any failure                            |
-| `copyDomainEventsFrom(source)`    | Transfers events from another entity (re-aggregating)                         |
+A repository in `StoreMode.RELAY` stores them through `eventOutbox()` (the `stored_events`
+table) and asks for the delivery after the commit. One in `StoreMode.LOCAL` without an outbox
+keeps them on the entity: nothing is delivered.
 
 ### ✅ Remote Entity Sync
 
