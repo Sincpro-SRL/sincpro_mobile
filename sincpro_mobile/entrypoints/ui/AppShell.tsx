@@ -112,8 +112,9 @@ function familiesToRoles(families: BrandFontFamilies): Partial<Record<FontRole, 
 export interface AppShellConfig {
   /**
    * Domain modules to bootstrap. Each module registers its own repositories,
-   * migrations, subscribers, and cron workers. The built-in `baseModule` is
-   * always included automatically — do not pass it here.
+   * migrations, bounded contexts (what they registered for an event is what they hear) and
+   * cron workers. The built-in `baseModule` is always included automatically — do not pass it
+   * here.
    */
   domains: DomainModule[];
   /** Domain active on launch. Defaults to the first of `domains`. */
