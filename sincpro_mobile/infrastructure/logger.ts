@@ -31,7 +31,6 @@ import { activeTraceLabel } from "./telemetry/tracing/active_span";
 export const LOG_LAYERS: readonly LogLayer[] = [
   "infrastructure",
   "adapter",
-  "entrypoint",
   "bounded_context",
   "application_service",
   "feature",
@@ -41,7 +40,6 @@ export const LOG_LAYERS: readonly LogLayer[] = [
 export const DEFAULT_ENABLED_LAYERS: Readonly<Record<LogLayer, boolean>> = {
   infrastructure: true,
   adapter: false,
-  entrypoint: true,
   bounded_context: true,
   application_service: true,
   feature: true,

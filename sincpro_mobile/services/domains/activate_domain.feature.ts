@@ -1,4 +1,9 @@
-import { Command, Feature } from "@sincpro/client-framework";
+import { Command } from "@sincpro/client-framework";
+import {
+  ActivateDomainEvent,
+  DeactivateDomainEvent,
+} from "@sincpro/mobile/domain/events/catalog";
+import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
 
 /** What turns a module's domain on or off: the orchestrator. */
 export type DomainSwitch = {
@@ -18,22 +23,24 @@ export class CommandDeactivateDomain extends Command<void> {
   }
 }
 
-/** Turns a module's domain on: its subscriptions hear, its crons run. */
-export class ActivateDomain extends Feature<CommandActivateDomain, void> {
-  static readonly serviceName = "ActivateDomain";
-  declare readonly domains: DomainSwitch;
-
-  async execute(command: CommandActivateDomain): Promise<void> {
-    await this.domains.enableDomain(command.domain);
+/** Turns a module's domain on — its bounded contexts hear, its crons run —; a screen or the event. */
+@commonBoundedContext.feature([CommandActivateDomain, ActivateDomainEvent])
+export class ActivateDomain extends Feature<
+  CommandActivateDomain | ActivateDomainEvent,
+  void
+> {
+  async execute(request: CommandActivateDomain | ActivateDomainEvent): Promise<void> {
+    await this.domains.enableDomain(request.domain);
   }
 }
 
 /** Turns a module's domain off; a shared one stays on. */
-export class DeactivateDomain extends Feature<CommandDeactivateDomain, void> {
-  static readonly serviceName = "DeactivateDomain";
-  declare readonly domains: DomainSwitch;
-
-  async execute(command: CommandDeactivateDomain): Promise<void> {
-    await this.domains.disableDomain(command.domain);
+@commonBoundedContext.feature([CommandDeactivateDomain, DeactivateDomainEvent])
+export class DeactivateDomain extends Feature<
+  CommandDeactivateDomain | DeactivateDomainEvent,
+  void
+> {
+  async execute(request: CommandDeactivateDomain | DeactivateDomainEvent): Promise<void> {
+    await this.domains.disableDomain(request.domain);
   }
 }

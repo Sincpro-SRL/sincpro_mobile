@@ -57,13 +57,16 @@ test("a print is one notice that changes: preparing, printing, then printed or t
     /this\.settleCapture\(jobId\);[\s\S]*?jobId,\s*\}\);/,
   );
 
-  const subscriber = read("sincpro_mobile/entrypoints/queue/print_image.subscriber.ts");
-  assert.match(subscriber, /event\.jobId \|\| this\.execution\.causationId/);
   const feature = read("sincpro_mobile/services/print/print_image.feature.ts");
-  assert.match(feature, /const key = printNoticeKey\(command\.jobId\);/);
-  const notices = feature.match(/notifyDevice\(\{\s*key,/g) ?? [];
+  assert.match(
+    feature,
+    /printNoticeKey\(\s*request\.jobId \|\| this\.execution\.causationId \|\| newEntityId\(\),?\s*\)/,
+    "the use case, not the queue's door, decides the notice's key",
+  );
+  const notices = feature.match(/this\.notifier\.notify\(\{\s*key,/g) ?? [];
   assert.equal(notices.length, 4);
   assert.match(feature, /title: "Imprimiendo",[\s\S]*?variant: "loading"/);
+  assert.doesNotMatch(feature, /infrastructure\/ui|infrastructure\/logger/);
 
   const deviceNotices = read("sincpro_mobile/ui/activity/DeviceNotices.tsx");
   assert.equal(deviceNotices.match(/id: notice\.key,/g)?.length, 2);
@@ -123,7 +126,7 @@ test("a failed print offers both the failed list and the printer", () => {
   const failure = feature.slice(feature.indexOf('name: "printer.print_failed"'));
   assert.ok(
     failure.indexOf("actions: this.printer.printFailureActions()") <
-      failure.indexOf("throw new"),
+      failure.indexOf("throw error"),
   );
   assert.match(feature, /name: "printer\.printed"/);
   const service = read("sincpro_mobile/services/printer.service.ts");

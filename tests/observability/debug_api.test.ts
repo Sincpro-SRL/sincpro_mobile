@@ -47,7 +47,7 @@ test("setEnabledLayers patches several layers at once", () => {
   const snapshot = getEnabledLayers();
   assert.equal(snapshot.adapter, true);
   assert.equal(snapshot.feature, false);
-  assert.equal(snapshot.entrypoint, true);
+  assert.equal(snapshot.bounded_context, true);
 
   resetEnabledLayers();
   assert.deepEqual(getEnabledLayers(), DEFAULT_ENABLED_LAYERS);

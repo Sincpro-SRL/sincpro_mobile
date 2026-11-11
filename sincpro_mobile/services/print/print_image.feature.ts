@@ -1,80 +1,84 @@
-import { Command, Feature } from "@sincpro/client-framework";
+import { Command, newEntityId } from "@sincpro/client-framework";
+import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/print/events";
 import { printNoticeKey } from "@sincpro/mobile/domain/webview/print_cycle";
-import { DomainValidationError } from "@sincpro/mobile/exceptions";
-import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
-import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
-import type { PrinterService } from "@sincpro/mobile/services/printer.service";
+import { DomainValidationError, PrinterNotSelected } from "@sincpro/mobile/exceptions";
+import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
 
 export class CommandPrintImage extends Command<void> {
   constructor(
     readonly imageBase64: string,
     readonly title: string,
-    /** The notice the user follows: the page's print, or the request's own id. */
-    readonly jobId: string,
+    /** The notice the person follows: the page's print; empty for one of its own. */
+    readonly jobId: string = "",
   ) {
     super();
   }
 }
 
-/**
- * Prints an image the user is following in one notice, the one the page opened with
- * "Preparando impresión":
- * 1. Without the image (a request stored by an older version, with only a marker) nothing is
- *    printed and the notice says so.
- * 2. The notice turns into "Imprimiendo" while the printer connects and prints.
- * 3. Printed: it turns into "Impreso" and fades.
- * 4. Not printed: it turns into the reason, with a way to the failed prints and to the printer.
- * Final: a failure is `invalid` — retrying it unchanged prints nothing —, so the request is set
- * aside with its image, ready to preview and retry from the failed prints.
- */
-export class PrintImage extends Feature<CommandPrintImage, void> {
-  static readonly serviceName = "PrintImage";
-  declare readonly printer: PrinterService;
+/** What the person reads when a print did not come out. */
+function whyNotPrinted(error: unknown, title: string): string {
+  if (error instanceof PrinterNotSelected) return "Selecciona una impresora primero.";
+  return title
+    ? `«${title}»: revisa que la impresora esté encendida y cerca.`
+    : "Revisa que la impresora esté encendida y cerca.";
+}
 
-  async execute(command: CommandPrintImage): Promise<void> {
-    const key = printNoticeKey(command.jobId);
-    const image = command.imageBase64;
+/**
+ * Prints an image the person follows in one notice — the one the page opened with "Preparando
+ * impresión" —, executed by a screen (`CommandPrintImage`) or by the queue
+ * (`PrintImageRequestedEvent`):
+ * 1. The notice is the page's print job; else the message that carried the request (its id);
+ *    else one of its own.
+ * 2. Without the image (a request stored by an older version, with only a marker) nothing is
+ *    printed, the notice says so, and it fails `invalid`: retrying it unchanged prints nothing,
+ *    so the queue sets it aside.
+ * 3. The notice turns into "Imprimiendo" while the printer connects and prints.
+ * 4. Printed: it turns into "Impreso".
+ * Final: not printed, the notice says why — with a way to the failed prints and to the printer —
+ *    and the failure keeps its kind: a printer off or out of reach is `unavailable`, retried by
+ *    the queue; none chosen is `domain`, set aside until the person retries it.
+ */
+@commonBoundedContext.feature([CommandPrintImage, PrintImageRequestedEvent])
+export class PrintImage extends Feature<CommandPrintImage | PrintImageRequestedEvent, void> {
+  async execute(request: CommandPrintImage | PrintImageRequestedEvent): Promise<void> {
+    const key = printNoticeKey(request.jobId || this.execution.causationId || newEntityId());
+    const image = request.imageBase64;
     if (!image || image.startsWith("[omitido")) {
-      notifyDevice({
+      this.notifier.notify({
         key,
         name: "printer.image_missing",
         title: "No se imprimió",
         message: "La imagen de esta impresión ya no está guardada.",
         variant: "danger",
       });
-      throw new DomainValidationError("No se pudo imprimir");
+      throw new DomainValidationError("The print request has no image");
     }
-    notifyDevice({
+    this.notifier.notify({
       key,
       name: "printer.printing",
       title: "Imprimiendo",
-      message: command.title || "Enviando a la impresora…",
+      message: request.title || "Enviando a la impresora…",
       variant: "loading",
     });
-    const printed = await this.printer.printImageBase64(image).catch((error: unknown) => {
-      this.logger.error("Print failed before reaching the printer", errorAttributes(error));
-      return false;
-    });
-    if (printed) {
-      notifyDevice({
+    try {
+      await this.printer.printImage(image);
+    } catch (error) {
+      this.notifier.notify({
         key,
-        name: "printer.printed",
-        title: "Impreso",
-        message: command.title || "La impresión salió",
-        variant: "success",
+        name: "printer.print_failed",
+        title: "No se imprimió",
+        message: whyNotPrinted(error, request.title),
+        variant: "danger",
+        actions: this.printer.printFailureActions(),
       });
-      return;
+      throw error;
     }
-    notifyDevice({
+    this.notifier.notify({
       key,
-      name: "printer.print_failed",
-      title: "No se imprimió",
-      message: command.title
-        ? `«${command.title}»: revisa que la impresora esté encendida y cerca.`
-        : "Revisa que la impresora esté encendida y cerca.",
-      variant: "danger",
-      actions: this.printer.printFailureActions(),
+      name: "printer.printed",
+      title: "Impreso",
+      message: request.title || "La impresión salió",
+      variant: "success",
     });
-    throw new DomainValidationError("No se pudo imprimir");
   }
 }

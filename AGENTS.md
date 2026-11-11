@@ -22,12 +22,39 @@ El core no conoce Odoo ni las apps. Imports entre capas por alias del paquete.
 ```text
 domain/          entidades, puertos y eventos (DomainEvent de client-framework), sin React ni IO
 adapters/        implementaciones de puertos: repositorios, el EventStore SQLite
-infrastructure/ DB, entrega de la cola guardada (storedQueue), cron, logger y telemetría
-services/       casos de uso por agregado: Features y ApplicationServices
+infrastructure/ dependencies.ts + framework.ts del bounded context; DB, la cola guardada
+                 (storedQueue), cron, logger y telemetría
+services/       casos de uso por agregado: Features y ApplicationServices con decorador;
+                 services/index.ts los importa y exporta el bounded context listo
 framework/      DomainModule, createApp, kernel y composición
 ui/             pantallas/componentes del framework
-entrypoints/    queue/ (EventSubscribers), cron/, db/, ui/: puertas que construyen Commands
+entrypoints/    cron/, db/, ui/: puertas que construyen Commands; la cola no tiene puertas propias
 ```
+
+## Bounded contexts, casos de uso y la cola
+
+Como sincpro_framework, con @sincpro/client-framework:
+
+- Un bounded context se arma en `infrastructure/dependencies.ts` (`<X>Dependencies` y
+  `registerDependencies`) y `infrastructure/framework.ts` (`servicesWith<…>()` y
+  `<x>BoundedContext`). Se llama `<nombre>BoundedContext`, nunca `ctx` ni `bc`.
+- Un Feature o ApplicationService hereda todas las dependencias: nunca `declare readonly`
+  ni `serviceName`; su nombre es el de su clase. El host conserva los nombres de clase en
+  producción (`keep_classnames: true` en `metro.config.js`).
+- Registro con decorador, para uno o N DTO: `@xBoundedContext.feature([CommandX, EventoX])`.
+  `services/index.ts` importa cada servicio y una librería lo declara en `sideEffects`.
+- Registrar un caso de uso para un evento es la suscripción: no hay un suscriptor por evento.
+  La cola tiene un solo `Subscriber`, armado con los bounded contexts de los módulos activos;
+  un Command se toma de la cola solo si un módulo lo declara (`consumes()`).
+- Un evento: `static eventName` con puntos (`<contexto>.<agregado>.vN.<hecho>`), `fromJSON`
+  si lleva `Money`, `Decimal` o fechas, y `requiresNetwork`/`requiresSession` en su clase. Se
+  entrega al menos una vez: el efecto se identifica por `this.execution.causationId` o por la
+  entidad.
+- Un caso de uso no importa UI ni loggers: avisa por un puerto (`Notifier`), escribe con
+  `this.logger` y nunca atrapa una falla para esconderla. Cada error declara su tipo
+  (`failureKind`): reintentar, apartar, reportar y lo que muestra una pantalla salen de ahí.
+- Un cron ejecuta un Command; un workflow es un ApplicationService. La actividad
+  ("procesando…") se escucha con `processListeners`, no desde la cola.
 
 ## Una sola dirección de UI
 
@@ -59,8 +86,9 @@ AppShell recibe configuración de módulos, tema, fuentes y providers, y renderi
 `children` desde el layout raíz del host. No decide qué UI de dominio mostrar,
 no monta un navegador y no aplica SafeAreaView global.
 
-DomainModule conserva registros de repositorios, migraciones, bounded contexts,
-subscriptions (sus EventSubscribers) y crons. Un selector de dominio emite callbacks; el mapa dominio → ruta es del host.
+DomainModule conserva registros de repositorios, migraciones, bounded contexts
+(`boundedContexts()`), los Commands que toma de la cola (`consumes()`) y crons. Un selector
+de dominio emite callbacks; el mapa dominio → ruta es del host.
 
 Separar restauración inicial de sesión de la carga de login/logout. Mantener
 el Stack montado con rutas protegidas y una carga visible. Un fallo debe

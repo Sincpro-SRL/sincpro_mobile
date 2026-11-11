@@ -1,5 +1,10 @@
-import type { HearingContext } from "@sincpro/client-framework";
-import { logger, loggerAdapter } from "@sincpro/client-framework";
+import {
+  type CommandType,
+  type HearingContext,
+  logger,
+  loggerAdapter,
+  Subscriber,
+} from "@sincpro/client-framework";
 import type { IMigration } from "@sincpro/mobile/domain/database";
 import {
   applyMigrationStep,
@@ -26,7 +31,6 @@ import { type LifecycleHook, runLifecycle } from "./lifecycle";
 export class Kernel {
   private readonly modules: DomainModule[];
   private crons?: Record<string, CronWorker[]>;
-  private parties?: Record<string, readonly HearingContext[]>;
   private extensionsRegistered = false;
   private readonly prepare = onceUntilFailure(async () => {
     repos.register(this.repositories());
@@ -61,28 +65,23 @@ export class Kernel {
     return this.modules.flatMap((module) => module.persistOnReset());
   }
 
-  /** Read once: each module's bounded contexts and subscriptions — who hears events. */
-  partiesByKey(): Record<string, readonly HearingContext[]> {
-    if (!this.parties) {
-      const map: Record<string, readonly HearingContext[]> = {};
-      for (const module of this.modules) {
-        map[module.key] = [...module.boundedContexts(), ...module.subscribers()];
-      }
-      this.parties = map;
-    }
-    return this.parties;
-  }
-
-  /** Who hears events while these domains are active: each party once, the core's first. */
-  partiesFor(activeDomains: ReadonlySet<string>): HearingContext[] {
-    const parties: HearingContext[] = [];
+  /**
+   * The queue's one entrypoint while these domains are active: a `Subscriber` over their modules'
+   * bounded contexts — each once, the core's first — and the Commands they consume.
+   */
+  subscriberFor(activeDomains: ReadonlySet<string>): Subscriber {
+    const boundedContexts: HearingContext[] = [];
+    const commands: CommandType[] = [];
     for (const module of this.modules) {
       if (!activeDomains.has(module.key)) continue;
-      for (const party of this.partiesByKey()[module.key] ?? []) {
-        if (!parties.includes(party)) parties.push(party);
+      for (const boundedContext of module.boundedContexts()) {
+        if (!boundedContexts.includes(boundedContext)) boundedContexts.push(boundedContext);
+      }
+      for (const command of module.consumes()) {
+        if (!commands.includes(command)) commands.push(command);
       }
     }
-    return parties;
+    return new Subscriber({ boundedContexts, commands });
   }
 
   /**

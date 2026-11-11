@@ -1,4 +1,4 @@
-import type { HearingContext, Subscriptions } from "@sincpro/client-framework";
+import type { HearingContext } from "@sincpro/client-framework";
 import { DatabaseTableRepository } from "@sincpro/mobile/adapters/repositories/database_table.repository";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
 import { eventStore } from "@sincpro/mobile/adapters/repositories/sqlite_event_store";
@@ -9,13 +9,12 @@ import { EWebViewMessageType, type TWebViewMessage } from "@sincpro/mobile/domai
 import { routePrintMessage } from "@sincpro/mobile/domain/webview/print_cycle";
 import cronCheckNetworkStatus from "@sincpro/mobile/entrypoints/cron/checkNetworkStatus.cron";
 import MIGRATIONS, { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
-import { commonSubscriptions } from "@sincpro/mobile/entrypoints/queue";
-import { commonBoundedContext } from "@sincpro/mobile/infrastructure/bounded_context";
 import type {
   WebViewMessage,
   WebViewMessageHandler,
 } from "@sincpro/mobile/infrastructure/webview/message_handlers";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
+import { commonBoundedContext } from "@sincpro/mobile/services";
 import { printerService } from "@sincpro/mobile/services/printer.service";
 
 import { DomainModule } from "./domain_module";
@@ -39,10 +38,6 @@ export class BaseModule extends DomainModule {
 
   override boundedContexts(): readonly HearingContext[] {
     return [commonBoundedContext];
-  }
-
-  override subscribers(): readonly Subscriptions[] {
-    return [commonSubscriptions];
   }
 
   override crons(): CronWorker[] {

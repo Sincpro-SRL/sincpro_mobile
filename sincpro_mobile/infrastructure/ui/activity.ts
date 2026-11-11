@@ -1,5 +1,11 @@
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
 import { type LabelText, textOf } from "@sincpro/mobile/domain/events/label";
+import type {
+  Notice,
+  NoticeAction,
+  NoticeVariant,
+  Notifier,
+} from "@sincpro/mobile/domain/notifier";
 import { ECommonSetting } from "@sincpro/mobile/domain/settings";
 
 import { UIEventBus } from "./UIEventBus";
@@ -20,22 +26,12 @@ export interface ActivityFact {
   status: ActivityStatus;
   ui: boolean;
   variant?: NoticeVariant;
-  actions?: NoticeAction[];
+  actions?: readonly NoticeAction[];
   /** Notices with the same key are one process: each one updates the same toast. */
   key?: string;
 }
 
-/** `loading` is a step of a process: its toast stays until the next notice with its key. */
-export type NoticeVariant = "success" | "danger" | "info" | "warning" | "loading";
-
-/**
- * A button on a device notice. `intent` says where to go ("printer"); the host maps it to a
- * route through `AppShellConfig.onNoticeAction`, so the framework never knows route names.
- */
-export interface NoticeAction {
-  label: string;
-  intent: string;
-}
+export type { NoticeAction, NoticeVariant } from "@sincpro/mobile/domain/notifier";
 
 export interface ActivityState {
   running: ActivityFact[];
@@ -70,14 +66,7 @@ function noticeStatus(variant: NoticeVariant): ActivityStatus {
   return "succeeded";
 }
 
-export function notifyDevice(input: {
-  name: string;
-  title: LabelText;
-  message: LabelText;
-  variant: NoticeVariant;
-  actions?: NoticeAction[];
-  key?: string;
-}): void {
+export function notifyDevice(input: Notice): void {
   publishActivity({
     channel: "device",
     name: input.name,
@@ -90,6 +79,9 @@ export function notifyDevice(input: {
     ui: true,
   });
 }
+
+/** The device's notices, as the port a use case holds (`this.notifier`). */
+export const deviceNotifier: Notifier = { notify: notifyDevice };
 
 export async function loadActivityEnabled(): Promise<Record<ActivityChannel, boolean>> {
   const enabled: Record<ActivityChannel, boolean> = {
