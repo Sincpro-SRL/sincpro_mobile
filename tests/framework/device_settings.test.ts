@@ -16,9 +16,15 @@ test("logging out keeps the device settings", () => {
 
 test("the saved printer stays connected through a core hook, not the AppShell", () => {
   const base = read("sincpro_mobile/framework/base_module.ts");
+  const onStart = base.slice(base.indexOf("override onStart(): void {"));
   assert.match(
-    base,
-    /override onStart\(\): void \{\s*if \(hasPrinterDriver\(\)\) printerService\.keepConnected\(\);/,
+    onStart,
+    /if \(!hasPrinterDriver\(\) \|\| !printerService\.policy\.autoReconnect\) return;/,
+  );
+  assert.match(
+    onStart,
+    /keepPrinterConnected\([\s\S]*?commonBoundedContext\.execute\(new CommandRestorePrinterConnection\(\)\)/,
+    "each try is a run of the core's bounded context",
   );
   const shell = read("sincpro_mobile/entrypoints/ui/AppShell.tsx");
   assert.doesNotMatch(shell, /printerService|hasPrinterDriver/);

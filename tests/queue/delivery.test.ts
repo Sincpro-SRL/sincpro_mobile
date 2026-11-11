@@ -40,7 +40,10 @@ import {
   CommandPrintImage,
   PrintImage,
 } from "../../sincpro_mobile/services/print/print_image.feature.ts";
-import type { PrinterService } from "../../sincpro_mobile/services/printer.service.ts";
+import {
+  PRINT_FAILURE_ACTIONS,
+  type PrinterService,
+} from "../../sincpro_mobile/services/printer.service.ts";
 
 const heard: string[] = [];
 const failures: unknown[] = [];
@@ -311,10 +314,7 @@ test("a repository's outbox keeps the message in its transaction, delivered afte
 function printing(outcome: () => Promise<void>) {
   const notices: Notice[] = [];
   const notifier: Notifier = { notify: (notice) => void notices.push(notice) };
-  const printer = {
-    printImage: outcome,
-    printFailureActions: () => [{ label: "Impresora", intent: "printer" }],
-  } as unknown as PrinterService;
+  const printer = { printImage: outcome } as unknown as PrinterService;
   const printBoundedContext = new BoundedContext<{
     printer: PrinterService;
     notifier: Notifier;
@@ -343,7 +343,7 @@ test("a print whose printer is off fails unavailable and waits to be retried, ke
     ["printer.printing", "printer.print_failed"],
   );
   assert.equal(notices[0]?.key, `print:${envelope.id}`, "the request's id keys its notice");
-  assert.deepEqual(notices[1]?.actions, [{ label: "Impresora", intent: "printer" }]);
+  assert.deepEqual(notices[1]?.actions, PRINT_FAILURE_ACTIONS);
 });
 
 test("a print without its image is invalid and set aside; without a printer, domain", async () => {
@@ -391,9 +391,12 @@ test("the network cron is an entrypoint: each tick executes the core's use case"
     await import("../../sincpro_mobile/entrypoints/cron/checkNetworkStatus.cron.ts");
   let checks = 0;
   const fake = Object.assign(Object.create(networkUseCases), {
-    getNetworkStatus: async () => {
+    read: async () => {
       checks++;
-      return { isConnected: true, isInternetReachable: true, type: "WIFI" };
+      return {
+        status: { isConnected: true, isInternetReachable: true, type: "WIFI" },
+        changed: false,
+      };
     },
   });
   commonBoundedContext.addDependency("connectivity", fake, { replaces: networkUseCases });

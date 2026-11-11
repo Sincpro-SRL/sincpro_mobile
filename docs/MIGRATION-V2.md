@@ -190,6 +190,57 @@ export { OnOdooLoggedIn } from "./odoo_logged_in.handler";
 | Capa de log `entrypoint`                                                                                        | Eliminada. La capa nueva `event_handler` (encendida por defecto) es la de los event handlers: `infrastructure`, `adapter`, `bounded_context`, `event_handler`, `application_service`, `feature`                                                                                                                                                                                                                           |
 | `commonBoundedContext` desde `@sincpro/mobile/infrastructure/bounded_context`                                   | Desde la raíz del paquete (`@sincpro/mobile`), con sus casos de uso y sus event handlers registrados, igual que `deviceNotifier`                                                                                                                                                                                                                                                                                          |
 
+## De 2.1 a 2.2
+
+2.2 es una feature: cada operación del core es un caso de uso de `commonBoundedContext` —
+impresora, Bluetooth, eventos guardados, base de datos, el ciclo de impresión del WebView y la
+reconexión —, así que cada una es una corrida con su span, sus líneas de log, su tipo de falla y,
+si es inesperada, su reporte. Las pantallas ejecutan Commands; `PrinterService` y
+`BluetoothService` quedan como adaptadores del dispositivo: no avisan ni esconden fallas, cada
+una dice su tipo y avisa el caso de uso por el puerto `Notifier`.
+
+```tsx
+import { failureOf } from "@sincpro/client-framework";
+import { CommandConnectPrinter, commonBoundedContext } from "@sincpro/mobile";
+
+try {
+  await commonBoundedContext.execute(new CommandConnectPrinter(address, name));
+} catch (error) {
+  // El caso de uso ya avisó a la persona y su corrida lo registró: la pantalla decide su estado.
+  if (failureOf(error).kind === "permission_denied") showPermissionRow();
+}
+```
+
+Lo que el dispositivo responde no es un fallo del código: `PrinterUnavailable` (`unavailable`),
+`PrinterNotSelected` (`domain`) y `BluetoothPermissionDenied` (`permission_denied`, nuevo) terminan
+`refused` — con span, log y aviso — y nunca se reportan (`expectErrors`). Un error inesperado del
+driver termina `failed` y se reporta.
+
+| 2.1                                                                                                        | 2.2                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `printerService.connect(address, name)` → `boolean`, avisaba                                               | `CommandConnectPrinter(address, name)`: avisa conectado o por qué no, y si falla lanza con su tipo. `printerService.connect` responde `void` y lanza                                                   |
+| `printerService.disconnect()` desde la pantalla                                                            | `CommandDisconnectPrinter`                                                                                                                                                                             |
+| `bluetoothService.ensurePermissionsForPrinter()` + `printerService.scanPrinters()`                         | `CommandScanPrinters`: pide el permiso; sin él avisa y lanza `BluetoothPermissionDenied`. `ensurePermissionsForPrinter` se elimina (`ensurePermissions()` responde sin avisar)                         |
+| `bluetoothService.checkPermissions()` + `printerService.getSelectedPrinter()` + `isConnected()`            | `CommandPrinterStatus` → `{ bluetoothGranted, selected, connected }`                                                                                                                                   |
+| `bluetoothService.requestPermissions()` desde la pantalla (avisaba)                                        | `CommandRequestBluetoothPermission` → el estado; avisa concedido o denegado. Denegar es la respuesta de la persona, no un fallo                                                                        |
+| `printerService.printTestPage()` → `boolean`                                                               | `CommandPrintTestPage`                                                                                                                                                                                 |
+| `printerService.printImageBase64(b64)` → `boolean`                                                         | `CommandPrintImage(b64, title)`                                                                                                                                                                        |
+| `printerService.printHtml(html)` → `boolean`                                                               | `CommandPrintHtml(html, title)`                                                                                                                                                                        |
+| `printerService.printFromView(ref)`                                                                        | `CommandPrintView(ref, title)`: captura la vista (`printerService.captureView`) y ejecuta `CommandPrintImage` como hija                                                                                |
+| `printerService.enqueuePrintImage(input)`                                                                  | `CommandQueuePrint(...)`: publica `PrintImageRequestedEvent` con el `publisher` ligado a la corrida, así el evento sigue su flujo y su traza                                                           |
+| `printerService.reportPrintStarted` / `reportPrintFailed`                                                  | `CommandStartPagePrint` / `CommandFailPagePrint`. El vigilante de la captura (45 s) es `PagePrintWatch` (`infrastructure/webview/page_print_watch.ts`); el ciclo, `entrypoints/webview/print_cycle.ts` |
+| `printerService.keepConnected()`                                                                           | Lo hace el core en `BaseModule.onStart` (`keepPrinterConnected`): cada intento es `CommandRestorePrinterConnection`. `printerService.configure({ autoReconnect: false })` lo apaga                     |
+| `printerService.restoreConnection()` → `boolean`                                                           | Responde `void`; una impresora que no vuelve lanza `PrinterUnavailable`                                                                                                                                |
+| `ProcessWebViewMessage` (Feature)                                                                          | ApplicationService: compone `CommandQueuePrint` como hija                                                                                                                                              |
+| `eventService.listRecentEvents / listFailedEvents / retryEvents / resendEvent / deleteEvents` en pantallas | `CommandListRecentEvents`, `CommandListFailedEvents`, `CommandRetryEvents`, `CommandResendEvent`, `CommandDeleteEvents`; la poda al arrancar es `CommandPruneEventHistory`                             |
+| `databaseTablesUseCase.getAllTables / getTableData` en pantallas                                           | `CommandListTables`, `CommandReadTable(tabla)`                                                                                                                                                         |
+| `NetworkUseCases.getNetworkStatus()` avisaba el cambio                                                     | `read()` → `{ status, changed }` y emite `InternetIsUp` / `InternetIsDown`; avisa `CheckConnectivity`. `getNetworkStatus()` sigue respondiendo el estado                                               |
+| —                                                                                                          | `reporter` en `defineAppShell`, `createApp` y `createKernel`: `sentryReporter(Sentry)` sobre el cliente que la app inicializó (GlitchTip habla Sentry). Sin él no se reporta nada                      |
+
+Los servicios siguen siendo reemplazables (`setPrinterService`, `setBluetoothService`,
+`setEventService`) y un caso de uso se reemplaza con
+`commonBoundedContext.feature(CommandX, { replaces: X })(MiX)`.
+
 ## Comportamiento nuevo, sin cambio de API
 
 - **La cola (`eventDelivery`, sobre `storedQueue`):**

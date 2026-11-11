@@ -10,7 +10,27 @@ export class CommandCheckConnectivity extends Command<NetworkStatus> {}
  */
 @commonBoundedContext.feature(CommandCheckConnectivity)
 export class CheckConnectivity extends Feature<CommandCheckConnectivity, NetworkStatus> {
-  execute(): Promise<NetworkStatus> {
-    return this.connectivity.getNetworkStatus();
+  async execute(): Promise<NetworkStatus> {
+    const { status, changed } = await this.connectivity.read();
+    this.span.set({ "network.connected": status.isConnected, "network.type": status.type });
+    if (!changed) return status;
+    if (status.isConnected) {
+      this.logger.info("Network is up", { type: status.type });
+      this.notifier.notify({
+        name: "network.online",
+        title: "Conectado",
+        message: `Conexión a través de ${status.type}`,
+        variant: "success",
+      });
+    } else {
+      this.logger.warn("Network is down", { type: status.type });
+      this.notifier.notify({
+        name: "network.offline",
+        title: "Estás desconectado",
+        message: "Sin conexión a internet",
+        variant: "danger",
+      });
+    }
+    return status;
   }
 }

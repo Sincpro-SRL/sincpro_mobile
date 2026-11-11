@@ -1,50 +1,37 @@
-import { logger } from "@sincpro/client-framework";
 import { NetworkAdapter } from "@sincpro/mobile/adapters/Network.adapter";
 import { NetworkStatus } from "@sincpro/mobile/domain/connectivity";
 import { InternetIsDownEvent, InternetIsUpEvent } from "@sincpro/mobile/domain/events";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
-import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 
+/** What a read of the connection found, and whether it changed since the last one. */
+export type ConnectivityReading = {
+  readonly status: NetworkStatus;
+  readonly changed: boolean;
+};
+
+/**
+ * The phone's connection — the adapter `CheckConnectivity` holds (`this.connectivity`): it reads
+ * the platform, tells the screens and the queue (`InternetIsUp` / `InternetIsDown` on
+ * `UIEventBus`) and remembers the last reading. What the person reads about a change is the
+ * use case's.
+ */
 export class NetworkUseCases {
   private networkStatus: NetworkStatus | null = null;
 
-  async getNetworkStatus(): Promise<NetworkStatus> {
-    const networkStatus = await NetworkAdapter.getStatus();
-    if (networkStatus.isConnected) {
-      UIEventBus.emit(InternetIsUpEvent.eventName, true);
-    } else {
-      UIEventBus.emit(InternetIsDownEvent.eventName, false);
-    }
-    this.notifyOnChange(networkStatus);
-    this.networkStatus = networkStatus;
-    return this.networkStatus;
+  async read(): Promise<ConnectivityReading> {
+    const status = await NetworkAdapter.getStatus();
+    UIEventBus.emit(
+      status.isConnected ? InternetIsUpEvent.eventName : InternetIsDownEvent.eventName,
+      status.isConnected,
+    );
+    const changed = status.isConnected !== this.networkStatus?.isConnected;
+    this.networkStatus = status;
+    return { status, changed };
   }
 
-  private notifyOnChange(networkStatus: NetworkStatus): void {
-    const changed = networkStatus.isConnected !== this.networkStatus?.isConnected;
-
-    if (!changed) {
-      return;
-    }
-
-    if (!networkStatus.isConnected) {
-      logger.warn(`Network is down: ${networkStatus.type}`);
-      notifyDevice({
-        name: "network.offline",
-        title: "Estas desconectado",
-        message: "Sin conexión a internet",
-        variant: "danger",
-      });
-    } else {
-      logger.info(`Network is up: ${networkStatus.type}`);
-      notifyDevice({
-        name: "network.online",
-        title: "Conectado",
-        message: `Conexión a través de ${networkStatus.type}`,
-        variant: "success",
-      });
-    }
+  async getNetworkStatus(): Promise<NetworkStatus> {
+    return (await this.read()).status;
   }
 }
 

@@ -38,6 +38,7 @@ Cada cambio de comportamiento de una app terminó en un release de `@sincpro/mob
 | Envolver lo que pasa al procesar un evento (avisar, auditar, vetar, medir) | `DomainModule.interceptors()`: `{ [nombreDelEvento \| "*"]: (event, next, { subscriber }) => … }`                                                                                      | `@bus.interceptor`                 |
 | Responder un evento en lugar del core                                      | Un subscriber propio con `static replaces = SubscriberDelCore`: el del core deja de correr                                                                                             | `replaces=`                        |
 | Llevar al usuario a una pantalla propia desde un aviso del core            | `AppShellConfig.onNoticeAction(intent)`                                                                                                                                                | —                                  |
+| Cambiar o envolver un caso de uso del core (2.2: toda operación lo es)     | `commonBoundedContext.feature(CommandPrintImage, { replaces: PrintImage })(MiImpresion)`; `commonBoundedContext.interceptor(CommandPrintImage)(…)`                                     | `replaces=`, `@bus.interceptor`    |
 
 ### Ejemplos
 
@@ -47,9 +48,9 @@ printerService.configure({ reconnectDelays: [500, 1_000, 3_000] });
 
 // Herencia: otra forma de imprimir, para toda la app y el core.
 class TicketsPrinter extends PrinterService {
-  override async printImageBase64(image: string) {
+  override async printImage(image: string) {
     // ESC/POS propio con this.driver…
-    return super.printImageBase64(image);
+    await super.printImage(image);
   }
 }
 setPrinterService(new TicketsPrinter());

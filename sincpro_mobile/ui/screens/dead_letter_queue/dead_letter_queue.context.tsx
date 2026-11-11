@@ -1,5 +1,10 @@
 import type { EventRecord } from "@sincpro/mobile/domain/events";
-import { eventService } from "@sincpro/mobile/services/event.service";
+import {
+  CommandDeleteEvents,
+  CommandListFailedEvents,
+  CommandRetryEvents,
+  commonBoundedContext,
+} from "@sincpro/mobile/services";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import React, {
   createContext,
@@ -62,7 +67,7 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     return withCleanup(
       async () => {
-        const fetched = await eventService.listFailedEvents();
+        const fetched = await commonBoundedContext.execute(new CommandListFailedEvents());
         setEvents(fetched);
         setSelectedEvents(new Set());
         paginate(fetched, 1);
@@ -76,7 +81,8 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
       setIsRetrying(true);
       return withCleanup(
         async () => {
-          const retried = (await eventService.retryEvents([event])) > 0;
+          const retried =
+            (await commonBoundedContext.execute(new CommandRetryEvents([event]))) > 0;
           await loadEvents();
           return retried;
         },
@@ -105,7 +111,9 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
     return withCleanup(
       async () => {
         const eventsToRetry = events.filter((event) => selectedEvents.has(event.id));
-        const moved = await eventService.retryEvents(eventsToRetry);
+        const moved = await commonBoundedContext.execute(
+          new CommandRetryEvents(eventsToRetry),
+        );
         const result = { success: moved, failed: eventsToRetry.length - moved };
         await loadEvents();
         return result;
@@ -119,7 +127,7 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
       setIsDeleting(true);
       return withCleanup(
         async () => {
-          await eventService.deleteEvents([event]);
+          await commonBoundedContext.execute(new CommandDeleteEvents([event]));
           await loadEvents();
         },
         () => setIsDeleting(false),
@@ -136,7 +144,7 @@ export function DeadLetterQueueProvider({ children }: { children: ReactNode }) {
     return withCleanup(
       async () => {
         const eventsToDelete = events.filter((event) => selectedEvents.has(event.id));
-        await eventService.deleteEvents(eventsToDelete);
+        await commonBoundedContext.execute(new CommandDeleteEvents(eventsToDelete));
         await loadEvents();
         return { success: eventsToDelete.length, failed: 0 };
       },

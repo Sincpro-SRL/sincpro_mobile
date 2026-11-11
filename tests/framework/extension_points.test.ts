@@ -23,7 +23,12 @@ test("the core wires the extension points instead of concrete behavior", () => {
   );
   const printer = read("sincpro_mobile/services/printer.service.ts");
   assert.match(printer, /export function setPrinterService\(service: PrinterService\)/);
-  assert.match(printer, /if \(!this\.options\.autoReconnect\) return \(\) => \{\};/);
+  assert.match(printer, /get policy\(\): Readonly<PrinterOptions>/);
+  assert.match(
+    read("sincpro_mobile/framework/base_module.ts"),
+    /!printerService\.policy\.autoReconnect\) return;/,
+    "the core honours the app's policy",
+  );
   assert.match(printer, /get driver\(\): IPrinterDriver/);
 });
 

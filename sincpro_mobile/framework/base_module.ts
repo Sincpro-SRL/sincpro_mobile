@@ -8,17 +8,15 @@ import { eventStore } from "@sincpro/mobile/adapters/repositories/sqlite_event_s
 import type { IMigration } from "@sincpro/mobile/domain/database";
 import { hasPrinterDriver } from "@sincpro/mobile/domain/print";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories";
-import { EWebViewMessageType, type TWebViewMessage } from "@sincpro/mobile/domain/webview";
-import { routePrintMessage } from "@sincpro/mobile/domain/webview/print_cycle";
 import cronCheckNetworkStatus from "@sincpro/mobile/entrypoints/cron/checkNetworkStatus.cron";
 import MIGRATIONS, { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
-import type {
-  WebViewMessage,
-  WebViewMessageHandler,
-} from "@sincpro/mobile/infrastructure/webview/message_handlers";
+import { printCycleHandlers } from "@sincpro/mobile/entrypoints/webview/print_cycle";
+import { keepPrinterConnected } from "@sincpro/mobile/infrastructure/print/keep_connected";
+import type { WebViewMessageHandler } from "@sincpro/mobile/infrastructure/webview/message_handlers";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 import { commonBoundedContext } from "@sincpro/mobile/services";
 import { printerService } from "@sincpro/mobile/services/printer.service";
+import { CommandRestorePrinterConnection } from "@sincpro/mobile/services/printer/connection.feature";
 
 import { DomainModule } from "./domain_module";
 
@@ -49,23 +47,25 @@ export class BaseModule extends DomainModule {
 
   /** The print cycle of a page with the print interceptor; an app can replace any type. */
   override webViewHandlers(): Record<string, WebViewMessageHandler> {
-    const printCycle = (message: WebViewMessage) =>
-      routePrintMessage(message as unknown as TWebViewMessage, {
-        started: (title, jobId) => printerService.reportPrintStarted(title, jobId),
-        failed: (title, reason, jobId) =>
-          printerService.reportPrintFailed(title, reason, jobId),
-        image: (input) => printerService.enqueuePrintImage(input),
-      }).then(() => undefined);
-    return {
-      [EWebViewMessageType.PRINT_STARTED]: printCycle,
-      [EWebViewMessageType.PRINT_FAILED]: printCycle,
-      [EWebViewMessageType.PRINT_IMAGE]: printCycle,
-    };
+    return printCycleHandlers();
   }
 
-  /** A host that prints keeps its saved printer connected (start, return, lost link). */
+  /**
+   * A host that prints keeps its chosen printer connected (start, return, lost link): each try
+   * is `CommandRestorePrinterConnection`, a run of its own. `printerService.configure({
+   * autoReconnect: false })` turns it off.
+   */
   override onStart(): void {
-    if (hasPrinterDriver()) printerService.keepConnected();
+    if (!hasPrinterDriver() || !printerService.policy.autoReconnect) return;
+    keepPrinterConnected(
+      () =>
+        commonBoundedContext.execute(new CommandRestorePrinterConnection()).then(
+          () => true,
+          () => false,
+        ),
+      (listener) => printerService.onConnectionChange(listener),
+      printerService.policy.reconnectDelays,
+    );
   }
 
   // Both telemetry tables survive restartDatabase() — data generated during

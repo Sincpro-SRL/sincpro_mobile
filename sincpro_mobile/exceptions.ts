@@ -9,6 +9,7 @@
  *     NetworkError, RepeatableFailure  unavailable  retried after a wait
  *     PrinterUnavailable           unavailable  the printer is off or out of reach: retried
  *     PrinterNotSelected           domain       no printer chosen: set aside until one is
+ *     BluetoothPermissionDenied    permission_denied  the person has not granted Bluetooth
  *     BackendError, AppError       internal    a fault: reported
  *
  * A bare `DomainException` declares nothing: an unexpected failure, reported.
@@ -100,6 +101,16 @@ export class PrinterUnavailable extends DomainException {
   constructor(message: string) {
     super(message);
     this.name = "PrinterUnavailable";
+  }
+}
+
+/** The Bluetooth permission is not granted: the person grants it, then retries. */
+export class BluetoothPermissionDenied extends DomainException {
+  static readonly failureKind = "permission_denied";
+  static readonly reason = "BLUETOOTH_PERMISSION_DENIED";
+  constructor(message: string) {
+    super(message);
+    this.name = "BluetoothPermissionDenied";
   }
 }
 

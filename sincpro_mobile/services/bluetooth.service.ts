@@ -1,71 +1,42 @@
-import { logger } from "@sincpro/client-framework";
+import { loggerAdapter } from "@sincpro/client-framework";
 import { BluetoothAdapter } from "@sincpro/mobile/adapters/Bluetooth.adapter";
 import {
   BluetoothPermissionStatus,
   BluetoothStatus,
 } from "@sincpro/mobile/domain/connectivity";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
-import { notifyDevice } from "@sincpro/mobile/infrastructure/ui/activity";
 
+/**
+ * Bluetooth's permissions and status — the adapter the use cases hold (`this.bluetooth`): it
+ * asks the platform and remembers the last answer. What the person reads about it is a use
+ * case's (`services/bluetooth`), so asking for the permission is a run with its span.
+ */
 export class BluetoothService {
   private permissionStatus: BluetoothPermissionStatus | null = null;
 
+  /** Asks the person for the permission (the system's dialog). */
   async requestPermissions(): Promise<BluetoothPermissionStatus> {
-    logger.info("Requesting Bluetooth permissions");
-
     const permissions = await BluetoothAdapter.requestPermissions();
     this.permissionStatus = permissions;
-
-    this.showPermissionToast(permissions);
-
+    loggerAdapter.info("Bluetooth permission asked", { granted: permissions.isGranted });
     return permissions;
   }
 
+  /** What the permission is now, without asking. */
   async checkPermissions(): Promise<BluetoothPermissionStatus> {
-    logger.info("Checking Bluetooth permissions");
-
     const permissions = await BluetoothAdapter.hasPermissions();
     this.permissionStatus = permissions;
-
     return permissions;
   }
 
   async getStatus(): Promise<BluetoothStatus> {
-    logger.info("Getting Bluetooth status");
     return BluetoothAdapter.getStatus();
   }
 
+  /** Whether it is granted — asking for it when it is not. */
   async ensurePermissions(): Promise<boolean> {
-    logger.info("Ensuring Bluetooth permissions are granted");
-
-    const currentPermissions = await this.checkPermissions();
-
-    if (currentPermissions.isGranted) {
-      logger.info("Bluetooth permissions already granted");
-      return true;
-    }
-
-    logger.info("Bluetooth permissions not granted, requesting...");
-    const requestedPermissions = await this.requestPermissions();
-
-    return requestedPermissions.isGranted;
-  }
-
-  async ensurePermissionsForPrinter(): Promise<boolean> {
-    logger.info("Ensuring Bluetooth permissions for printer connection");
-
-    const permissions = await this.ensurePermissions();
-
-    if (!permissions) {
-      notifyDevice({
-        name: "bluetooth.required",
-        title: "Permisos de Bluetooth requeridos",
-        message: "Habilita los permisos de Bluetooth en configuración",
-        variant: "danger",
-      });
-    }
-
-    return permissions;
+    if ((await this.checkPermissions()).isGranted) return true;
+    return (await this.requestPermissions()).isGranted;
   }
 
   getCachedPermissions(): BluetoothPermissionStatus | null {
@@ -74,28 +45,6 @@ export class BluetoothService {
 
   isPermissionGranted(): boolean {
     return this.permissionStatus?.isGranted ?? false;
-  }
-
-  private showPermissionToast(permissions: BluetoothPermissionStatus): void {
-    if (permissions.isGranted) {
-      notifyDevice({
-        name: "bluetooth.enabled",
-        title: "Bluetooth habilitado",
-        message: "Permisos de Bluetooth concedidos",
-        variant: "success",
-      });
-      logger.info("Bluetooth permissions granted");
-    } else {
-      notifyDevice({
-        name: "bluetooth.denied",
-        title: "Bluetooth no disponible",
-        message: "Los permisos de Bluetooth fueron denegados",
-        variant: "danger",
-      });
-      logger.warn("Bluetooth permissions denied", {
-        permissions: JSON.stringify(permissions),
-      });
-    }
   }
 }
 

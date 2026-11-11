@@ -1,4 +1,4 @@
-import { configureProcess } from "@sincpro/client-framework";
+import { configureProcess, type ErrorReporter } from "@sincpro/client-framework";
 import { openTelemetryTracer } from "@sincpro/client-framework/opentelemetry";
 
 import { mobileLogger } from "./logger";
@@ -15,11 +15,14 @@ export const TRACER_SCOPE = "@sincpro/mobile";
  * Context: called once, while the bundle loads (`createKernel`), before any use case runs; a
  * closed app the OS wakes builds the same kernel, so a background task runs with it too. The
  * tracer is OpenTelemetry's global one: it answers through whatever provider is registered when
- * a span starts, and records nothing while telemetry is off.
+ * a span starts, and records nothing while telemetry is off. `reporter` is where an unexpected
+ * failure goes — `sentryReporter(client)` over the client the app initialized (GlitchTip speaks
+ * Sentry); without one, nothing is reported.
  */
-export function configureObservability(): void {
+export function configureObservability(options: { reporter?: ErrorReporter } = {}): void {
   configureProcess({
     tracer: openTelemetryTracer(getTracer(TRACER_SCOPE)),
     logger: { engine: mobileLogger },
+    ...(options.reporter ? { reporter: options.reporter } : {}),
   });
 }
