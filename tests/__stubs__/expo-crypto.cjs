@@ -5,7 +5,7 @@ exports.getRandomValues = (typedArray) => {
   typedArray.set(randomBytes(typedArray.byteLength));
   return typedArray;
 };
-exports.randomUUID = () => crypto.randomUUID();
+exports.randomUUID = () => require("node:crypto").randomUUID();
 exports.digestStringAsync = async () => "";
 exports.CryptoDigestAlgorithm = {
   SHA1: "SHA1",
