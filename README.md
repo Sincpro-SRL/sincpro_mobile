@@ -302,11 +302,16 @@ A message from outside — a push, a socket, a page — enters with `eventDelive
 What the queue set aside is the failed list (`state: "set_aside"`): a person retries — once per failure —, or deletes it.
 
 ```tsx
-import { eventService } from "@sincpro/mobile/services/event.service";
+import {
+  CommandDeleteEvents,
+  CommandListFailedEvents,
+  CommandRetryEvents,
+  commonBoundedContext,
+} from "@sincpro/mobile";
 
-const failed = await eventService.listFailedEvents();
-const retried = await eventService.retryEvents(failed); // how many went back to the queue
-await eventService.deleteEvents([failed[0]]);
+const failed = await commonBoundedContext.execute(new CommandListFailedEvents());
+const retried = await commonBoundedContext.execute(new CommandRetryEvents(failed)); // how many went back
+await commonBoundedContext.execute(new CommandDeleteEvents([failed[0]]));
 ```
 
 ### ✅ Domain Entity and its events
@@ -443,9 +448,9 @@ class SyncOrderEvent extends DomainEvent {
 }
 
 // Check status at any point
-import { networkUseCases } from "@sincpro/mobile/services/network.service";
+import { CommandCheckConnectivity, commonBoundedContext } from "@sincpro/mobile";
 
-const status = await networkUseCases.getNetworkStatus();
+const status = await commonBoundedContext.execute(new CommandCheckConnectivity());
 // { isConnected: boolean, isInternetReachable: boolean | null, type: "wifi"|"cellular"|…, ipAddress }
 ```
 
@@ -478,6 +483,19 @@ await createApp({
   },
 });
 ```
+
+**Error reporting (Sentry / GlitchTip).** `reporter` takes where an unexpected failure of a use case goes. The app initializes its client — the DSN comes from its environment, never from this package — and the framework wraps it:
+
+```tsx
+import * as Sentry from "@sentry/react-native";
+import { sentryReporter } from "@sincpro/client-framework/sentry";
+
+Sentry.init({ dsn: process.env.EXPO_PUBLIC_SENTRY_DSN, tracesSampleRate: 0 });
+
+export const shell = defineAppShell({ domains, reporter: sentryReporter(Sentry), telemetry });
+```
+
+What the device answers — a printer off, none chosen, Bluetooth not granted — ends `refused` and is never reported; only what is unexpected is.
 
 **One import, simple API.** The `Tracing` facade is the single entry point for custom instrumentation:
 
@@ -520,28 +538,44 @@ See [Telemetry Architecture](#telemetry-architecture) for the delivery and reten
 
 ### ✅ Bluetooth Printer Integration
 
-The printer port (`IPrinterDriver`) is defined by the framework; the concrete driver is registered by the app. The `PrinterService` wraps it with connection management, permission handling, and a grace-reconnect strategy.
+The printer port (`IPrinterDriver`) is defined by the framework; the concrete driver is registered by the app. Every printer operation is a use case of `commonBoundedContext`: a screen executes a Command, and the run has its span, its log lines, its failure kind and — only when unexpected — its report.
 
 ```tsx
-// Register the adapter before AppShell boots
-import { printerService } from "@sincpro/mobile/services/printer.service";
-import { PrinterAdapter } from "./adapters/Printer.adapter"; // your Bluetooth impl
+// Register the native driver (the IPrinterDriver port) before AppShell boots
+import { setPrinterDriver } from "@sincpro/mobile/domain/print";
+import { PrinterDriver } from "./adapters/Printer.driver"; // your Bluetooth impl
 
-printerService.setDriver(PrinterAdapter);
+setPrinterDriver(PrinterDriver);
 
-// Then use the service anywhere
-await printerService.connect(deviceAddress, "Printer Name");
-await printerService.printText("=== RECEIPT ===\nItem: Widget\nTotal: $12.00");
-await printerService.printImageBase64(base64Png);
-await printerService.printHtml(htmlString); // converts to PDF (576px thermal width)
+// Then, from a screen
+import {
+  CommandConnectPrinter,
+  CommandPrintImage,
+  commonBoundedContext,
+} from "@sincpro/mobile";
 
-// Capture a React Native view and print it
-await printerService.printFromView(receiptViewRef);
+await commonBoundedContext.execute(new CommandConnectPrinter(deviceAddress, "Printer Name"));
+await commonBoundedContext.execute(new CommandPrintImage(base64Png, "Ticket 7"));
 ```
 
-**Grace reconnect:** If printing fails, the service automatically disconnects, reconnects to the last saved printer, and retries once — without surfacing the error to the user.
+| Command                                | What it does                                                                              |
+| -------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `CommandPrinterStatus`                 | `{ bluetoothGranted, selected, connected }`, never asking                                 |
+| `CommandRequestBluetoothPermission`    | The system's dialog; tells the person granted or denied, answers the status               |
+| `CommandScanPrinters`                  | The devices in reach; asks for Bluetooth first                                            |
+| `CommandConnectPrinter(address, name)` | Connects and keeps it as the chosen printer                                               |
+| `CommandDisconnectPrinter`             | Disconnects on purpose: nothing reconnects until the person connects again                |
+| `CommandPrintTestPage`                 | A short page that proves the printer works                                                |
+| `CommandPrintImage(base64, title)`     | Prints an image, followed in one notice: "Imprimiendo", then "Impreso" or why not         |
+| `CommandPrintHtml(html, title)`        | Renders HTML at the thermal width (576 px) and prints it                                  |
+| `CommandPrintView(viewRef, title)`     | Captures a mounted view and executes `CommandPrintImage` as its child                     |
+| `CommandQueuePrint(...)`               | Queues the print (`PrintImageRequestedEvent`): it survives a closed app and a printer off |
 
-`printImageBase64` answers a boolean, for screens. A use case calls `printImage(base64)`, which says why it did not print: `PrinterNotSelected` (`domain` — set aside until the person picks a printer) or `PrinterUnavailable` (`unavailable` — the queue retries it, and the events after it wait).
+Each use case tells the person what happened through the `Notifier` port; the screen only decides its own state. A failure says its kind: no printer chosen is `PrinterNotSelected` (`domain`), a printer off or out of reach `PrinterUnavailable` (`unavailable`), Bluetooth not granted `BluetoothPermissionDenied` (`permission_denied`). The three are the device answering, not a fault: the run ends `refused` and nothing is reported.
+
+**Grace reconnect:** if a print fails on a stale link, the adapter disconnects, reconnects to the chosen printer and tries once more.
+
+**Kept connected:** while the app runs, the core brings the chosen printer back on start, on return to the foreground and after a lost link, backing off up to 30 s; each try is `CommandRestorePrinterConnection`. `printerAdapter.configure({ autoReconnect: false })` (`@sincpro/mobile/adapters/Printer.adapter`) turns it off. `printerAdapter.driver` reaches the native driver for what the adapter does not wrap. An app replaces the adapter for every use case with `commonBoundedContext.addDependency("printer", myPrinter, { replaces: printerAdapter })`.
 
 ### ✅ WebView Print Interception
 
@@ -563,6 +597,8 @@ import { WebViewAdapter } from "@sincpro/mobile/adapters/webview";
   }}
 />;
 ```
+
+Each message of the page's print cycle is a Command (`entrypoints/webview/print_cycle.ts`): `PRINT_STARTED` → `CommandStartPagePrint`, `PRINT_FAILED` → `CommandFailPagePrint`, `PRINT_IMAGE` → `CommandQueuePrint`; a capture that never answers ends as `CommandFailPagePrint` after 45 s.
 
 `PrintImage` tells the person what happened through the `Notifier` port it holds (`this.notifier`; on a phone, `deviceNotifier`): one notice per print, keyed by the page's print job, else by the message that carried the request — which only the queue's handler knows, so `OnPrintImageRequested` passes it in `CommandPrintImage` (`this.execution.causationId`, the same on every retry) —, else by one of its own.
 
@@ -704,8 +740,8 @@ All hooks return safe empty defaults. Override only what your domain needs.
 ### Step 3 — Wire the module in the app shell
 
 ```tsx
-// Register adapters before the shell boots
-printerService.setDriver(PrinterAdapter);
+// Register the native drivers before the shell boots
+setPrinterDriver(PrinterDriver);
 
 export const ticketsShell = defineAppShell({
   theme:        createTheme(TICKETS_THEME),
@@ -780,6 +816,10 @@ export const shell = defineAppShell({
 
   // ── Additional React context providers ───────────────────────────────────────
   providers: [ConfirmationProvider, ProcessToastProvider],
+
+  // ── Observability ────────────────────────────────────────────────────────────
+  telemetry: { loki: { … }, otlp: { … } },  // logs and spans shipped (opt-in)
+  reporter:  sentryReporter(Sentry),          // unexpected failures → Sentry / GlitchTip (opt-in)
 
   // ── Splash screen ────────────────────────────────────────────────────────────
   splashComponent: TicketsSplash,
@@ -1123,16 +1163,14 @@ import type { IMigration } from "@sincpro/mobile/domain/database";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 
-// Services
-import { printerService } from "@sincpro/mobile/services/printer.service";
-import { eventService } from "@sincpro/mobile/services/event.service";
-import { networkUseCases } from "@sincpro/mobile/services/network.service";
+// Use cases: the core's bounded context and its Commands
+import { CommandPrintImage, commonBoundedContext } from "@sincpro/mobile/services";
 
-// Adapters
-import { WebViewAdapter } from "@sincpro/mobile/adapters/webview";
-import { NetworkAdapter } from "@sincpro/mobile/adapters/network";
-import { GeoAdapter } from "@sincpro/mobile/adapters/geo";
-import { ReceiptExporterAdapter } from "@sincpro/mobile/adapters/receipt_exporter";
+// Adapters: what the use cases hold
+import { printerAdapter } from "@sincpro/mobile/adapters/Printer.adapter";
+import { bluetoothAdapter } from "@sincpro/mobile/adapters/Bluetooth.adapter";
+import { networkAdapter } from "@sincpro/mobile/adapters/Network.adapter";
+import { WebViewAdapter } from "@sincpro/mobile/adapters/webview.adapter";
 
 // UI components (screens, events)
 import { PlainLayout } from "@sincpro/mobile/ui/screens/events";

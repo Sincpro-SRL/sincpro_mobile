@@ -1,3 +1,4 @@
+import { loggerAdapter } from "@sincpro/client-framework";
 import {
   BluetoothPermissionStatus,
   BluetoothState,
@@ -7,19 +8,26 @@ import { PermissionsAndroid, Platform } from "react-native";
 
 const ANDROID_12_API_LEVEL = 31;
 
-class BluetoothAdapterImpl {
+/**
+ * Bluetooth's permissions and status on this phone — the adapter the use cases hold
+ * (`this.bluetooth`). What the person reads about it is a use case's (`services/bluetooth`), so
+ * asking for the permission is a run with its span.
+ */
+export class BluetoothAdapter {
+  /** Asks the person for the permission (the system's dialog). */
   async requestPermissions(): Promise<BluetoothPermissionStatus> {
-    if (Platform.OS === "android") {
-      return this.requestAndroidPermissions();
-    }
-
-    if (Platform.OS === "ios") {
-      return this.requestIOSPermissions();
-    }
-
-    return { scan: false, connect: false, advertise: false, isGranted: false };
+    const permissions = await this.requestPlatformPermissions();
+    loggerAdapter.info("Bluetooth permission asked", { granted: permissions.isGranted });
+    return permissions;
   }
 
+  /** Whether it is granted — asking for it when it is not. */
+  async ensurePermissions(): Promise<boolean> {
+    if ((await this.hasPermissions()).isGranted) return true;
+    return (await this.requestPermissions()).isGranted;
+  }
+
+  /** What the permission is now, without asking. */
   async hasPermissions(): Promise<BluetoothPermissionStatus> {
     if (Platform.OS === "android") {
       return this.checkAndroidPermissions();
@@ -51,6 +59,12 @@ class BluetoothAdapterImpl {
     if (Platform.OS === "android") return "android";
     if (Platform.OS === "ios") return "ios";
     return "other";
+  }
+
+  private async requestPlatformPermissions(): Promise<BluetoothPermissionStatus> {
+    if (Platform.OS === "android") return this.requestAndroidPermissions();
+    if (Platform.OS === "ios") return this.requestIOSPermissions();
+    return { scan: false, connect: false, advertise: false, isGranted: false };
   }
 
   private async requestAndroidPermissions(): Promise<BluetoothPermissionStatus> {
@@ -130,4 +144,5 @@ class BluetoothAdapterImpl {
   }
 }
 
-export const BluetoothAdapter = new BluetoothAdapterImpl();
+/** The core's Bluetooth: what `commonBoundedContext` holds as `bluetooth`. */
+export const bluetoothAdapter = new BluetoothAdapter();

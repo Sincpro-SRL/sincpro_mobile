@@ -14,6 +14,7 @@
   "sideEffects": [
     "./dist/services/index.js",
     "./dist/services/**/*.feature.js",
+    "./dist/services/**/*.app_service.js",
     "./dist/entrypoints/queue/index.js",
     "./dist/entrypoints/queue/*.handler.js",
     "./dist/framework/base_module.js"

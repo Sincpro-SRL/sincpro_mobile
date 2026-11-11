@@ -30,29 +30,32 @@ Cada cambio de comportamiento de una app terminó en un release de `@sincpro/mob
 
 ## Mecanismos de extensión
 
-| Necesidad de la app                                                        | Mecanismo                                                                                                                                                                              | Equivalente en `sincpro_framework` |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Ajustar una política del componente                                        | API rica: `printerService.configure({ autoReconnect, reconnectDelays })`                                                                                                               | Settings                           |
-| Hacer algo que el componente no envuelve                                   | Bajo nivel: `printerService.driver` (driver nativo: comandos crudos, otros formatos)                                                                                                   | `deps`                             |
-| Cambiar un método del componente                                           | Herencia: `class MiImpresora extends PrinterService` + `setPrinterService(new MiImpresora())`. Llega a todo el core, porque `printerService` siempre apunta a la implementación actual | `replaces=` sobre un handler       |
-| Envolver lo que pasa al procesar un evento (avisar, auditar, vetar, medir) | `DomainModule.interceptors()`: `{ [nombreDelEvento \| "*"]: (event, next, { subscriber }) => … }`                                                                                      | `@bus.interceptor`                 |
-| Responder un evento en lugar del core                                      | Un subscriber propio con `static replaces = SubscriberDelCore`: el del core deja de correr                                                                                             | `replaces=`                        |
-| Llevar al usuario a una pantalla propia desde un aviso del core            | `AppShellConfig.onNoticeAction(intent)`                                                                                                                                                | —                                  |
+| Necesidad de la app                                                        | Mecanismo                                                                                                                                                                                                                         | Equivalente en `sincpro_framework` |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Ajustar una política del componente                                        | API rica: `printerAdapter.configure({ autoReconnect, reconnectDelays })`                                                                                                                                                          | Settings                           |
+| Hacer algo que el componente no envuelve                                   | Bajo nivel: `printerAdapter.driver` (driver nativo: comandos crudos, otros formatos)                                                                                                                                              | `deps`                             |
+| Cambiar un método del componente                                           | Herencia: `class MiImpresora extends PrinterAdapter` + `commonBoundedContext.addDependency("printer", new MiImpresora(), { replaces: printerAdapter })`. Llega a todo el core, porque cada caso de uso lo lee del bounded context | `replaces=` sobre un handler       |
+| Envolver lo que pasa al procesar un evento (avisar, auditar, vetar, medir) | `DomainModule.interceptors()`: `{ [nombreDelEvento \| "*"]: (event, next, { subscriber }) => … }`                                                                                                                                 | `@bus.interceptor`                 |
+| Responder un evento en lugar del core                                      | Un subscriber propio con `static replaces = SubscriberDelCore`: el del core deja de correr                                                                                                                                        | `replaces=`                        |
+| Llevar al usuario a una pantalla propia desde un aviso del core            | `AppShellConfig.onNoticeAction(intent)`                                                                                                                                                                                           | —                                  |
+| Cambiar o envolver un caso de uso del core (2.2: toda operación lo es)     | `commonBoundedContext.feature(CommandPrintImage, { replaces: PrintImage })(MiImpresion)`; `commonBoundedContext.interceptor(CommandPrintImage)(…)`                                                                                | `replaces=`, `@bus.interceptor`    |
 
 ### Ejemplos
 
 ```ts
 // Política: otra espera entre reintentos, sin release del core.
-printerService.configure({ reconnectDelays: [500, 1_000, 3_000] });
+printerAdapter.configure({ reconnectDelays: [500, 1_000, 3_000] });
 
 // Herencia: otra forma de imprimir, para toda la app y el core.
-class TicketsPrinter extends PrinterService {
-  override async printImageBase64(image: string) {
+class TicketsPrinter extends PrinterAdapter {
+  override async printImage(image: string) {
     // ESC/POS propio con this.driver…
-    return super.printImageBase64(image);
+    await super.printImage(image);
   }
 }
-setPrinterService(new TicketsPrinter());
+commonBoundedContext.addDependency("printer", new TicketsPrinter(), {
+  replaces: printerAdapter,
+});
 
 // Interceptor: auditar cada impresión sin tocar el subscriber del core.
 class TicketsModule extends DomainModule {
@@ -68,6 +71,10 @@ class TicketsModule extends DomainModule {
 ```
 
 ## Hecho
+
+> Registro de 1.x. Desde 2.2 los componentes son adaptadores del bounded context y se
+> reemplazan con `addDependency(..., { replaces })`; los casos de uso, con
+> `feature(..., { replaces })`. Ver `docs/MIGRATION-V2.md`, «De 2.1 a 2.2».
 
 | Mecanismo                                | Dónde                                                                            | Uso desde la app                                                                                                                                                                                 |
 | ---------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

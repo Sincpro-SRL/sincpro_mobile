@@ -1,8 +1,8 @@
 import { EWebViewMessageType, type TWebViewMessage } from "./webview";
 
 export interface PrintCycleHandlers {
-  started(title: string, jobId?: string): void;
-  failed(title: string, reason: string, jobId?: string): void;
+  started(title: string, jobId?: string): void | Promise<void>;
+  failed(title: string, reason: string, jobId?: string): void | Promise<void>;
   image(input: {
     imageBase64: string;
     width: number;
@@ -26,11 +26,11 @@ export async function routePrintMessage(
 ): Promise<boolean> {
   if (!msg) return false;
   if (msg.type === EWebViewMessageType.PRINT_STARTED) {
-    handlers.started(msg.title ?? "", msg.jobId);
+    await handlers.started(msg.title ?? "", msg.jobId);
     return true;
   }
   if (msg.type === EWebViewMessageType.PRINT_FAILED) {
-    handlers.failed(msg.title ?? "", msg.reason ?? "", msg.jobId);
+    await handlers.failed(msg.title ?? "", msg.reason ?? "", msg.jobId);
     return true;
   }
   if (msg.type !== EWebViewMessageType.PRINT_IMAGE || !msg.image) return false;

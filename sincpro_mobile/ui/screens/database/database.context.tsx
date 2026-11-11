@@ -1,4 +1,8 @@
-import { databaseTablesUseCase } from "@sincpro/mobile/services/database_table.service";
+import {
+  CommandListTables,
+  CommandReadTable,
+  commonBoundedContext,
+} from "@sincpro/mobile/services";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 import React, {
@@ -69,7 +73,7 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     return withCleanup(
       async () => {
-        const result = await databaseTablesUseCase.getAllTables();
+        const result = await commonBoundedContext.execute(new CommandListTables());
         setTables(result);
       },
       () => setIsLoading(false),
@@ -80,7 +84,7 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     return withCleanup(
       async () => {
-        const dataTable = await databaseTablesUseCase.getTableData(tableName);
+        const dataTable = await commonBoundedContext.execute(new CommandReadTable(tableName));
         setData(dataTable);
       },
       () => setIsLoading(false),

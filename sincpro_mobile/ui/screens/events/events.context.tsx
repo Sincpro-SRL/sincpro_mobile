@@ -1,5 +1,9 @@
 import type { EventRecord } from "@sincpro/mobile/domain/events";
-import { eventService } from "@sincpro/mobile/services/event.service";
+import {
+  CommandListRecentEvents,
+  CommandResendEvent,
+  commonBoundedContext,
+} from "@sincpro/mobile/services";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import React, {
   createContext,
@@ -66,7 +70,7 @@ export function EventsProvider({
     setIsLoading(true);
     return withCleanup(
       async () => {
-        const fetched = await eventService.listRecentEvents();
+        const fetched = await commonBoundedContext.execute(new CommandListRecentEvents());
         setEvents(fetched);
         setPage(1);
       },
@@ -94,7 +98,7 @@ export function EventsProvider({
       setIsRetrying(true);
       return withCleanup(
         async () => {
-          await eventService.resendEvent(event);
+          await commonBoundedContext.execute(new CommandResendEvent(event));
           await refreshEvents();
         },
         () => setIsRetrying(false),

@@ -1,6 +1,9 @@
 import { BluetoothDevice } from "@sincpro/mobile/domain/print";
-import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
-import { printerService } from "@sincpro/mobile/services/printer.service";
+import {
+  CommandConnectPrinter,
+  CommandScanPrinters,
+  commonBoundedContext,
+} from "@sincpro/mobile/services";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
 import { Actions } from "@sincpro/mobile-ui/Actions";
@@ -92,10 +95,11 @@ function BluetoothDeviceSelectorModal({
     setLoading(true);
     return withCleanup(
       async () => {
-        const hasPermission = await bluetoothService.ensurePermissionsForPrinter();
-        if (!hasPermission) return;
-
-        setDevices(await printerService.scanPrinters());
+        // Without Bluetooth the use case tells the person; the list stays as it was.
+        const found = await commonBoundedContext
+          .execute(new CommandScanPrinters())
+          .catch(() => null);
+        if (found) setDevices(found);
       },
       () => setLoading(false),
     );
@@ -113,10 +117,18 @@ function BluetoothDeviceSelectorModal({
     setConnecting(true);
     return withCleanup(
       async () => {
-        const success = await printerService.connect(
-          selectedDevice.address,
-          selectedDevice.name || "Impresora",
-        );
+        // A failure was already told to the person and recorded by its run.
+        const success = await commonBoundedContext
+          .execute(
+            new CommandConnectPrinter(
+              selectedDevice.address,
+              selectedDevice.name || "Impresora",
+            ),
+          )
+          .then(
+            () => true,
+            () => false,
+          );
 
         if (success) {
           onSelect(selectedDevice);

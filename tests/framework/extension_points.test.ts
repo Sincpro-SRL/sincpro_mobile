@@ -4,7 +4,6 @@ import path from "node:path";
 import { afterEach, test } from "node:test";
 
 import { runLifecycle } from "@sincpro/mobile/framework/lifecycle";
-import { replaceable } from "@sincpro/mobile/framework/replaceable";
 import {
   clearWebViewHandlers,
   dispatchWebViewMessage,
@@ -21,34 +20,36 @@ test("the core wires the extension points instead of concrete behavior", () => {
     read("sincpro_mobile/framework/createApp.ts"),
     /kernel\.registerExtensions\(\);/,
   );
-  const printer = read("sincpro_mobile/services/printer.service.ts");
-  assert.match(printer, /export function setPrinterService\(service: PrinterService\)/);
-  assert.match(printer, /if \(!this\.options\.autoReconnect\) return \(\) => \{\};/);
+  const printer = read("sincpro_mobile/adapters/Printer.adapter.ts");
+  assert.match(printer, /export const printerAdapter = new PrinterAdapter\(\);/);
+  assert.match(printer, /get policy\(\): Readonly<PrinterOptions>/);
+  assert.match(
+    read("sincpro_mobile/framework/base_module.ts"),
+    /const printer = commonBoundedContext\.deps\.printer;\s*if \(!hasPrinterDriver\(\) \|\| !printer\.policy\.autoReconnect\) return;/,
+    "the core honours the policy of the printer the bounded context holds",
+  );
   assert.match(printer, /get driver\(\): IPrinterDriver/);
 });
 
-test("a replaced core component reaches every caller, getters included", () => {
-  class Printer {
-    name = "core";
-    get label() {
-      return `printer:${this.name}`;
-    }
-    print() {
-      return this.name;
-    }
-  }
-  class AppPrinter extends Printer {
-    override name = "app";
-    override print() {
-      return `${super.print()}+audit`;
+test("an app's printer takes the core's place for every use case", async () => {
+  const { commonBoundedContext, CommandRestorePrinterConnection } =
+    await import("@sincpro/mobile/services");
+  const { PrinterAdapter, printerAdapter } =
+    await import("@sincpro/mobile/adapters/Printer.adapter");
+  const calls: string[] = [];
+  class AppPrinter extends PrinterAdapter {
+    override async restoreConnection(): Promise<void> {
+      calls.push("app");
     }
   }
-  const slot = replaceable(new Printer());
-  const shared = slot.instance;
-  assert.equal(shared.print(), "core");
-  slot.set(new AppPrinter());
-  assert.equal(shared.print(), "app+audit", "callers holding the instance see the swap");
-  assert.equal(shared.label, "printer:app");
+  const mine = new AppPrinter();
+  commonBoundedContext.addDependency("printer", mine, { replaces: printerAdapter });
+  try {
+    await commonBoundedContext.execute(new CommandRestorePrinterConnection());
+    assert.deepEqual(calls, ["app"]);
+  } finally {
+    commonBoundedContext.addDependency("printer", printerAdapter, { replaces: mine });
+  }
 });
 
 test("lifecycle hooks run in order and one failure never stops the others", async () => {
@@ -92,9 +93,9 @@ test("WebView messages reach the handler of their type; an app's handler wins", 
 
 test("the core passes data raw and lets the app configure it", () => {
   // No allow-lists: an app's own WebView message types reach its handlers.
-  const webview = read("sincpro_mobile/services/webview.service.ts");
+  const webview = read("sincpro_mobile/domain/webview/messages.ts");
   assert.doesNotMatch(webview, /validTypes/);
-  assert.match(webview, /if \(typeof parsed\.type !== "string"\) return null;/);
+  assert.match(webview, /if \(!parsed \|\| typeof parsed\.type !== "string"\) return null;/);
   // Any react-native-webview prop reaches the WebView, after the defaults.
   const injectable = read("sincpro_mobile/ui/components/organisms/InjectableWebView.tsx");
   assert.match(

@@ -1,6 +1,6 @@
 import { PrintImageRequestedEvent } from "@sincpro/mobile/domain/print/events";
 import { commonBoundedContext, EventHandler } from "@sincpro/mobile/infrastructure/framework";
-import { CommandPrintImage } from "@sincpro/mobile/services/print/print_image.feature";
+import { CommandPrintImage } from "@sincpro/mobile/services/printer/print_jobs/print_image.feature";
 
 /**
  * A print the queue delivers: it executes the print use case. The notice is the page's print

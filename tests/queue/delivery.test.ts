@@ -12,6 +12,7 @@ import {
   Subscriber,
 } from "@sincpro/client-framework";
 
+import type { PrinterAdapter } from "../../sincpro_mobile/adapters/Printer.adapter.ts";
 import { eventStore } from "../../sincpro_mobile/adapters/repositories/sqlite_event_store.ts";
 import { InternetIsDownEvent } from "../../sincpro_mobile/domain/connectivity/events.ts";
 import { newEvent } from "../../sincpro_mobile/domain/events/delivery.ts";
@@ -36,11 +37,11 @@ import {
   type ActivityFact,
 } from "../../sincpro_mobile/infrastructure/ui/activity.ts";
 import { UIEventBus } from "../../sincpro_mobile/infrastructure/ui/UIEventBus.ts";
+import { PRINT_FAILURE_ACTIONS } from "../../sincpro_mobile/services/printer/common.ts";
 import {
   CommandPrintImage,
   PrintImage,
-} from "../../sincpro_mobile/services/print/print_image.feature.ts";
-import type { PrinterService } from "../../sincpro_mobile/services/printer.service.ts";
+} from "../../sincpro_mobile/services/printer/print_jobs/print_image.feature.ts";
 
 const heard: string[] = [];
 const failures: unknown[] = [];
@@ -311,12 +312,9 @@ test("a repository's outbox keeps the message in its transaction, delivered afte
 function printing(outcome: () => Promise<void>) {
   const notices: Notice[] = [];
   const notifier: Notifier = { notify: (notice) => void notices.push(notice) };
-  const printer = {
-    printImage: outcome,
-    printFailureActions: () => [{ label: "Impresora", intent: "printer" }],
-  } as unknown as PrinterService;
+  const printer = { printImage: outcome } as unknown as PrinterAdapter;
   const printBoundedContext = new BoundedContext<{
-    printer: PrinterService;
+    printer: PrinterAdapter;
     notifier: Notifier;
   }>("print");
   printBoundedContext.addDependency("printer", printer);
@@ -343,7 +341,7 @@ test("a print whose printer is off fails unavailable and waits to be retried, ke
     ["printer.printing", "printer.print_failed"],
   );
   assert.equal(notices[0]?.key, `print:${envelope.id}`, "the request's id keys its notice");
-  assert.deepEqual(notices[1]?.actions, [{ label: "Impresora", intent: "printer" }]);
+  assert.deepEqual(notices[1]?.actions, PRINT_FAILURE_ACTIONS);
 });
 
 test("a print without its image is invalid and set aside; without a printer, domain", async () => {
@@ -385,22 +383,24 @@ test("the core's use cases are registered by their decorators, for their Command
 
 test("the network cron is an entrypoint: each tick executes the core's use case", async () => {
   const { commonBoundedContext } = await import("../../sincpro_mobile/services/index.ts");
-  const { networkUseCases } =
-    await import("../../sincpro_mobile/services/network.service.ts");
+  const network = commonBoundedContext.deps.network;
   const { default: cron } =
     await import("../../sincpro_mobile/entrypoints/cron/checkNetworkStatus.cron.ts");
   let checks = 0;
-  const fake = Object.assign(Object.create(networkUseCases), {
-    getNetworkStatus: async () => {
+  const fake = Object.assign(Object.create(network), {
+    read: async () => {
       checks++;
-      return { isConnected: true, isInternetReachable: true, type: "WIFI" };
+      return {
+        status: { isConnected: true, isInternetReachable: true, type: "WIFI" },
+        changed: false,
+      };
     },
   });
-  commonBoundedContext.addDependency("connectivity", fake, { replaces: networkUseCases });
+  commonBoundedContext.addDependency("network", fake, { replaces: network });
   try {
     assert.equal(await cron.runOnce(), true);
     assert.equal(checks, 1);
   } finally {
-    commonBoundedContext.addDependency("connectivity", networkUseCases, { replaces: fake });
+    commonBoundedContext.addDependency("network", network, { replaces: fake });
   }
 });

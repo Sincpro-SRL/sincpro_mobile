@@ -21,11 +21,14 @@ El core no conoce Odoo ni las apps. Imports entre capas por alias del paquete.
 
 ```text
 domain/          entidades, puertos y eventos (DomainEvent de client-framework), sin React ni IO
-adapters/        implementaciones de puertos: repositorios, el EventStore SQLite
+adapters/        implementaciones de puertos y del dispositivo: repositorios, el EventStore
+                 SQLite, la impresora, Bluetooth, la red. Lanzan errores con su tipo; no avisan
 infrastructure/ dependencies.ts + framework.ts del bounded context; DB, la cola guardada
                  (storedQueue), cron, logger y telemetría
-services/       casos de uso por agregado: Features y ApplicationServices con decorador;
-                 services/index.ts los importa y exporta el bounded context listo
+services/       solo casos de uso, por agregado: un archivo por Feature (`*.feature.ts`) o
+                 ApplicationService (`*.app_service.ts`); lo que comparten los de una carpeta
+                 va en su `common.ts`. services/index.ts los importa y exporta el bounded
+                 context listo
 framework/      DomainModule, createApp, kernel y composición
 ui/             pantallas/componentes del framework
 entrypoints/    queue/ (event handlers), cron/, db/, ui/: puertas que traducen a Commands
@@ -43,6 +46,12 @@ Como sincpro_framework, con @sincpro/client-framework:
   producción (`keep_classnames: true` en `metro.config.js`).
 - Registro con decorador, para uno o N DTO: `@xBoundedContext.feature([CommandX, EventoX])`.
   `services/index.ts` importa cada servicio y una librería lo declara en `sideEffects`.
+- Toda operación que una pantalla, un cron o una página dispara es un Command: así tiene span,
+  traza, tipo de falla y reporte. Un adaptador nunca avisa ni devuelve `false` para esconder una
+  falla; el caso de uso avisa por `this.notifier`. Una falla esperada del dispositivo se declara
+  con `expectErrors` y termina `refused`, sin reporte.
+- Nada de fachadas `*.service.ts` ni `replaceable`: una app reemplaza una dependencia con
+  `addDependency(nombre, suya, { replaces })` y un caso de uso con `feature(…, { replaces })`.
 - Un evento tiene tres tipos de consumidores, con una sola API (con o sin decorador):
   1. el caso de uso del bus, cuando el evento es su entrada:
      `@xBoundedContext.feature([CommandX, EventoX])`;

@@ -44,20 +44,17 @@ test("the interceptor sends one job id in the start, the image and the failure",
 });
 
 test("a print is one notice that changes: preparing, printing, then printed or the reason", () => {
-  const service = read("sincpro_mobile/services/printer.service.ts");
-  const started = service.slice(service.indexOf("reportPrintStarted(title"));
-  assert.match(started, /key: printNoticeKey\(jobId\)[\s\S]*?variant: "loading"/);
-  assert.match(started, /setTimeout\([\s\S]*?this\.reportPrintFailed\(/);
+  const page = read("sincpro_mobile/services/printer/print_jobs/start_page_print.feature.ts");
+  const started = page;
+  assert.match(started, /key: printNoticeKey\(command\.jobId\)[\s\S]*?variant: "loading"/);
+  const cycle = read("sincpro_mobile/entrypoints/webview/print_cycle.ts");
+  assert.match(cycle, /watch\.start\(jobId,[\s\S]*?new CommandFailPagePrint\(/);
   assert.match(
-    service.slice(service.indexOf("reportPrintFailed(title")),
-    /this\.settleCapture\(jobId\);[\s\S]*?key: printNoticeKey\(jobId\)/,
-  );
-  assert.match(
-    service.slice(service.indexOf("async enqueuePrintImage(")),
-    /this\.settleCapture\(jobId\);[\s\S]*?jobId,\s*\}\);/,
+    cycle,
+    /watch\.settle\(jobId\);\s*await commonBoundedContext\.execute\(\s*new CommandQueuePrint\(/,
   );
 
-  const feature = read("sincpro_mobile/services/print/print_image.feature.ts");
+  const feature = read("sincpro_mobile/services/printer/print_jobs/print_image.feature.ts");
   assert.match(feature, /printNoticeKey\(request\.jobId \|\| newEntityId\(\)\)/);
   const handler = read("sincpro_mobile/entrypoints/queue/print_image.handler.ts");
   assert.match(
@@ -65,10 +62,13 @@ test("a print is one notice that changes: preparing, printing, then printed or t
     /event\.jobId \|\| this\.execution\.causationId/,
     "the handler, which knows the message, keys a print stored without its job by the message",
   );
-  const notices = feature.match(/this\.notifier\.notify\(\{\s*key,/g) ?? [];
-  assert.equal(notices.length, 4);
-  assert.match(feature, /title: "Imprimiendo",[\s\S]*?variant: "loading"/);
-  assert.doesNotMatch(feature, /infrastructure\/ui|infrastructure\/logger/);
+  assert.match(feature, /printFollowed\(this\.notifier, \{ key, title: request\.title \}/);
+  const followed = read("sincpro_mobile/services/printer/print_jobs/common.ts");
+  assert.equal(followed.match(/key: job\.key,/g)?.length, 3);
+  assert.match(followed, /title: "Imprimiendo",[\s\S]*?variant: "loading"/);
+  for (const source of [feature, followed, page]) {
+    assert.doesNotMatch(source, /infrastructure\/ui|infrastructure\/logger/);
+  }
 
   const deviceNotices = read("sincpro_mobile/ui/activity/DeviceNotices.tsx");
   assert.equal(deviceNotices.match(/id: notice\.key,/g)?.length, 2);
@@ -124,14 +124,13 @@ test("a failed print offers both the failed list and the printer", () => {
     read("sincpro_mobile/entrypoints/ui/AppShell.tsx"),
     /<DeviceNotices onAction=\{config\.onNoticeAction\} \/>/,
   );
-  const feature = read("sincpro_mobile/services/print/print_image.feature.ts");
-  const failure = feature.slice(feature.indexOf('name: "printer.print_failed"'));
+  const followed = read("sincpro_mobile/services/printer/print_jobs/common.ts");
+  const failure = followed.slice(followed.indexOf('name: "printer.print_failed"'));
   assert.ok(
-    failure.indexOf("actions: this.printer.printFailureActions()") <
-      failure.indexOf("throw error"),
+    failure.indexOf("actions: PRINT_FAILURE_ACTIONS") < failure.indexOf("throw error"),
   );
-  assert.match(feature, /name: "printer\.printed"/);
-  const service = read("sincpro_mobile/services/printer.service.ts");
+  assert.match(followed, /name: "printer\.printed"/);
+  const service = read("sincpro_mobile/services/printer/common.ts");
   assert.match(service, /failed: \{ label: "Ver fallidas", intent: "failed-prints" \}/);
   assert.match(service, /printer: \{ label: "Impresora", intent: "printer" \}/);
 });

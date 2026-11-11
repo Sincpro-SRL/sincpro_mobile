@@ -1,4 +1,4 @@
-import { logger } from "@sincpro/client-framework";
+import { type ErrorReporter, logger } from "@sincpro/client-framework";
 import { defineBackgroundCrons } from "@sincpro/mobile/framework/background";
 import { createKernel, startApp } from "@sincpro/mobile/framework/createApp";
 import type { DomainModule } from "@sincpro/mobile/framework/domain_module";
@@ -137,6 +137,12 @@ export interface AppShellConfig {
    * Started after migrations, so the telemetry tables exist.
    */
   telemetry?: TelemetryConfig;
+  /**
+   * Where an unexpected failure of a use case is reported: `sentryReporter(Sentry)` over the
+   * client the app initialized (GlitchTip speaks Sentry). Expected ones — a printer off, a
+   * refusal — are never reported. Omit it and nothing is.
+   */
+  reporter?: ErrorReporter;
   /** Light theme tokens. Defaults to the DS base theme if omitted. */
   theme?: ThemeTokens;
   /** Dark theme tokens. When provided, the system color-scheme toggle activates it. */
@@ -186,7 +192,7 @@ export function defineAppShell(config: AppShellConfig): AppShellDefinition {
   if (config.brandFont?.families) configureFonts(familiesToRoles(config.brandFont.families));
   SplashScreen.preventAutoHideAsync().catch(() => {});
 
-  const kernel = createKernel({ domains: config.domains });
+  const kernel = createKernel({ domains: config.domains, reporter: config.reporter });
   defineBackgroundCrons(kernel, { telemetry: config.telemetry });
   const domains = config.domains.map(({ key, name }) => ({ key, name }));
 

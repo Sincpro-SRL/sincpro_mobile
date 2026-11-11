@@ -1,6 +1,11 @@
 import { BluetoothDevice, ISelectedPrinter } from "@sincpro/mobile/domain/print";
-import { bluetoothService } from "@sincpro/mobile/services/bluetooth.service";
-import { printerService } from "@sincpro/mobile/services/printer.service";
+import {
+  CommandConnectPrinter,
+  CommandPrinterStatus,
+  CommandPrintTestPage,
+  CommandRequestBluetoothPermission,
+  commonBoundedContext,
+} from "@sincpro/mobile/services";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
 import { BluetoothDeviceSelectorModal } from "@sincpro/mobile/ui/components/molecules/BluetoothDeviceSelectorModal";
@@ -140,14 +145,10 @@ function BluetoothPrinterSelector({
   const [selectorVisible, setSelectorVisible] = useState(false);
 
   const checkStatus = useCallback(async () => {
-    const permissions = await bluetoothService.checkPermissions();
-    setHasPermission(permissions.isGranted);
-
-    const printer = await printerService.getSelectedPrinter();
-    setSelectedPrinter(printer);
-
-    const connected = printerService.isConnected();
-    setIsConnected(connected);
+    const status = await commonBoundedContext.execute(new CommandPrinterStatus());
+    setHasPermission(status.bluetoothGranted);
+    setSelectedPrinter(status.selected);
+    setIsConnected(status.connected);
   }, []);
 
   useEffect(() => {
@@ -161,7 +162,7 @@ function BluetoothPrinterSelector({
   // (apagada o fuera de rango), así el estado mostrado no queda congelado.
   useEffect(
     () =>
-      printerService.onConnectionChange((connection) => {
+      commonBoundedContext.deps.printer.onConnectionChange((connection) => {
         setIsConnected(connection.state === "CONNECTED");
       }),
     [],
@@ -175,7 +176,9 @@ function BluetoothPrinterSelector({
     setLoading(true);
     return withCleanup(
       async () => {
-        const permissions = await bluetoothService.requestPermissions();
+        const permissions = await commonBoundedContext.execute(
+          new CommandRequestBluetoothPermission(),
+        );
         setHasPermission(permissions.isGranted);
       },
       () => setLoading(false),
@@ -188,10 +191,13 @@ function BluetoothPrinterSelector({
     setLoading(true);
     return withCleanup(
       async () => {
-        const connected = await printerService.connect(
-          selectedPrinter.address,
-          selectedPrinter.name,
-        );
+        // A failure was already told to the person and recorded by its run.
+        const connected = await commonBoundedContext
+          .execute(new CommandConnectPrinter(selectedPrinter.address, selectedPrinter.name))
+          .then(
+            () => true,
+            () => false,
+          );
         setIsConnected(connected);
       },
       () => setLoading(false),
@@ -202,7 +208,8 @@ function BluetoothPrinterSelector({
     setLoading(true);
     return withCleanup(
       async () => {
-        await printerService.printTestPage();
+        // The use case tells the person whether it printed, and its run records why not.
+        await commonBoundedContext.execute(new CommandPrintTestPage()).catch(() => undefined);
       },
       () => setLoading(false),
     );
