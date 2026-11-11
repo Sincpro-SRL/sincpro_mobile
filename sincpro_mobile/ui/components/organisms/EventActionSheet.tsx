@@ -1,4 +1,4 @@
-import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/events";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import {
   eventStatusBadge,
@@ -17,10 +17,10 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
 interface EventActionSheetProps {
-  event: IntegrationEvent | null;
+  event: EventRecord | null;
   visible: boolean;
   onClose: () => void;
-  onRetry?: (event: IntegrationEvent) => Promise<unknown> | void;
+  onRetry?: (event: EventRecord) => Promise<unknown> | void;
   retryLabel?: string;
   /** Heading of the sheet; the event's label by default. */
   title?: string;
@@ -91,7 +91,7 @@ export function EventActionSheet({
     timers.current.push(setTimeout(run, ms));
   };
   const attempts = event.attempts ?? 0;
-  const failed = event.status === EEventStatus.FAILED;
+  const failed = event.state === "set_aside";
   const actionLabel = failed ? "Reintentar" : retryLabel;
 
   const close = () => {
@@ -112,7 +112,7 @@ export function EventActionSheet({
   };
 
   const copyPayload = () => {
-    void Clipboard.setStringAsync(event.asJSON(true));
+    void Clipboard.setStringAsync(JSON.stringify(event.payload, null, 2));
     setCopied(true);
     later(() => setCopied(false), 1500);
   };
@@ -149,30 +149,20 @@ export function EventActionSheet({
         {detail}
         <View className="flex-row items-center justify-between gap-3">
           <Display.Badge
-            label={eventStatusLabel(event.status)}
-            variant={eventStatusBadge(event.status)}
+            label={eventStatusLabel(event.state)}
+            variant={eventStatusBadge(event.state)}
           />
-          <Display.Date showTime textVariant="caption" value={event.createdAt} />
+          <Display.Date showTime textVariant="caption" value={event.publishedAt} />
         </View>
         {showTechnical ? <Display.CopyableText value={event.name} /> : null}
         <View className="flex-row flex-wrap gap-x-3">
           <Typography.Text className="text-text-tertiary" variant="caption">
             {attempts === 1 ? "1 intento" : `${attempts} intentos`}
           </Typography.Text>
-          {event.sequence > 0 ? (
-            <Typography.Text className="text-text-tertiary" variant="caption">
-              {`Secuencia ${event.sequence}`}
-            </Typography.Text>
-          ) : null}
-          {event.requiresNetwork ? (
-            <Typography.Text className="text-text-tertiary" variant="caption">
-              Espera red
-            </Typography.Text>
-          ) : null}
         </View>
-        {event.errorMessage ? (
+        {event.error ? (
           <Typography.Text className="text-danger" variant="bodySmall">
-            {event.errorMessage}
+            {event.error}
           </Typography.Text>
         ) : null}
 
@@ -195,7 +185,7 @@ export function EventActionSheet({
 
         {showTechnical && showPayload ? (
           <View className="rounded-xl bg-bg-muted p-2">
-            <JsonPreview selectedJson={event.asJSON(true)} />
+            <JsonPreview selectedJson={JSON.stringify(event.payload, null, 2)} />
           </View>
         ) : null}
       </View>

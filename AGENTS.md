@@ -20,14 +20,13 @@ Dependencias: **apps → mobile-odoo opcional → mobile → mobile-ui**.
 El core no conoce Odoo ni las apps. Imports entre capas por alias del paquete.
 
 ```text
-domain/          entidades, puertos y eventos puros, sin React ni IO
-event_driven/    subscribers
-adapters/        implementaciones de puertos de negocio
-infrastructure/ DB, cola persistente/DLQ/retry, cron, logger y telemetría
-services/       casos de uso y workflows
+domain/          entidades, puertos y eventos (DomainEvent de client-framework), sin React ni IO
+adapters/        implementaciones de puertos: repositorios, el EventStore SQLite
+infrastructure/ DB, entrega de la cola guardada (storedQueue), cron, logger y telemetría
+services/       casos de uso por agregado: Features y ApplicationServices
 framework/      DomainModule, createApp, kernel y composición
 ui/             pantallas/componentes del framework
-entrypoints/    registros y composición
+entrypoints/    queue/ (EventSubscribers), cron/, db/, ui/: puertas que construyen Commands
 ```
 
 ## Una sola dirección de UI
@@ -60,8 +59,8 @@ AppShell recibe configuración de módulos, tema, fuentes y providers, y renderi
 `children` desde el layout raíz del host. No decide qué UI de dominio mostrar,
 no monta un navegador y no aplica SafeAreaView global.
 
-DomainModule conserva registros de repositorios, migraciones, subscribers y
-crons. Un selector de dominio emite callbacks; el mapa dominio → ruta es del host.
+DomainModule conserva registros de repositorios, migraciones, bounded contexts,
+subscriptions (sus EventSubscribers) y crons. Un selector de dominio emite callbacks; el mapa dominio → ruta es del host.
 
 Separar restauración inicial de sesión de la carga de login/logout. Mantener
 el Stack montado con rutas protegidas y una carga visible. Un fallo debe

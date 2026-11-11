@@ -1,4 +1,5 @@
-import logger, { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
+import { logger, loggerAdapter } from "@sincpro/client-framework";
+import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import { Mutex } from "async-mutex";
 import {
   openDatabaseSync,
@@ -25,12 +26,7 @@ const dbLock = new Mutex();
 // mutations would feed the log pipeline its own writes — and a failing
 // telemetry insert logs at ERROR (always remote), which tries to insert again,
 // amplifying under exactly the offline/full conditions where inserts fail.
-const SKIP_LOG_TABLES = [
-  "event_queue",
-  "dead_letter_queue",
-  "telemetry_queue",
-  "spans_queue",
-];
+const SKIP_LOG_TABLES = ["stored_events", "telemetry_queue", "spans_queue"];
 
 function shouldLogQuery(query: string): boolean {
   const lowerQuery = query.toLowerCase();
@@ -104,16 +100,18 @@ export const DBCursor = {
     return withDB(async (db) => {
       try {
         if (shouldLogQuery(safeQuery)) {
-          loggerRepositories.info(`Database mutation: ${safeQuery}]`);
+          loggerAdapter.info(`Database mutation: ${safeQuery}]`);
         }
         const result = db.runSync(safeQuery, ...params);
         if (shouldLogQuery(safeQuery)) {
-          loggerRepositories.debug("Database mutation result:", result.lastInsertRowId);
+          loggerAdapter.debug("Database mutation result", { row_id: result.lastInsertRowId });
         }
         return result;
       } catch (error) {
-        loggerRepositories.error("Database mutation error:", error);
-        loggerRepositories.error("SQL:", safeQuery, params);
+        loggerAdapter.error("Database mutation failed", {
+          ...errorAttributes(error),
+          sql: safeQuery,
+        });
         throw error;
       }
     });
@@ -127,12 +125,14 @@ export const DBCursor = {
     return withDB(async (db) => {
       try {
         if (shouldLogQuery(safeQuery)) {
-          loggerRepositories.info("Database query:", safeQuery, params);
+          loggerAdapter.info("Database query", { sql: safeQuery });
         }
         return db.getFirstSync<T>(safeQuery, ...params);
       } catch (error) {
-        loggerRepositories.error("Database query error:", error);
-        loggerRepositories.error("SQL:", safeQuery, params);
+        loggerAdapter.error("Database query failed", {
+          ...errorAttributes(error),
+          sql: safeQuery,
+        });
         throw error;
       }
     });
@@ -143,12 +143,14 @@ export const DBCursor = {
     return withDB(async (db) => {
       try {
         if (shouldLogQuery(safeQuery)) {
-          loggerRepositories.info("Database query:", safeQuery, params);
+          loggerAdapter.info("Database query", { sql: safeQuery });
         }
         return db.getAllSync<T>(safeQuery, ...params);
       } catch (error) {
-        loggerRepositories.error("Database query error:", error);
-        loggerRepositories.error("SQL:", safeQuery, params);
+        loggerAdapter.error("Database query failed", {
+          ...errorAttributes(error),
+          sql: safeQuery,
+        });
         throw error;
       }
     });
@@ -159,12 +161,14 @@ export const DBCursor = {
     return withDB(async (db) => {
       try {
         if (shouldLogQuery(safeQuery)) {
-          loggerRepositories.info("Executing database command:", safeQuery);
+          loggerAdapter.info("Executing database command", { sql: safeQuery });
         }
         db.execSync(safeQuery);
       } catch (error) {
-        loggerRepositories.error("Database command error:", error);
-        loggerRepositories.error("SQL:", safeQuery);
+        loggerAdapter.error("Database command failed", {
+          ...errorAttributes(error),
+          sql: safeQuery,
+        });
         throw error;
       }
     });
@@ -175,12 +179,14 @@ export const DBCursor = {
     return withDBSync((db) => {
       try {
         if (shouldLogQuery(safeQuery)) {
-          loggerRepositories.debug("Sync database query:", safeQuery);
+          loggerAdapter.debug("Sync database query", { sql: safeQuery });
         }
         return db.getFirstSync(safeQuery, ...params);
       } catch (error) {
-        loggerRepositories.error("Sync database query error:", error);
-        loggerRepositories.error("SQL:", safeQuery, params);
+        loggerAdapter.error("Sync database query failed", {
+          ...errorAttributes(error),
+          sql: safeQuery,
+        });
         throw error;
       }
     });
@@ -191,12 +197,14 @@ export const DBCursor = {
     return withDBSync((db) => {
       try {
         if (shouldLogQuery(safeQuery)) {
-          loggerRepositories.debug("Sync database query:", safeQuery);
+          loggerAdapter.debug("Sync database query", { sql: safeQuery });
         }
         return db.getAllSync(safeQuery, ...params);
       } catch (error) {
-        loggerRepositories.error("Sync database query error:", error);
-        loggerRepositories.error("SQL:", safeQuery, params);
+        loggerAdapter.error("Sync database query failed", {
+          ...errorAttributes(error),
+          sql: safeQuery,
+        });
         throw error;
       }
     });
@@ -207,16 +215,18 @@ export const DBCursor = {
     return withDBSync((db) => {
       try {
         if (shouldLogQuery(safeQuery)) {
-          loggerRepositories.debug("Sync database mutation:", safeQuery);
+          loggerAdapter.debug("Sync database mutation", { sql: safeQuery });
         }
         const result = db.runSync(safeQuery, ...params);
         if (shouldLogQuery(safeQuery)) {
-          loggerRepositories.debug("Sync mutation result:", result.lastInsertRowId);
+          loggerAdapter.debug("Sync mutation result", { row_id: result.lastInsertRowId });
         }
         return result;
       } catch (error) {
-        loggerRepositories.error("Sync database mutation error:", error);
-        loggerRepositories.error("SQL:", safeQuery, params);
+        loggerAdapter.error("Sync database mutation failed", {
+          ...errorAttributes(error),
+          sql: safeQuery,
+        });
         throw error;
       }
     });

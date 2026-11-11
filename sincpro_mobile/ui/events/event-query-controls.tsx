@@ -20,11 +20,9 @@ import {
 
 const STATUS_FILTERS: { label: string; value: EventStatusFilter }[] = [
   { label: "Todos", value: "ALL" },
-  { label: "Pendientes", value: "PENDING" },
-  { label: "Procesando", value: "PROCESSING" },
-  { label: "Fallidos", value: "FAILED" },
-  { label: "Reconocidos", value: "ACKNOWLEDGED" },
-  { label: "Cancelados", value: "CANCELLED" },
+  { label: "Pendientes", value: "pending" },
+  { label: "Entregados", value: "delivered" },
+  { label: "Fallidos", value: "set_aside" },
 ];
 
 const DATE_FILTERS: { label: string; value: EventDateRange }[] = [

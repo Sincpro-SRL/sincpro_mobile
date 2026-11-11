@@ -3,13 +3,22 @@ import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 
 export enum DATABASE_TABLES {
   SETTINGS = "settings",
-  EVENT_QUEUE = "event_queue",
-  DEAD_LETTER_QUEUE = "dead_letter_queue",
-  DOMAIN_EVENTS = "domain_events",
-  DOMAIN_EVENTS_DEAD_LETTER = "domain_events_dead_letter",
+  STORED_EVENTS = "stored_events",
   TELEMETRY_QUEUE = "telemetry_queue",
   SPANS_QUEUE = "spans_queue",
 }
+
+/**
+ * The tables of the event bus before 2.0. Their migrations keep their names — a device that
+ * applied them must still know them — and create nothing now: `stored_events` moves their rows
+ * and drops them.
+ */
+const RETIRED_TABLES = [
+  "event_queue",
+  "dead_letter_queue",
+  "domain_events",
+  "domain_events_dead_letter",
+] as const;
 
 async function createSettingsTable(): Promise<void> {
   await DBCursor.execAsync(`
@@ -22,109 +31,116 @@ async function createSettingsTable(): Promise<void> {
   `);
 }
 
-async function createDeadLetterQueueTable(): Promise<void> {
+async function retired(): Promise<void> {}
+
+/** The envelope fields the bus wrote into an event's JSON before 2.0: not part of its values. */
+const RETIRED_ENVELOPE_KEYS = [
+  "name",
+  "id",
+  "label",
+  "created_at",
+  "entity_type",
+  "entity_id",
+  "correlation_id",
+  "causation_id",
+  "entity_version",
+  "sequence",
+  "traceparent",
+]
+  .map((key) => `'$.${key}'`)
+  .join(", ");
+
+async function existingTables(names: readonly string[]): Promise<Set<string>> {
+  const rows = await DBCursor.getAllAsync<{ name: string }>(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${names.map(() => "?").join(", ")})`,
+    ...names,
+  );
+  return new Set(rows.map((row) => row.name));
+}
+
+/**
+ * The stored queue's table (`SqliteEventStore`), and the bus's rows moved into it — nothing is
+ * lost:
+ *
+ * 1. `stored_events`: one row per event, in the order added (`seq`).
+ * 2. `domain_events`, oldest first: PENDING and PROCESSING wait again (`pending`), ACKNOWLEDGED is
+ *    `delivered`, FAILED and CANCELLED are `set_aside` with their error as the failure. Ids,
+ *    correlation, causation, attempts and the event's values are kept; the envelope fields the
+ *    bus wrote inside the JSON are taken out of the values.
+ * 3. `domain_events_dead_letter`: `set_aside`, unless the same id was already moved.
+ * Final: the bus's tables dropped.
+ */
+async function createStoredMessagesTable(): Promise<void> {
+  const table = DATABASE_TABLES.STORED_EVENTS;
   await DBCursor.execAsync(`
-    CREATE TABLE IF NOT EXISTS ${DATABASE_TABLES.DEAD_LETTER_QUEUE} (
-      uuid TEXT PRIMARY KEY NOT NULL, -- UUID v7 for chronological ordering
+    CREATE TABLE IF NOT EXISTS ${table} (
+      seq INTEGER PRIMARY KEY AUTOINCREMENT,
+      id TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
+      correlation_id TEXT NOT NULL,
+      causation_id TEXT DEFAULT NULL,
+      published_at TEXT NOT NULL,
       payload TEXT NOT NULL,
+      state TEXT NOT NULL,
       attempts INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      error_message TEXT
+      retry_at TEXT DEFAULT NULL,
+      reached TEXT NOT NULL DEFAULT '[]',
+      failures TEXT NOT NULL DEFAULT '[]',
+      settled_at TEXT DEFAULT NULL
     );
   `);
-}
+  await DBCursor.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_stored_events_state ON ${table}(state, seq);`,
+  );
+  await DBCursor.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_stored_events_correlation ON ${table}(correlation_id);`,
+  );
+  await DBCursor.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_stored_events_name ON ${table}(name);`,
+  );
 
-async function createEventQueueTable(): Promise<void> {
-  await DBCursor.execAsync(`
-    CREATE TABLE IF NOT EXISTS ${DATABASE_TABLES.EVENT_QUEUE}(
-      uuid TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      payload TEXT NOT NULL,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      network_event INTEGER DEFAULT 0,
-      aggregate_id TEXT DEFAULT NULL,
-      sequence INTEGER DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'PENDING',
-      acknowledged_at TEXT DEFAULT NULL,
-      error_message TEXT DEFAULT NULL
-    );
-  `);
-}
+  const present = await existingTables(RETIRED_TABLES);
+  const values = `CASE WHEN json_valid(data) THEN json_remove(data, ${RETIRED_ENVELOPE_KEYS}) ELSE '{}' END`;
+  const causation = `CASE WHEN json_valid(data) THEN json_extract(data, '$.causation_id') END`;
+  const failure = (message: string) =>
+    `json_array(json_object('boundedContext', '', 'kind', 'internal', 'reason', 'FAILED_BEFORE_2_0', 'message', ${message}))`;
+  const columns =
+    "id, name, correlation_id, causation_id, published_at, payload, state, attempts, retry_at, reached, failures, settled_at";
 
-async function createDomainEventsTable(): Promise<void> {
-  await DBCursor.execAsync(`
-    CREATE TABLE IF NOT EXISTS ${DATABASE_TABLES.DOMAIN_EVENTS} (
-      uuid TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      label TEXT NOT NULL,
-      data TEXT NOT NULL,
-      requires_network INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'PENDING',
-      attempts INTEGER NOT NULL DEFAULT 0,
-      error_message TEXT DEFAULT NULL,
-      acknowledged_at TEXT DEFAULT NULL,
-      failed_at TEXT DEFAULT NULL,
-      aggregate_id TEXT DEFAULT NULL,
-      source_id TEXT DEFAULT NULL,
-      correlation_id TEXT DEFAULT NULL,
-      sequence INTEGER NOT NULL DEFAULT 0
-    );
-  `);
-
-  await DBCursor.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_domain_events_status ON ${DATABASE_TABLES.DOMAIN_EVENTS}(status);
-  `);
-
-  await DBCursor.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_domain_events_correlation ON ${DATABASE_TABLES.DOMAIN_EVENTS}(correlation_id);
-  `);
-
-  await DBCursor.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_domain_events_aggregate ON ${DATABASE_TABLES.DOMAIN_EVENTS}(aggregate_id);
-  `);
-
-  await DBCursor.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_domain_events_name ON ${DATABASE_TABLES.DOMAIN_EVENTS}(name);
-  `);
-
-  await DBCursor.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_domain_events_created ON ${DATABASE_TABLES.DOMAIN_EVENTS}(created_at);
-  `);
-}
-
-async function createDomainEventsDeadLetterTable(): Promise<void> {
-  await DBCursor.execAsync(`
-    CREATE TABLE IF NOT EXISTS ${DATABASE_TABLES.DOMAIN_EVENTS_DEAD_LETTER} (
-      uuid TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      label TEXT NOT NULL,
-      data TEXT NOT NULL,
-      requires_network INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      error_message TEXT DEFAULT NULL,
-      failed_at TEXT NOT NULL,
-      aggregate_id TEXT DEFAULT NULL,
-      source_id TEXT DEFAULT NULL,
-      correlation_id TEXT DEFAULT NULL,
-      sequence INTEGER NOT NULL DEFAULT 0
-    );
-  `);
-
-  await DBCursor.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_dead_letter_correlation ON ${DATABASE_TABLES.DOMAIN_EVENTS_DEAD_LETTER}(correlation_id);
-  `);
-
-  await DBCursor.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_dead_letter_name ON ${DATABASE_TABLES.DOMAIN_EVENTS_DEAD_LETTER}(name);
-  `);
-
-  await DBCursor.execAsync(`
-    CREATE INDEX IF NOT EXISTS idx_dead_letter_failed ON ${DATABASE_TABLES.DOMAIN_EVENTS_DEAD_LETTER}(failed_at);
-  `);
+  if (present.has("domain_events")) {
+    await DBCursor.execAsync(`
+      INSERT OR IGNORE INTO ${table} (${columns})
+      SELECT uuid, name, COALESCE(correlation_id, uuid), ${causation}, created_at,
+        ${values},
+        CASE status
+          WHEN 'ACKNOWLEDGED' THEN 'delivered'
+          WHEN 'FAILED' THEN 'set_aside'
+          WHEN 'CANCELLED' THEN 'set_aside'
+          ELSE 'pending'
+        END,
+        attempts, NULL, '[]',
+        CASE WHEN status IN ('FAILED', 'CANCELLED')
+          THEN ${failure("COALESCE(error_message, status)")}
+          ELSE '[]'
+        END,
+        CASE status WHEN 'ACKNOWLEDGED' THEN acknowledged_at WHEN 'FAILED' THEN failed_at END
+      FROM domain_events
+      ORDER BY created_at ASC, sequence ASC;
+    `);
+  }
+  if (present.has("domain_events_dead_letter")) {
+    await DBCursor.execAsync(`
+      INSERT OR IGNORE INTO ${table} (${columns})
+      SELECT uuid, name, COALESCE(correlation_id, uuid), ${causation}, created_at,
+        ${values}, 'set_aside', attempts, NULL, '[]',
+        ${failure("COALESCE(error_message, 'FAILED')")}, failed_at
+      FROM domain_events_dead_letter
+      ORDER BY failed_at ASC;
+    `);
+  }
+  for (const retiredTable of present) {
+    await DBCursor.execAsync(`DROP TABLE IF EXISTS ${retiredTable};`);
+  }
 }
 
 async function createTelemetryQueueTable(): Promise<void> {
@@ -181,12 +197,10 @@ function migration(name: string, migrationFn: () => Promise<void>): IMigration {
 
 const MIGRATIONS: IMigration[] = [
   migration(DATABASE_TABLES.SETTINGS, createSettingsTable),
-  migration(DATABASE_TABLES.EVENT_QUEUE, createEventQueueTable),
-  migration(DATABASE_TABLES.DEAD_LETTER_QUEUE, createDeadLetterQueueTable),
-  migration(DATABASE_TABLES.DOMAIN_EVENTS, createDomainEventsTable),
-  migration(DATABASE_TABLES.DOMAIN_EVENTS_DEAD_LETTER, createDomainEventsDeadLetterTable),
+  ...RETIRED_TABLES.map((table) => migration(table, retired)),
   migration(DATABASE_TABLES.TELEMETRY_QUEUE, createTelemetryQueueTable),
   migration(DATABASE_TABLES.SPANS_QUEUE, createSpansQueueTable),
+  migration(DATABASE_TABLES.STORED_EVENTS, createStoredMessagesTable),
 ];
 
 export default MIGRATIONS;

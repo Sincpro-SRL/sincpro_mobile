@@ -1,6 +1,6 @@
+import { loggerAdapter } from "@sincpro/client-framework";
 import { EntityCollection, RemoteEntityCollection } from "@sincpro/mobile/domain/entity";
 import { DomainAppError } from "@sincpro/mobile/exceptions";
-import { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
 
 export class RepositoriesContainer {
   private registry: Record<string, any> = {};
@@ -24,7 +24,7 @@ export class RepositoriesContainer {
   ): EntityCollection<any> | RemoteEntityCollection<any> | undefined {
     const repo = this.registry[repositoryKey];
     if (!repo) {
-      loggerRepositories.warn(`[RepositoryFacade] Repository not found: ${repositoryKey}`);
+      loggerAdapter.warn(`[RepositoryFacade] Repository not found: ${repositoryKey}`);
       return Array.isArray(foreignKeyValue) ? new EntityCollection([]) : undefined;
     }
     if (Array.isArray(foreignKeyValue)) {

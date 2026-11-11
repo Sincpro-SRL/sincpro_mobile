@@ -1,3 +1,5 @@
+import type { HearingContext } from "@sincpro/client-framework";
+import { logger, loggerAdapter } from "@sincpro/client-framework";
 import type { IMigration } from "@sincpro/mobile/domain/database";
 import {
   applyMigrationStep,
@@ -6,7 +8,6 @@ import {
   resetPlan,
 } from "@sincpro/mobile/domain/database/migration_plan";
 import { repos } from "@sincpro/mobile/entrypoints/db/repositories";
-import type { Subscriber } from "@sincpro/mobile/event_driven";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 import { initializeRepositoryFacade } from "@sincpro/mobile/infrastructure/database/mapped";
 import {
@@ -14,19 +15,18 @@ import {
   forgetMigrations,
   markMigrationApplied,
 } from "@sincpro/mobile/infrastructure/database/schema";
-import logger, { loggerRepositories } from "@sincpro/mobile/infrastructure/logger";
+import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import { registerWebViewHandler } from "@sincpro/mobile/infrastructure/webview/message_handlers";
 import type { CronWorker, CronWorkerOpts } from "@sincpro/mobile/infrastructure/workers";
-import { interceptEvent } from "@sincpro/mobile/infrastructure/workers/interceptors";
 import { onceUntilFailure } from "@sincpro/mobile/tools/utils/once";
 
 import type { DomainModule } from "./domain_module";
 import { type LifecycleHook, runLifecycle } from "./lifecycle";
-import { withoutReplaced } from "./replaces";
 
 export class Kernel {
   private readonly modules: DomainModule[];
   private crons?: Record<string, CronWorker[]>;
+  private parties?: Record<string, readonly HearingContext[]>;
   private extensionsRegistered = false;
   private readonly prepare = onceUntilFailure(async () => {
     repos.register(this.repositories());
@@ -61,27 +61,38 @@ export class Kernel {
     return this.modules.flatMap((module) => module.persistOnReset());
   }
 
-  subscribersByKey(): Record<string, Subscriber[]> {
-    const map: Record<string, Subscriber[]> = {};
-    for (const module of this.modules) {
-      map[module.key] = module.subscribers();
+  /** Read once: each module's bounded contexts and subscriptions — who hears events. */
+  partiesByKey(): Record<string, readonly HearingContext[]> {
+    if (!this.parties) {
+      const map: Record<string, readonly HearingContext[]> = {};
+      for (const module of this.modules) {
+        map[module.key] = [...module.boundedContexts(), ...module.subscribers()];
+      }
+      this.parties = map;
     }
-    return withoutReplaced(map);
+    return this.parties;
+  }
+
+  /** Who hears events while these domains are active: each party once, the core's first. */
+  partiesFor(activeDomains: ReadonlySet<string>): HearingContext[] {
+    const parties: HearingContext[] = [];
+    for (const module of this.modules) {
+      if (!activeDomains.has(module.key)) continue;
+      for (const party of this.partiesByKey()[module.key] ?? []) {
+        if (!parties.includes(party)) parties.push(party);
+      }
+    }
+    return parties;
   }
 
   /**
-   * Registers what every module plugs into the core, once per JS context: event interceptors
-   * and WebView message handlers. The core module goes first, so an app's handler wins.
+   * Registers what every module plugs into the core, once per JS context: WebView message
+   * handlers. The core module goes first, so an app's handler wins.
    */
   registerExtensions(): void {
     if (this.extensionsRegistered) return;
     this.extensionsRegistered = true;
     for (const module of this.modules) {
-      for (const [eventName, value] of Object.entries(module.interceptors())) {
-        for (const interceptor of Array.isArray(value) ? value : [value]) {
-          interceptEvent(eventName, interceptor);
-        }
-      }
       for (const [type, handler] of Object.entries(module.webViewHandlers())) {
         registerWebViewHandler(type, handler);
       }
@@ -91,7 +102,7 @@ export class Kernel {
   /** Runs a lifecycle hook in every module; a failing one is logged and never stops the app. */
   runHook(hook: LifecycleHook): Promise<void> {
     return runLifecycle(this.modules, hook, (module, error) =>
-      logger.error(`[Kernel] ${module}.${hook} failed`, error),
+      logger.error(`[Kernel] ${module}.${hook} failed`, errorAttributes(error)),
     );
   }
 
@@ -145,10 +156,10 @@ export class Kernel {
   }
 
   async restartDatabase(): Promise<void> {
-    loggerRepositories.warn("Restarting database");
+    loggerAdapter.warn("Restarting database");
     const plan = resetPlan(this.migrations(), this.persistedTables());
     for (const table of plan.drop) {
-      loggerRepositories.info(`Dropping table: ${table}`);
+      loggerAdapter.info(`Dropping table: ${table}`);
       await DBCursor.execAsync(`DROP TABLE IF EXISTS ${table}`);
     }
     await forgetMigrations(plan.forget);

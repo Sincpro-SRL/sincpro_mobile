@@ -1,301 +1,196 @@
+import {
+  type Attributes,
+  combineLoggers,
+  type Logger,
+  type LogLayer,
+  type LogLevel,
+  type LogRecord,
+} from "@sincpro/client-framework";
+import { consoleLogger } from "@sincpro/client-framework/console";
+
 import { getLokiClient } from "./telemetry/logging/loki_registry";
 import { activeTraceLabel } from "./telemetry/tracing/active_span";
 
-type LoggerArgs = unknown[];
+/**
+ * Where the lines of the client framework go on a phone: the console and Loki.
+ *
+ * Context: there is one logger per layer — `logger` (infrastructure) and `loggerAdapter`
+ * (adapters) from `@sincpro/client-framework`, and `this.logger` inside a use case —, never one
+ * per screen or service. This module only owns the policy of the two destinations:
+ *
+ * - The console is the framework's engine (`consoleLogger`): silent in production, WARN and
+ *   ERROR always printed in development, INFO and DEBUG only while the in-app debug switch is on
+ *   and the line's layer is enabled.
+ * - Loki receives ERROR and WARN always, INFO only from enabled layers, DEBUG never — whatever
+ *   the console shows: production incidents must be observable.
+ *
+ * The engine reads the policy on every line, so a debug switch never reconfigures the process.
+ */
 
-interface ILogger {
-  debug(...args: LoggerArgs): void;
+/** Every layer a line can come from, in the order the debug screen lists them. */
+export const LOG_LAYERS: readonly LogLayer[] = [
+  "infrastructure",
+  "adapter",
+  "entrypoint",
+  "bounded_context",
+  "application_service",
+  "feature",
+];
 
-  info(...args: LoggerArgs): void;
-
-  warn(...args: LoggerArgs): void;
-
-  error(...args: LoggerArgs): void;
-}
-
-// ANSI color codes for terminal output
-const Colors = {
-  Reset: "\x1b[0m",
-  Gray: "\x1b[90m",
-  Red: "\x1b[31m",
-  Yellow: "\x1b[33m",
-  Blue: "\x1b[34m",
-  Cyan: "\x1b[36m",
-  Green: "\x1b[32m",
-  Magenta: "\x1b[35m",
-  BrightBlue: "\x1b[94m",
-  BrightGreen: "\x1b[92m",
-  BrightCyan: "\x1b[96m",
-  BrightMagenta: "\x1b[95m",
-  BrightYellow: "\x1b[93m",
-  White: "\x1b[37m",
+/** The packaged quiet defaults: adapters (Odoo's HTTP, repositories) stay off until asked. */
+export const DEFAULT_ENABLED_LAYERS: Readonly<Record<LogLayer, boolean>> = {
+  infrastructure: true,
+  adapter: false,
+  entrypoint: true,
+  bounded_context: true,
+  application_service: true,
+  feature: true,
 };
 
-const ELogLevel = {
-  DEBUG: "DEBUG",
-  INFO: "INFO",
-  WARN: "WARN",
-  ERROR: "ERROR",
-} as const;
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-type ELogLevel = (typeof ELogLevel)[keyof typeof ELogLevel];
-
-const EApplicationLogger = {
-  GLOBAL: "GLOBAL",
-  ODOO_CLIENT: "ODOO_CLIENT",
-  ADAPTER: "ADAPTER",
-  REPOSITORIES: "REPOSITORIES",
-  USE_CASES: "USE_CASES",
-  QUEUE_PROCESSOR: "EVENT_BUS",
-  CRON_JOBS: "CRON_JOBS",
-} as const;
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-type EApplicationLogger = (typeof EApplicationLogger)[keyof typeof EApplicationLogger];
-
-/**
- * Color mapping for each logger context
- */
-const LoggerColors: Record<EApplicationLogger, string> = {
-  [EApplicationLogger.GLOBAL]: Colors.White,
-  [EApplicationLogger.ODOO_CLIENT]: Colors.Gray,
-  [EApplicationLogger.ADAPTER]: Colors.Gray,
-  [EApplicationLogger.REPOSITORIES]: Colors.Gray,
-  [EApplicationLogger.USE_CASES]: Colors.BrightGreen,
-  [EApplicationLogger.QUEUE_PROCESSOR]: Colors.BrightYellow,
-  [EApplicationLogger.CRON_JOBS]: Colors.Gray,
+/** What a host decides about the console: production or development, and how verbose. */
+export type LoggerPolicy = {
+  mode?: "development" | "production";
+  /** Development INFO/DEBUG threshold while the debug switch is on. */
+  level?: Extract<LogLevel, "debug" | "info">;
+  /** Layers whose INFO/DEBUG may speak; WARN/ERROR are never hidden. */
+  layers?: Partial<Record<LogLayer, boolean>>;
 };
 
-/**
- * Production flag - manually toggle to disable all logs
- * Set to true to disable logging, false to enable
- */
-export let IS_PRODUCTION = false;
+const MAX_LINE = 2048;
 
-/**
- * Global log level for the application.
- */
-export let LOG_LEVEL: ELogLevel = ELogLevel.INFO;
-
-/**
- * Console policy from the app: the lowest level printed (DEBUG to see everything) and
- * whether it is a production build (no console output). Telemetry is configured apart.
- */
-export function configureLogger(options: { level?: ELogLevel; production?: boolean }): void {
-  if (options.level !== undefined) LOG_LEVEL = options.level;
-  if (options.production !== undefined) IS_PRODUCTION = options.production;
-}
-
-// Console INFO and DEBUG follow the in-app debug switch. ERROR and WARN always print.
-// Remote shipping does not read this flag.
+let mode: "development" | "production" = "development";
+let level: "debug" | "info" = "info";
 let consoleDebug = false;
+const enabledLayers: Record<LogLayer, boolean> = { ...DEFAULT_ENABLED_LAYERS };
 
 type LoggerListener = () => void;
-const loggerListeners = new Set<LoggerListener>();
+const listeners = new Set<LoggerListener>();
 
-function notifyLoggerListeners(): void {
-  for (const listener of loggerListeners) listener();
+let consoleEngine: Logger = consoleLogger(consoleOptions());
+
+function consoleOptions() {
+  return {
+    mode,
+    level: consoleDebug ? level : ("warn" as const),
+    layers: { ...enabledLayers },
+  };
 }
 
+function changed(): void {
+  consoleEngine = consoleLogger(consoleOptions());
+  for (const listener of listeners) listener();
+}
+
+function attributesText(attributes: Attributes | undefined): string {
+  if (!attributes) return "";
+  return Object.entries(attributes)
+    .map(([name, value]) => ` ${name}=${String(value)}`)
+    .join("");
+}
+
+/**
+ * A record as one Loki line: `[layer] [use case] message key=value trace_id=… span_id=…`.
+ * The run's trace when the record carries one, else the span active in the context manager.
+ */
+export function lokiLine(record: LogRecord): string {
+  const where = record.useCase ? ` [${record.useCase}]` : "";
+  const trace = record.traceId
+    ? ` trace_id=${record.traceId} span_id=${record.spanId ?? ""}`
+    : activeTraceLabel();
+  const line = `[${record.layer}]${where} ${record.message}${attributesText(record.attributes)}`;
+  const kept = line.length > MAX_LINE ? `${line.slice(0, MAX_LINE)}…` : line;
+  return kept + trace;
+}
+
+/** Loki's policy: ERROR and WARN always, INFO from enabled layers, DEBUG never. */
+function shipsToLoki(record: LogRecord): boolean {
+  if (record.level === "error" || record.level === "warn") return true;
+  if (record.level === "info") return enabledLayers[record.layer];
+  return false;
+}
+
+const lokiEngine: Logger = {
+  log(record) {
+    if (!shipsToLoki(record)) return;
+    const client = getLokiClient();
+    if (!client) return;
+    const line = lokiLine(record);
+    queueMicrotask(() => client.push(record.level, line));
+  },
+};
+
+/** The engine every bounded context of the app logs through: the console and Loki. */
+export const mobileLogger: Logger = combineLoggers(
+  { log: (record) => consoleEngine.log(record) },
+  lokiEngine,
+);
+
+/**
+ * The host's console policy (`mode` from `__DEV__`, the level, the layers). Applies at once,
+ * to every line from then on.
+ */
+export function configureLogger(policy: LoggerPolicy): void {
+  if (policy.mode !== undefined) mode = policy.mode;
+  if (policy.level !== undefined) level = policy.level;
+  if (policy.layers) patchLayers(policy.layers);
+  changed();
+}
+
+/** The in-app debug switch: INFO/DEBUG on the console. WARN/ERROR always print. */
 export function setConsoleDebug(enabled: boolean): void {
   if (consoleDebug === enabled) return;
   consoleDebug = enabled;
-  notifyLoggerListeners();
+  changed();
 }
 
 export function isConsoleDebug(): boolean {
   return consoleDebug;
 }
 
-/**
- * Default console contexts. Noisy layers (Odoo HTTP, adapters, repos) stay off
- * until a host turns them on through the Debug API.
- */
-export const DEFAULT_ENABLED_LOGS: Record<EApplicationLogger, boolean> = {
-  [EApplicationLogger.GLOBAL]: true,
-  [EApplicationLogger.ODOO_CLIENT]: false,
-  [EApplicationLogger.ADAPTER]: false,
-  [EApplicationLogger.REPOSITORIES]: false,
-  [EApplicationLogger.USE_CASES]: true,
-  [EApplicationLogger.QUEUE_PROCESSOR]: true,
-  [EApplicationLogger.CRON_JOBS]: true,
-};
-
-/**
- * Mutable console/Loki-INFO mask per application context.
- * Prefer `setLoggerEnabled` / `Debug.loggers` over writing this object directly.
- */
-export const ENABLED_LOGS: Record<EApplicationLogger, boolean> = {
-  ...DEFAULT_ENABLED_LOGS,
-};
-
-export function getEnabledLoggers(): Record<EApplicationLogger, boolean> {
-  return { ...ENABLED_LOGS };
+export function getEnabledLayers(): Record<LogLayer, boolean> {
+  return { ...enabledLayers };
 }
 
-export function isLoggerEnabled(context: EApplicationLogger): boolean {
-  return ENABLED_LOGS[context];
+export function isLayerEnabled(layer: LogLayer): boolean {
+  return enabledLayers[layer];
 }
 
-export function setLoggerEnabled(context: EApplicationLogger, enabled: boolean): void {
-  if (ENABLED_LOGS[context] === enabled) return;
-  ENABLED_LOGS[context] = enabled;
-  notifyLoggerListeners();
+export function setLayerEnabled(layer: LogLayer, enabled: boolean): void {
+  if (enabledLayers[layer] === enabled) return;
+  enabledLayers[layer] = enabled;
+  changed();
 }
 
-export function setEnabledLoggers(patch: Partial<Record<EApplicationLogger, boolean>>): void {
-  let changed = false;
-  for (const context of Object.values(EApplicationLogger)) {
-    const next = patch[context];
-    if (next === undefined || ENABLED_LOGS[context] === next) continue;
-    ENABLED_LOGS[context] = next;
-    changed = true;
+/** Whether the patch moved any layer. */
+function patchLayers(patch: Partial<Record<LogLayer, boolean>>): boolean {
+  let moved = false;
+  for (const layer of LOG_LAYERS) {
+    const next = patch[layer];
+    if (next === undefined || enabledLayers[layer] === next) continue;
+    enabledLayers[layer] = next;
+    moved = true;
   }
-  if (changed) notifyLoggerListeners();
+  return moved;
 }
 
-export function resetEnabledLoggers(): void {
-  setEnabledLoggers(DEFAULT_ENABLED_LOGS);
+export function setEnabledLayers(patch: Partial<Record<LogLayer, boolean>>): void {
+  if (patchLayers(patch)) changed();
 }
 
-/** Notify when the master debug switch or any logger context changes. */
+export function resetEnabledLayers(): void {
+  setEnabledLayers(DEFAULT_ENABLED_LAYERS);
+}
+
+/** Hears the debug switch and every layer change. Answers how to stop. */
 export function subscribeLoggerConfig(listener: LoggerListener): () => void {
-  loggerListeners.add(listener);
+  listeners.add(listener);
   return () => {
-    loggerListeners.delete(listener);
+    listeners.delete(listener);
   };
 }
 
-class BaseLogger implements ILogger {
-  protected readonly context: EApplicationLogger;
-  protected readonly contextPrefix: string;
-
-  constructor(context: EApplicationLogger) {
-    this.context = context;
-    this.contextPrefix = context === EApplicationLogger.GLOBAL ? "" : `[${context}]`;
-  }
-
-  private getLogColor(level: ELogLevel): string {
-    switch (level) {
-      case ELogLevel.DEBUG:
-        return Colors.Gray;
-      case ELogLevel.INFO:
-        return Colors.Cyan;
-      case ELogLevel.WARN:
-        return Colors.Yellow;
-      case ELogLevel.ERROR:
-        return Colors.Red;
-      default:
-        return Colors.White;
-    }
-  }
-
-  private getContextColor(): string {
-    return LoggerColors[this.context];
-  }
-
-  private log(level: ELogLevel, method: typeof console.log, args: LoggerArgs): void {
-    if (this.shouldLog(level)) {
-      this.output(method, level, args);
-    }
-    // Remote push is independent of console filters — IS_PRODUCTION and ENABLED_LOGS
-    // control console verbosity, not what reaches Loki in production.
-    this.pushRemote(level, args);
-  }
-
-  protected shouldLog(level: ELogLevel): boolean {
-    if (IS_PRODUCTION) return false;
-    if (level === ELogLevel.ERROR || level === ELogLevel.WARN) return true;
-    if (!consoleDebug) return false;
-    if (level === ELogLevel.DEBUG && (LOG_LEVEL as ELogLevel) !== ELogLevel.DEBUG)
-      return false;
-    if (!ENABLED_LOGS[this.context]) return false;
-    return true;
-  }
-
-  /**
-   * Remote logging filter — intentionally decoupled from console config.
-   * ERROR and WARN always reach Loki (production incidents must be observable).
-   * INFO reaches Loki only for enabled contexts (avoids noise from disabled ones).
-   * DEBUG never goes remote (too verbose for a push store).
-   * IS_PRODUCTION does NOT gate this — it controls the console, not telemetry.
-   */
-  private shouldLogRemote(level: ELogLevel): boolean {
-    if (level === ELogLevel.ERROR || level === ELogLevel.WARN) return true;
-    if (level === ELogLevel.INFO) return ENABLED_LOGS[this.context];
-    return false;
-  }
-
-  private pushRemote(level: ELogLevel, args: LoggerArgs): void {
-    if (!this.shouldLogRemote(level)) return;
-    const client = getLokiClient();
-    if (!client) return;
-    // Include context in the message so logs are filterable in Grafana
-    // without needing a high-cardinality label: `{app="..."} |= "[USE_CASES]"`
-    const prefix = this.context !== EApplicationLogger.GLOBAL ? `[${this.context}] ` : "";
-    const lvl = level.toLowerCase();
-    const traceLabel = activeTraceLabel();
-    queueMicrotask(() => client.push(lvl, prefix + this.serialize(args) + traceLabel));
-  }
-
-  protected output(method: typeof console.log, level: ELogLevel, args: LoggerArgs): void {
-    const timestamp = new Date().toISOString();
-    const contextColor = this.getContextColor();
-
-    if (this.contextPrefix) {
-      method(
-        `${Colors.Gray}${timestamp}${Colors.Reset}`,
-        `${contextColor}${this.contextPrefix}`,
-        ...args,
-        Colors.Reset,
-      );
-    } else {
-      method(`${Colors.Gray}${timestamp}${Colors.Reset}`, ...args);
-    }
-  }
-
-  private serialize(args: LoggerArgs): string {
-    const MAX = 2048;
-    const msg = args
-      .map((a) => {
-        try {
-          return typeof a === "string" ? a : JSON.stringify(a);
-        } catch {
-          return "[unserializable]";
-        }
-      })
-      .join(" ");
-    return msg.length > MAX ? `${msg.slice(0, MAX)}…` : msg;
-  }
-
-  debug(...args: LoggerArgs): void {
-    this.log(ELogLevel.DEBUG, console.debug, args);
-  }
-
-  info(...args: LoggerArgs): void {
-    this.log(ELogLevel.INFO, console.log, args);
-  }
-
-  warn(...args: LoggerArgs): void {
-    this.log(ELogLevel.WARN, console.warn, args);
-  }
-
-  error(...args: LoggerArgs): void {
-    this.log(ELogLevel.ERROR, console.error, args);
-  }
+/** A failure as a log attribute: its name and message, never its stack or its body. */
+export function errorAttributes(error: unknown): Attributes {
+  if (error instanceof Error) return { error: `${error.name}: ${error.message}` };
+  return { error: String(error) };
 }
-
-export function createLogger(context: EApplicationLogger): ILogger {
-  return new BaseLogger(context);
-}
-
-const logger = createLogger(EApplicationLogger.GLOBAL);
-export const loggerOdooClient = createLogger(EApplicationLogger.ODOO_CLIENT);
-export const loggerAdapter = createLogger(EApplicationLogger.ADAPTER);
-export const loggerRepositories = createLogger(EApplicationLogger.REPOSITORIES);
-export const loggerUseCases = createLogger(EApplicationLogger.USE_CASES);
-export const loggerQueueProcessor = createLogger(EApplicationLogger.QUEUE_PROCESSOR);
-export const loggerCronJobs = createLogger(EApplicationLogger.CRON_JOBS);
-
-export { EApplicationLogger };
-
-export default logger;

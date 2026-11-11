@@ -4,21 +4,16 @@ import {
   type CriteriaNode,
 } from "@sincpro/mobile-ui/utils/criteria";
 
-export type EventStatusFilter =
-  | "ALL"
-  | "PENDING"
-  | "PROCESSING"
-  | "FAILED"
-  | "ACKNOWLEDGED"
-  | "CANCELLED";
+/** The stored queue's states, and all of them. */
+export type EventStatusFilter = "ALL" | "pending" | "delivered" | "set_aside";
 
 export type EventDateRange = "all" | "today" | "week" | "month";
 
 export interface EventListItem {
   name: string;
   label?: string;
-  status?: string;
-  createdAt: string;
+  state?: string;
+  publishedAt: string;
   attempts?: number;
 }
 
@@ -43,20 +38,18 @@ export const EVENT_FIELDS: readonly CriteriaField[] = [
     ],
   },
   {
-    id: "status",
+    id: "state",
     label: "Estado",
     type: "choice",
     options: [
-      { label: "Pendiente", value: "PENDING" },
-      { label: "Procesando", value: "PROCESSING" },
-      { label: "Fallido", value: "FAILED" },
-      { label: "Reconocido", value: "ACKNOWLEDGED" },
-      { label: "Cancelado", value: "CANCELLED" },
+      { label: "Pendiente", value: "pending" },
+      { label: "Entregado", value: "delivered" },
+      { label: "Fallido", value: "set_aside" },
     ],
     operators: [{ id: "equal", label: "es", arity: "one" }],
   },
   {
-    id: "createdAt",
+    id: "publishedAt",
     label: "Fecha",
     type: "date",
     operators: [
@@ -127,12 +120,12 @@ export function matchesEventQuery(event: EventListItem, query: string): boolean 
 }
 
 export function matchesEventRange(
-  createdAt: string,
+  publishedAt: string,
   range: EventDateRange,
   now = new Date(),
 ): boolean {
   if (range === "all") return true;
-  const time = Date.parse(createdAt);
+  const time = Date.parse(publishedAt);
   if (Number.isNaN(time)) return false;
   const start = startOfDay(now);
   if (range === "today") return time >= start;
@@ -140,8 +133,8 @@ export function matchesEventRange(
   return time >= start - 29 * DAY_MS;
 }
 
-function localDay(createdAt: string): string {
-  const time = Date.parse(createdAt);
+function localDay(publishedAt: string): string {
+  const time = Date.parse(publishedAt);
   if (Number.isNaN(time)) return "";
   const date = new Date(time);
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -152,8 +145,8 @@ function localDay(createdAt: string): string {
 function fieldValue(event: EventListItem, field: string): string | number {
   if (field === "name") return event.name;
   if (field === "label") return event.label ?? "";
-  if (field === "status") return event.status ?? "";
-  if (field === "createdAt") return localDay(event.createdAt);
+  if (field === "state") return event.state ?? "";
+  if (field === "publishedAt") return localDay(event.publishedAt);
   if (field === "attempts") return event.attempts ?? 0;
   return "";
 }
@@ -204,9 +197,9 @@ export function filterEvents<T extends EventListItem>(
   const range = criteria.range ?? "all";
   const custom = criteria.custom;
   return events.filter((event) => {
-    if (status !== "ALL" && event.status !== status) return false;
+    if (status !== "ALL" && event.state !== status) return false;
     if (!matchesNeedle(event, needle)) return false;
-    if (!matchesEventRange(event.createdAt, range, now)) return false;
+    if (!matchesEventRange(event.publishedAt, range, now)) return false;
     return custom ? matchesNode(event, custom) : true;
   });
 }

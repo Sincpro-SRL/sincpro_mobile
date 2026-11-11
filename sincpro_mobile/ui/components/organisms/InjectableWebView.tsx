@@ -1,5 +1,5 @@
+import { logger } from "@sincpro/client-framework";
 import { IInjectedScript } from "@sincpro/mobile/domain/webview";
-import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 import { webViewService } from "@sincpro/mobile/services/webview.service";
 import { useToast } from "@sincpro/mobile-ui/Feedback";
 import Spinner from "@sincpro/mobile-ui/Feedback/Feedback.Spinner";
@@ -236,12 +236,12 @@ function InjectableWebView({
       if (stuckAttemptsRef.current >= maxRetries) {
         blockingRef.current = false;
         setIsLoading(false);
-        loggerUseCases.warn(`WebView stuck loading, stopped after ${maxRetries} reloads`);
+        logger.warn(`WebView stuck loading, stopped after ${maxRetries} reloads`);
         reportLoadFailure();
         return;
       }
       stuckAttemptsRef.current += 1;
-      loggerUseCases.warn("WebView stuck loading for 15s, attempting reload");
+      logger.warn("WebView stuck loading for 15s, attempting reload");
       webViewRef.current.reload();
     }, STUCK_LOAD_MS);
   }
@@ -249,7 +249,7 @@ function InjectableWebView({
   function startReload(step: "reload" | "clear-cache") {
     const webView = webViewRef.current;
     if (!webView) return;
-    loggerUseCases.info(`WebView ${step} requested`);
+    logger.info(`WebView ${step} requested`);
     reloadingRef.current = true;
     showNotice(step);
     stuckAttemptsRef.current = 0;
@@ -316,7 +316,7 @@ function InjectableWebView({
     const errorMsg = error.nativeEvent.description || "Error desconocido";
     const errorCode = error.nativeEvent.code || -1;
 
-    loggerUseCases.warn(`WebView error (${errorCode}): ${errorMsg}`);
+    logger.warn(`WebView error (${errorCode}): ${errorMsg}`);
     failedRef.current = true;
     if (errorTimeoutRef.current) {
       clearTimeout(errorTimeoutRef.current);
@@ -325,7 +325,7 @@ function InjectableWebView({
 
     if (retryCount < maxRetries) {
       const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000);
-      loggerUseCases.info(
+      logger.info(
         `Reintentando carga en ${retryDelay}ms (intento ${retryCount + 1}/${maxRetries})`,
       );
 
@@ -335,14 +335,14 @@ function InjectableWebView({
         webViewRef.current?.reload();
       }, retryDelay);
     } else {
-      loggerUseCases.error(`WebView falló después de ${maxRetries} reintentos`);
+      logger.error(`WebView falló después de ${maxRetries} reintentos`);
       reportLoadFailure();
       onError?.(error);
     }
   }
 
   function handleProcessGone() {
-    loggerUseCases.warn("WebView content process ended: loading the page in a new WebView");
+    logger.warn("WebView content process ended: loading the page in a new WebView");
     blockingRef.current = true;
     setIsLoading(true);
     setInstance((value) => value + 1);

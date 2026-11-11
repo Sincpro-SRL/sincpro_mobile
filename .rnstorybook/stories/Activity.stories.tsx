@@ -1,4 +1,4 @@
-import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/events";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
 import { ActivityStrip } from "@sincpro/mobile/ui/activity/ActivityStrip";
 import EventTimelineItem from "@sincpro/mobile/ui/components/molecules/EventTimelineItem";
 import DeadLetterQueueRow from "@sincpro/mobile/ui/components/organisms/DeadLetterQueueRow";
@@ -13,10 +13,22 @@ import { View } from "react-native";
 
 const ERROR_LIMIT = 150;
 
-function sampleEvent(fields: Partial<IntegrationEvent>): IntegrationEvent {
-  const event = IntegrationEvent.create();
-  Object.assign(event, fields);
-  return event;
+function sampleEvent(fields: Partial<EventRecord>): EventRecord {
+  return {
+    id: `${fields.name ?? "event"}-${fields.publishedAt ?? ""}`,
+    name: "",
+    label: "",
+    state: "pending",
+    attempts: 0,
+    publishedAt: new Date().toISOString(),
+    settledAt: null,
+    correlationId: "flow",
+    causationId: null,
+    failures: [],
+    error: null,
+    payload: {},
+    ...fields,
+  };
 }
 
 function clip(detail: string): string {
@@ -69,7 +81,7 @@ function EventList({
 }: {
   name: string;
   description: string;
-  events: IntegrationEvent[];
+  events: EventRecord[];
 }) {
   const list = useEventQuery(events);
   return (
@@ -83,7 +95,7 @@ function EventList({
     >
       <EventListHeader list={list} />
       <ListViewV2.Content>
-        {(event) => <EventRow item={event as IntegrationEvent} onOpen={() => undefined} />}
+        {(event) => <EventRow item={event as EventRecord} onOpen={() => undefined} />}
       </ListViewV2.Content>
     </ListViewV2.Root>
   );
@@ -178,9 +190,8 @@ export const Pendiente: Story = {
         sampleEvent({
           name: "sale.order.confirmed",
           label: "Pedido confirmado",
-          status: EEventStatus.PENDING,
+          state: "pending",
           attempts: 0,
-          sequence: 1,
         }),
       ]}
       name="Eventos"
@@ -197,9 +208,8 @@ export const Procesando: Story = {
         sampleEvent({
           name: "sale.order.confirmed",
           label: "Pedido confirmado",
-          status: EEventStatus.PROCESSING,
+          state: "pending",
           attempts: 1,
-          sequence: 2,
         }),
       ]}
       name="Eventos"
@@ -216,9 +226,8 @@ export const Reconocido: Story = {
         sampleEvent({
           name: "sale.order.confirmed",
           label: "Pedido confirmado",
-          status: EEventStatus.ACKNOWLEDGED,
+          state: "delivered",
           attempts: 1,
-          sequence: 3,
         }),
       ]}
       name="Eventos"
@@ -235,10 +244,9 @@ export const Fallido: Story = {
         sampleEvent({
           name: "account.move.posted",
           label: "Factura publicada",
-          status: EEventStatus.FAILED,
+          state: "set_aside",
           attempts: 2,
-          errorMessage: "El servidor no respondió a tiempo",
-          sequence: 4,
+          error: "El servidor no respondió a tiempo",
         }),
       ]}
       name="Eventos"
@@ -255,9 +263,8 @@ export const Cancelado: Story = {
         sampleEvent({
           name: "stock.picking.done",
           label: "Entrega cancelada",
-          status: EEventStatus.CANCELLED,
+          state: "set_aside",
           attempts: 0,
-          sequence: 5,
         }),
       ]}
       name="Eventos"
@@ -274,10 +281,8 @@ export const ConInternet: Story = {
         sampleEvent({
           name: "sale.order.confirmed",
           label: "Pedido confirmado",
-          status: EEventStatus.PENDING,
+          state: "pending",
           attempts: 0,
-          requiresNetwork: true,
-          sequence: 6,
         }),
       ]}
       name="Eventos"
@@ -296,30 +301,26 @@ export const VidaDelPedido: Story = {
       sampleEvent({
         name: "sale.order.confirmed",
         label: "Pedido confirmado",
-        status: EEventStatus.PENDING,
+        state: "pending",
         attempts: 0,
-        sequence: 1,
       }),
       sampleEvent({
         name: "sale.order.confirmed",
         label: "Pedido en proceso",
-        status: EEventStatus.PROCESSING,
+        state: "pending",
         attempts: 1,
-        sequence: 2,
       }),
       sampleEvent({
         name: "sale.order.confirmed",
         label: "Pedido aceptado",
-        status: EEventStatus.ACKNOWLEDGED,
+        state: "delivered",
         attempts: 1,
-        sequence: 3,
       }),
       sampleEvent({
         name: "sale.order.confirmed",
         label: "Pedido fallido",
-        status: EEventStatus.FAILED,
+        state: "set_aside",
         attempts: 3,
-        sequence: 4,
       }),
     ];
     return (
@@ -328,7 +329,7 @@ export const VidaDelPedido: Story = {
           <EventTimelineItem
             event={event}
             isLast={index === life.length - 1}
-            key={event.uuid}
+            key={event.id}
             onOpen={() => undefined}
           />
         ))}
@@ -344,10 +345,9 @@ export const ColaMuerta: Story = {
         item={sampleEvent({
           name: "sale.order.confirmed",
           label: "Pedido confirmado",
-          status: EEventStatus.FAILED,
+          state: "set_aside",
           attempts: 1,
-          errorMessage: "Tiempo de espera agotado",
-          sequence: 1,
+          error: "Tiempo de espera agotado",
         })}
         onOpen={() => undefined}
       />
@@ -355,11 +355,9 @@ export const ColaMuerta: Story = {
         item={sampleEvent({
           name: "account.move.posted",
           label: "Factura publicada",
-          status: EEventStatus.FAILED,
+          state: "set_aside",
           attempts: 4,
-          errorMessage: LONG_ERROR,
-          requiresNetwork: true,
-          sequence: 8,
+          error: LONG_ERROR,
         })}
         onOpen={() => undefined}
       />

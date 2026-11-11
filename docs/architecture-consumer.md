@@ -19,14 +19,14 @@ flowchart TB
         direction TB
         ui["ui/<br/>screens — render only,<br/>uses @sincpro/mobile-ui"]
         svc["services/<br/>use cases · workflows<br/>(business logic)"]
-        subs["subscribers/<br/>react to domain events<br/>(decoupled side effects)"]
+        subs["entrypoints/queue/<br/>EventSubscribers: an event → its Command<br/>(decoupled side effects)"]
         adp["adapters/<br/>external services + repositories<br/>(implement ports)"]
         dom["domain/<br/>entities · value objects · events · port interfaces"]
     end
 
     subgraph FW["@sincpro/mobile (framework runtime)"]
         kernel["Orchestrator / Kernel"]
-        bus["EventBus / ProcessQueue"]
+        bus["storedQueue (client-framework) · eventDelivery"]
         db["DBCursor + migrations (SQLite)"]
         tel["Tracing / telemetry"]
     end
@@ -41,7 +41,7 @@ flowchart TB
     adp -->|implements ports from| dom
     adp -->|SQLite via| db
     adp -->|HTTP/BLE| ext
-    dom -->|addDomainEvent| bus
+    dom -->|record → stored with the save| bus
     bus --> subs
     subs --> svc
     kernel -->|wires module hooks| APP
@@ -63,7 +63,9 @@ sincpro_mobile_myapp/
 │   └── index.tsx                ← calls createMyApp(), exports default
 └── sincpro_mobile_myapp/
     ├── entrypoints/
-    │   └── main.tsx             ← DomainModule class + createMyApp()
+    │   ├── main.tsx             ← DomainModule class + createMyApp()
+    │   ├── queue/               ← EventSubscribers + ticketsSubscriptions (index.ts)
+    │   └── cron/                ← CronWorkers whose jobs execute a Command
     ├── domain/                  ← entities, value objects, domain events, PORT interfaces
     │   ├── ticket.entity.ts
     │   ├── events.ts            ← TicketCreatedEvent, SyncTicketEvent (extend DomainEvent)
@@ -72,9 +74,10 @@ sincpro_mobile_myapp/
     │   ├── repositories/        ← ITicketRepository impl (SQLite via DBCursor + mapped)
     │   └── external/            ← OdooClient / ApiClient impl (HTTP), PrinterAdapter (BLE)
     ├── services/
-    │   ├── use_cases/           ← CreateTicket, CloseTicket (one transaction each)
-    │   └── workflows/           ← SyncDayWorkflow (multi-step, @TraceClass)
-    ├── subscribers/             ← TicketCreatedSubscriber, SyncTicketSubscriber
+    │   └── ticket/              ← one folder per aggregate: Features, ApplicationServices
+    │       └── lines/           ← an entity of the aggregate with use cases of its own
+    ├── infrastructure/
+    │   └── bounded_context.ts   ← ticketsBoundedContext: dependencies + registrations
     └── ui/
         ├── screens/             ← TicketsScreen (composes mobile-ui)
         └── theme/tokens.ts
@@ -127,37 +130,62 @@ unit-test business logic with an in-memory fake. The framework's own `DBCursor`,
 ### `services/` — use cases & workflows (business logic)
 
 A **use case** is one business transaction: load entities via repositories, run domain
-logic, persist, and let entities emit domain events. It extends `Feature`. A
-**workflow** orchestrates several `Feature`s in one turn and extends
-`ApplicationService`. Every public method is a span (`ClassName.method`); a method
-whose name starts with `_` is not. No decorator. See
-[PRD 01](prd/PRD_01_feature-y-application-service.md).
+logic, persist, and let entities emit domain events. It is a `Feature` of
+`@sincpro/client-framework`, registered for its `Command` in the module's bounded context. A
+**workflow** — several use cases with decisions between them — is an `ApplicationService` that
+composes Features through `this.featureBus`. Every run is a span (`<context>/<serviceName>`),
+logs through `this.logger` and is reported once when it fails unexpectedly; nothing else opens
+spans.
 
 ```ts
-import { ApplicationService, Feature } from "@sincpro/mobile";
+import {
+  ApplicationService,
+  BoundedContext,
+  Command,
+  Feature,
+} from "@sincpro/client-framework";
 
-export class CreateTicket extends Feature<{ tickets: ITicketRepository }> {
-  async execute(input: CreateTicketInput): Promise<Ticket> {
-    const ticket = Ticket.create(input);
-    await this.deps.tickets.save(ticket);
+export class CommandCreateTicket extends Command<Ticket> {
+  constructor(readonly input: CreateTicketInput) {
+    super();
+  }
+}
+
+export class CreateTicket extends Feature<CommandCreateTicket, Ticket> {
+  static readonly serviceName = "CreateTicket";
+  declare readonly tickets: ITicketRepository;
+  async execute(command: CommandCreateTicket): Promise<Ticket> {
+    const ticket = Ticket.create(command.input);
+    await this.tickets.save(ticket);
     return ticket;
   }
 }
 
-const day = { createTicket: new CreateTicket({ tickets }) };
-
-export class SyncDay extends ApplicationService<typeof day> {
-  async run(input: CreateTicketInput) {
-    return this.features.createTicket.execute(input); // child span, same trace
+export class SyncDay extends ApplicationService<CommandSyncDay, void> {
+  static readonly serviceName = "SyncDay";
+  async execute(command: CommandSyncDay): Promise<void> {
+    await this.featureBus.execute(new CommandCreateTicket(command.input)); // child span
   }
 }
 
-export const syncDay = new SyncDay(day);
+export const ticketsBoundedContext = new BoundedContext<{ tickets: ITicketRepository }>(
+  "tickets",
+);
+ticketsBoundedContext.addDependency("tickets", tickets);
+ticketsBoundedContext.feature(CommandCreateTicket)(CreateTicket);
+ticketsBoundedContext.appService(CommandSyncDay)(SyncDay);
+
+await ticketsBoundedContext.execute(new CommandCreateTicket(input)); // from a screen
 ```
 
-**Why a thin use-case layer:** it's the seam the UI and subscribers both call, the unit
-of a transaction, and the natural place to attach tracing. Keep it free of React and of
-SQL — it speaks domain + ports only.
+Services live in one folder per aggregate (`services/ticket/`); an entity of that aggregate with
+use cases of its own gets a folder inside it (`services/sale_order/payments/`). A bounded
+context is named for what it is — `ticketsBoundedContext`, never `ctx`.
+
+**Why a thin use-case layer:** it's the seam the UI, the subscribers and the crons all call —
+they are entrypoints that build a Command and execute it —, the unit of a transaction, and where
+tracing, logging and error reporting happen. Keep it free of React and of SQL — it speaks
+domain + ports only.
 
 ### `ui/` — screens (render only)
 
@@ -183,31 +211,50 @@ export function TicketsScreen() {
 The screen is registered against the module key in the app shell `ui` map
 (`{ [ticketsModule.key]: TicketsScreen }`).
 
-### `subscribers/` — decoupled side effects
+### `entrypoints/queue/` — subscribers, the doors of events
 
-A **subscriber** reacts to a domain event _after_ the transaction committed it. This is
-how you decouple side effects (print, sync, notify) from the use case that triggered them.
-Events with `requiresNetwork = true` are held by the queue until connectivity returns.
+A **subscriber** is an entrypoint, like a screen or a cron: it hears one event _after_ the
+transaction stored it and executes a Command on the module's bounded context. The work — and
+any decision — is the Feature or ApplicationService that Command reaches. Whether the event
+may go now (a connection, a session) is declared by the **event's class**.
 
 ```ts
-// subscribers/sync_ticket.subscriber.ts
-export const SyncTicketSubscriber: Subscriber = {
-  event: SyncTicketEvent.name,
-  async handle(event) {
-    await syncDayWorkflow.run(); // runs offline-safe; retried via the queue on failure
-  },
-};
+// domain/events.ts
+export class TicketClosedEvent extends DomainEvent {
+  static readonly eventName = "tickets.ticket.v1.closed";
+  static readonly label = "Ticket cerrado";
+  static readonly requiresNetwork = true; // waits for a connection
+  ticketId = "";
+}
+
+// entrypoints/queue/ticket_closed.subscriber.ts
+export class TicketClosedSubscriber extends EventSubscriber<TicketClosedEvent> {
+  static readonly subscriberName = "TicketClosed";
+  declare readonly ticketsBoundedContext: BoundedContext<TicketsDependencies>;
+  async handle(event: TicketClosedEvent) {
+    await this.ticketsBoundedContext.execute(new CommandSyncTicket(event.ticketId));
+  }
+}
+
+// entrypoints/queue/index.ts
+export const ticketsSubscriptions = new Subscriptions<TicketsEntrypoints>(
+  "tickets-subscriptions",
+);
+ticketsSubscriptions.addDependency("ticketsBoundedContext", ticketsBoundedContext);
+ticketsSubscriptions.subscribe(TicketClosedEvent)(TicketClosedSubscriber);
 ```
 
-You never call the EventBus directly — you **declare** subscribers and the framework
-dispatches. Failures are retried and dead-lettered automatically.
+You never publish to deliver a result: a caller that needs the answer executes the use case
+(`ticketsBoundedContext.execute(...)`). The queue retries what a retry may fix and sets aside
+what never will — the failed events a person retries.
 
 ---
 
 ## 4. Wiring — the `DomainModule` ties the layers together
 
 The module is the single registration point. The framework reads its hooks during boot
-(repositories → migrations → subscribers → crons) and starts the workers.
+(repositories → migrations → bounded contexts and subscriptions → crons); while its domain is
+active, they hear the stored queue.
 
 ```ts
 export class TicketsModule extends DomainModule {
@@ -220,8 +267,11 @@ export class TicketsModule extends DomainModule {
   override migrations() {
     return [CreateTicketsTable];
   }
+  override boundedContexts() {
+    return [ticketsBoundedContext];
+  }
   override subscribers() {
-    return [TicketCreatedSubscriber, SyncTicketSubscriber];
+    return [ticketsSubscriptions];
   }
   override crons() {
     return [SyncPendingTicketsCron];
@@ -247,25 +297,25 @@ sequenceDiagram
     participant UC as services/ CreateTicketUseCase
     participant E as domain/ Ticket (entity)
     participant Repo as adapters/ TicketRepository
-    participant DB as SQLite (domain_events)
-    participant Bus as EventBus / ProcessQueue
-    participant Sub as subscribers/ SyncTicketSubscriber
+    participant DB as SQLite (stored_events)
+    participant Bus as storedQueue
+    participant Sub as entrypoints/queue/ TicketCreatedSubscriber
     participant Ext as adapters/ OdooClient
 
     UI->>UC: execute(draft)
     UC->>E: Ticket.create(draft)
-    E->>E: addDomainEvent(TicketCreatedEvent)
+    E->>E: record(TicketCreatedEvent, values)
     UC->>Repo: save(ticket)
-    Repo->>DB: persist entity + domain event
+    Repo->>DB: the row + the stored event, one transaction
     UC-->>UI: ticket (UI updates from local state)
-    Note over Bus: later, on the poll loop (connectivity-gated)
-    Bus->>DB: read pending events
+    Note over Bus: after the commit — when its class's needs are met (network, session)
+    Bus->>DB: next waiting event
     Bus->>Sub: handle(TicketCreatedEvent)
-    Sub->>Ext: sync to Odoo (requiresNetwork)
+    Sub->>Ext: execute(CommandSyncTicket) → Feature → Odoo
     alt success
-        Sub-->>Bus: ack → event removed
-    else offline / error
-        Sub-->>Bus: throw → retried, then dead-lettered
+        Sub-->>Bus: delivered
+    else a retry may fix it / it never will
+        Sub-->>Bus: retried in order / set aside (failed events)
     end
 ```
 
@@ -282,6 +332,6 @@ lives in one adapter.
 2. **Adapters** — implement the repository (SQLite) and any external client (HTTP/BLE).
 3. **Services** — write the use case (one transaction); add a workflow if multi-step.
 4. **UI** — a screen that calls the use case, built from `@sincpro/mobile-ui`.
-5. **Subscribers** — for each side effect, declare a subscriber on the relevant event.
-6. **Module** — register repositories/migrations/subscribers/crons; add the screen to the `ui` map.
-7. **Telemetry** — a `Feature` / `ApplicationService` already opens the span. Shipping it is still opt-in: `createApp({ telemetry })` with an `otlp` endpoint. `@Tracing.TraceClass` remains for a class that is not one of those two.
+5. **Subscribers** — for each side effect, an `EventSubscriber` in `entrypoints/queue` that executes its Command; readiness on the event's class.
+6. **Module** — register repositories, migrations, `boundedContexts()`, `subscribers()` (the `Subscriptions`) and crons.
+7. **Telemetry** — every `Feature` / `ApplicationService` run already opens its span (`createKernel` configures the process). Shipping it is still opt-in: `createApp({ telemetry })` with an `otlp` endpoint. `@Tracing.TraceClass` remains for a class that is not a use case.

@@ -107,7 +107,7 @@ test("a failed print tells the user before it goes to the failed queue", async (
   const source = readFileSync(
     path.resolve(
       import.meta.dirname,
-      "../../sincpro_mobile/entrypoints/queue/printImage.subscriber.ts",
+      "../../sincpro_mobile/services/print/print_image.feature.ts",
     ),
     "utf8",
   );

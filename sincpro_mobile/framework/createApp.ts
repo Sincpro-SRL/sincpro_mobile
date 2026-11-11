@@ -1,4 +1,6 @@
-import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
+import { logger } from "@sincpro/client-framework";
+import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
+import { configureObservability } from "@sincpro/mobile/infrastructure/observability";
 import type { TelemetryConfig } from "@sincpro/mobile/infrastructure/telemetry";
 import { initTelemetry } from "@sincpro/mobile/infrastructure/telemetry";
 import type { CronWorkerOpts } from "@sincpro/mobile/infrastructure/workers";
@@ -27,8 +29,13 @@ export interface AppConfig {
   eventRetentionDays?: number;
 }
 
-/** Builds the kernel without IO: safe to call while the bundle loads. */
+/**
+ * Builds the kernel without IO: safe to call while the bundle loads. It also configures the
+ * process every bounded context runs with (`configureObservability`), so a background task the
+ * OS wakes runs traced and logged the same way.
+ */
 export function createKernel(config: Pick<AppConfig, "domains" | "crons"> = {}): Kernel {
+  configureObservability();
   const kernel = new Kernel([baseModule, ...(config.domains ?? [])]);
   if (config.crons) kernel.applyCronConfig(config.crons);
   kernel.registerExtensions();
@@ -45,7 +52,9 @@ export async function startApp(
   // Off the startup path: pruning is housekeeping, never a reason to wait.
   eventService
     .pruneHistory(config.eventRetentionDays)
-    .catch((error: unknown) => loggerUseCases.warn("Event history pruning failed", error));
+    .catch((error: unknown) =>
+      logger.warn("Event history pruning failed", errorAttributes(error)),
+    );
 
   if (config.telemetry) {
     await initTelemetry(config.telemetry);

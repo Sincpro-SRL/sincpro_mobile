@@ -5,4 +5,3 @@ export {
   CronWorkerOpts,
   defineBackgroundTask,
 } from "./CronWorker";
-export { EventBus, EventName } from "./EventBus";

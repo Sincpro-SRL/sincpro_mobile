@@ -1,4 +1,4 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/events";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
 import DeadLetterQueueRow from "@sincpro/mobile/ui/components/organisms/DeadLetterQueueRow";
 import { EventActionSheet } from "@sincpro/mobile/ui/components/organisms/EventActionSheet";
 import { EventListHeader } from "@sincpro/mobile/ui/events/event-query-controls";
@@ -19,11 +19,11 @@ export interface DeadLetterQueueListProps {
   /** Screen subtitle. */
   description?: string;
   /** Which failed events this screen lists; all of them by default. The app decides. */
-  select?: (event: IntegrationEvent) => boolean;
+  select?: (event: EventRecord) => boolean;
   /** What a row and its sheet call the event; its label by default. */
-  eventTitle?: (event: IntegrationEvent) => string;
+  eventTitle?: (event: EventRecord) => string;
   /** What the app shows of an event in its sheet, such as the image of a print. */
-  renderDetail?: (event: IntegrationEvent) => ReactNode;
+  renderDetail?: (event: EventRecord) => ReactNode;
   /** Shows event names and raw payloads; turn it off for people who are not debugging. */
   showTechnical?: boolean;
 }
@@ -40,7 +40,7 @@ function DeadLetterQueueScreenComponent({
   const { events, isLoading, loadEvents, retryEvent } = useDeadLetterQueue();
   const listed = useMemo(() => (select ? events.filter(select) : events), [events, select]);
   const list = useEventQuery(listed);
-  const [selected, setSelected] = useState<IntegrationEvent | null>(null);
+  const [selected, setSelected] = useState<EventRecord | null>(null);
   const [open, setOpen] = useState(false);
   const reload = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -49,22 +49,22 @@ function DeadLetterQueueScreenComponent({
     return () => clearTimeout(reload.current);
   }, [loadEvents]);
 
-  const openEvent = useCallback((event: IntegrationEvent) => {
+  const openEvent = useCallback((event: EventRecord) => {
     setSelected(event);
     setOpen(true);
   }, []);
   const renderEvent = useCallback(
     (event: unknown) => (
       <DeadLetterQueueRow
-        item={event as IntegrationEvent}
+        item={event as EventRecord}
         onOpen={openEvent}
-        title={eventTitle?.(event as IntegrationEvent)}
+        title={eventTitle?.(event as EventRecord)}
       />
     ),
     [eventTitle, openEvent],
   );
   const retry = useCallback(
-    async (event: IntegrationEvent) => {
+    async (event: EventRecord) => {
       await retryEvent(event);
       // The event left the list: its sheet must not offer a second retry of the same failure.
       setOpen(false);

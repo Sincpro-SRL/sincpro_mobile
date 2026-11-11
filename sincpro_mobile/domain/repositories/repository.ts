@@ -1,10 +1,10 @@
+import type { DomainEvent } from "@sincpro/client-framework";
 import { type DocumentCriteria } from "@sincpro/mobile/domain/database/criteria";
 import { Entity, ERemoteState, RemoteEntity } from "@sincpro/mobile/domain/entity/entity";
 import {
   EntityCollection,
   RemoteEntityCollection,
 } from "@sincpro/mobile/domain/entity/entity_collection";
-import { type IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
 
 export interface IRepository<T extends Entity, C extends EntityCollection<T>> {
   save(entity: T | T[] | C, options?: { deliver?: boolean }): Promise<void>;
@@ -13,7 +13,7 @@ export interface IRepository<T extends Entity, C extends EntityCollection<T>> {
 
   remove(entity: T | T[]): Promise<void>;
 
-  publish(events: readonly IntegrationEvent[]): Promise<void>;
+  publish(events: readonly DomainEvent[]): Promise<void>;
 
   findById(id: string): Promise<T | null>;
 

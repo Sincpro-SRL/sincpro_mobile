@@ -1,50 +1,41 @@
-import { EEventStatus } from "@sincpro/mobile/domain/events";
+import type { StoredState } from "@sincpro/client-framework";
 import type { IconName } from "@sincpro/mobile-ui/Display";
 
-export function eventStatusIcon(status: string): IconName {
-  switch (status) {
-    case EEventStatus.ACKNOWLEDGED:
+export function eventStatusIcon(state: StoredState): IconName {
+  switch (state) {
+    case "delivered":
       return "success";
-    case EEventStatus.PENDING:
+    case "pending":
       return "time";
-    case EEventStatus.PROCESSING:
-      return "sync";
-    case EEventStatus.FAILED:
+    case "set_aside":
       return "error";
-    case EEventStatus.CANCELLED:
-      return "dismiss";
     default:
       return "circle";
   }
 }
 
-export function eventStatusLabel(status: string): string {
-  switch (status) {
-    case EEventStatus.ACKNOWLEDGED:
-      return "Reconocido";
-    case EEventStatus.PENDING:
+export function eventStatusLabel(state: StoredState): string {
+  switch (state) {
+    case "delivered":
+      return "Entregado";
+    case "pending":
       return "Pendiente";
-    case EEventStatus.PROCESSING:
-      return "Procesando";
-    case EEventStatus.FAILED:
+    case "set_aside":
       return "Fallido";
-    case EEventStatus.CANCELLED:
-      return "Cancelado";
     default:
-      return status;
+      return state;
   }
 }
 
 export function eventStatusBadge(
-  status: string,
+  state: StoredState,
 ): "danger" | "successDark" | "infoDark" | "warning" {
-  switch (status) {
-    case EEventStatus.FAILED:
+  switch (state) {
+    case "set_aside":
       return "danger";
-    case EEventStatus.ACKNOWLEDGED:
+    case "delivered":
       return "successDark";
-    case EEventStatus.PENDING:
-    case EEventStatus.PROCESSING:
+    case "pending":
       return "infoDark";
     default:
       return "warning";

@@ -58,10 +58,6 @@ const SETTING_KEY: Record<ActivityChannel, ECommonSetting> = {
 
 let sequence = 0;
 
-export function declaresUi(source: object): boolean {
-  return (source.constructor as { ui?: boolean }).ui === true;
-}
-
 export function publishActivity(fact: Omit<ActivityFact, "id">): ActivityFact {
   const full: ActivityFact = { ...fact, id: `${fact.channel}:${fact.name}:${++sequence}` };
   UIEventBus.emit(ACTIVITY_EVENT, full);

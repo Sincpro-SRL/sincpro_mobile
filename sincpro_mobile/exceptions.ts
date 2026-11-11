@@ -1,3 +1,16 @@
+/**
+ * The errors of the mobile stack. Each declares the backend's failure kind (`failureKind`, read by
+ * `failureOf` from @sincpro/client-framework), so retrying, setting aside, reporting and what a
+ * screen shows follow from what the error is — never from its class name:
+ *
+ *     UserError, RejectedFailure  domain       the business refused: never retried, not reported
+ *     ValidationError, ChecksFailed  invalid   the input is wrong: fix it, never retried
+ *     StaleAggregate               conflict    refresh and retry
+ *     NetworkError, RepeatableFailure  unavailable  retried after a wait
+ *     BackendError, AppError       internal    a fault: reported
+ *
+ * A bare `DomainException` declares nothing: an unexpected failure, reported.
+ */
 export class DomainException extends Error {
   constructor(message: string) {
     super(message);
@@ -6,6 +19,7 @@ export class DomainException extends Error {
 }
 
 export class DomainUserError extends DomainException {
+  static readonly failureKind = "domain";
   constructor(message: string) {
     super(message);
     this.name = "UserError";
@@ -13,6 +27,7 @@ export class DomainUserError extends DomainException {
 }
 
 export class DomainValidationError extends DomainException {
+  static readonly failureKind = "invalid";
   constructor(message: string) {
     super(message);
     this.name = "ValidationError";
@@ -20,6 +35,9 @@ export class DomainValidationError extends DomainException {
 }
 
 export class DomainNetworkError extends DomainException {
+  static readonly failureKind = "unavailable";
+  /** What the delivery reads to mark the phone offline (`NETWORK_DOWN`). */
+  static readonly reason = "NETWORK_DOWN";
   constructor(message: string) {
     super(message);
     this.name = "NetworkError";
@@ -27,6 +45,7 @@ export class DomainNetworkError extends DomainException {
 }
 
 export class DomainBackendError extends DomainException {
+  static readonly failureKind = "internal";
   constructor(message: string) {
     super(message);
     this.name = "BackendError";
@@ -34,6 +53,7 @@ export class DomainBackendError extends DomainException {
 }
 
 export class DomainAppError extends DomainException {
+  static readonly failureKind = "internal";
   constructor(message: string) {
     super(message);
     this.name = "AppError";
@@ -41,6 +61,7 @@ export class DomainAppError extends DomainException {
 }
 
 export class StaleAggregate extends DomainException {
+  static readonly failureKind = "conflict";
   constructor(message: string) {
     super(message);
     this.name = "StaleAggregate";
@@ -63,6 +84,7 @@ export class ChecksFailed extends DomainValidationError {
 }
 
 export class RepeatableFailure extends DomainException {
+  static readonly failureKind = "unavailable";
   constructor(message: string) {
     super(message);
     this.name = "RepeatableFailure";
@@ -70,6 +92,7 @@ export class RepeatableFailure extends DomainException {
 }
 
 export class RejectedFailure extends DomainException {
+  static readonly failureKind = "domain";
   constructor(message: string) {
     super(message);
     this.name = "RejectedFailure";

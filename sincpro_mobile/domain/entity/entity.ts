@@ -1,14 +1,15 @@
+import { type DomainEvent, logger } from "@sincpro/client-framework";
 import {
-  type DomainEvent,
-  type DomainEventClass,
-  type EventData,
-} from "@sincpro/mobile/domain/events/domain_event";
-import { IntegrationEvent } from "@sincpro/mobile/domain/events/integration_event";
+  type EventRecord,
+  type EventValues,
+  newEvent,
+  type RecordableEvent,
+} from "@sincpro/mobile/domain/events/delivery";
+import { type Recorded, RecordedEvents } from "@sincpro/mobile/domain/events/recorded";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories/catalog";
 import { DomainValidationError } from "@sincpro/mobile/exceptions";
 import { mapped, resolveEntity } from "@sincpro/mobile/infrastructure/database";
 import { generateUUID } from "@sincpro/mobile/infrastructure/database/utils";
-import { loggerQueueProcessor } from "@sincpro/mobile/infrastructure/logger";
 
 import { heldEntities, relations } from "./relations";
 import { IValueObject, ValueObject } from "./value_object";
@@ -43,17 +44,17 @@ export interface IEntity extends IValueObject {
   equals(other: IEntity): boolean;
   clone(): this;
 
-  record<C extends DomainEventClass<DomainEvent>>(
-    EventClass: C,
-    payload?: EventData<InstanceType<C>>,
+  record<E extends DomainEvent>(
+    EventClass: RecordableEvent<E>,
+    values?: EventValues<E>,
   ): string;
-  recordEntity<C extends DomainEventClass<DomainEvent>>(EventClass: C): string;
-  recordedEvents(): readonly DomainEvent[];
-  pullEvents(): DomainEvent[];
-  releaseDeliverable(): IntegrationEvent[];
-  restoreRecorded(events: readonly DomainEvent[]): void;
+  recordEntity<E extends DomainEvent>(EventClass: RecordableEvent<E>): string;
+  recordedEvents(): readonly Recorded[];
+  pullEvents(): Recorded[];
+  releaseRecorded(): Recorded[];
+  restoreRecorded(recorded: readonly Recorded[]): void;
   copyRecordedFrom(source: Entity): void;
-  replaceRecorded(events: readonly DomainEvent[]): void;
+  replaceRecorded(recorded: readonly Recorded[]): void;
   noteHeld(): void;
   heldIds(field: string): readonly string[];
 }
@@ -68,8 +69,7 @@ export class Entity extends ValueObject implements IEntity {
   public updatedAt: string | null = null;
   public version: number = 0;
 
-  protected _recordedEvents: DomainEvent[] = [];
-  protected _correlationId: string | null = null;
+  protected _recorded = new RecordedEvents();
   private _held: Record<string, string[]> = {};
   protected readonly REPOSITORY: string | null = null;
 
@@ -101,12 +101,11 @@ export class Entity extends ValueObject implements IEntity {
   }
 
   /**
-   * Resolves domain events collection in runtime from repository.
-   * Uses @mapped decorator to automatically query events by eventIds.
-   * Returns fresh data on every access (no cache).
+   * The stored events this entity still names (`eventIds`), read from the message store on
+   * every access (no cache).
    */
-  @mapped(ECommonRepository.DOMAIN_EVENT, "eventIds")
-  get events(): DomainEvent[] {
+  @mapped(ECommonRepository.STORED_EVENTS, "eventIds")
+  get events(): EventRecord[] {
     return [];
   }
 
@@ -137,61 +136,53 @@ export class Entity extends ValueObject implements IEntity {
     return this.uuid === other.uuid;
   }
 
-  public record<C extends DomainEventClass<DomainEvent>>(
-    EventClass: C,
-    payload?: EventData<InstanceType<C>>,
+  public record<E extends DomainEvent>(
+    EventClass: RecordableEvent<E>,
+    values?: EventValues<E>,
   ): string {
-    return this.stageDomainEvent(EventClass.create(payload));
+    return this.stage(newEvent(EventClass, values));
   }
 
-  public recordEntity<C extends DomainEventClass<DomainEvent>>(EventClass: C): string {
-    return this.stageDomainEvent(
-      EventClass.create({ record: this } as unknown as EventData<InstanceType<C>>),
+  /** Records `EventClass` carrying this entity, as JSON values. */
+  public recordEntity<E extends DomainEvent>(EventClass: RecordableEvent<E>): string {
+    return this.stage(
+      newEvent(EventClass, {
+        record: JSON.parse(this.asJSON()),
+      } as unknown as EventValues<E>),
     );
   }
 
-  public recordedEvents(): readonly DomainEvent[] {
-    return this._recordedEvents.map((event) => event.clone());
+  public recordedEvents(): readonly Recorded[] {
+    return this._recorded.list();
   }
 
-  public pullEvents(): DomainEvent[] {
-    const events = this._recordedEvents;
-    this._recordedEvents = [];
-    this._correlationId = null;
-    return events;
+  public pullEvents(): Recorded[] {
+    return this._recorded.take();
   }
 
-  public releaseDeliverable(): IntegrationEvent[] {
-    const kept: DomainEvent[] = [];
-    const released: IntegrationEvent[] = [];
-    for (const event of this._recordedEvents) {
-      if (event instanceof IntegrationEvent) released.push(event);
-      else kept.push(event);
-    }
-    this._recordedEvents = kept;
-    if (kept.length === 0) this._correlationId = null;
+  /** What the repository stores: every record, no longer named by this entity. */
+  public releaseRecorded(): Recorded[] {
+    const released = this._recorded.take();
     if (released.length > 0) {
-      const gone = new Set(released.map((event) => event.uuid));
+      const gone = new Set(released.map((item) => item.id));
       this.eventIds = this.eventIds.filter((id) => !gone.has(id));
     }
     return released;
   }
 
-  public restoreRecorded(events: readonly DomainEvent[]): void {
-    for (const event of events) {
-      this._recordedEvents.push(event);
-      if (!this.eventIds.includes(event.uuid)) this.eventIds.push(event.uuid);
+  public restoreRecorded(recorded: readonly Recorded[]): void {
+    this._recorded.restore(recorded);
+    for (const item of recorded) {
+      if (!this.eventIds.includes(item.id)) this.eventIds.push(item.id);
     }
   }
 
-  public replaceRecorded(events: readonly DomainEvent[]): void {
-    this._recordedEvents = [...events];
+  public replaceRecorded(recorded: readonly Recorded[]): void {
+    this._recorded.replace(recorded);
   }
 
   public copyRecordedFrom(source: Entity): void {
-    for (const event of source.recordedEvents()) {
-      this.stageDomainEvent(event.clone());
-    }
+    for (const item of source.recordedEvents()) this.stage(item.event);
   }
 
   public noteHeld(): void {
@@ -208,32 +199,18 @@ export class Entity extends ValueObject implements IEntity {
     return this._held[field] ?? [];
   }
 
-  private stageDomainEvent(event: DomainEvent): string {
-    const existingEvent = this._recordedEvents.find((recorded) =>
-      recorded.hasSameBusinessPayload(event),
-    );
-
-    if (existingEvent) {
-      loggerQueueProcessor.warn(
-        `class ${this.constructor.name} - Event '${event.name}' is already recorded for '${this.uuid}' with the same payload. Skipping.`,
-      );
-      return existingEvent.uuid;
+  private stage(event: DomainEvent): string {
+    const { id, repeated } = this._recorded.record(event);
+    if (repeated) {
+      logger.warn("An event recorded twice with the same values is kept once", {
+        entity: this.constructor.name,
+        event: event.name,
+        uuid: this.uuid,
+      });
+      return id;
     }
-
-    if (!this._correlationId) {
-      this._correlationId = generateUUID();
-    }
-
-    event
-      .withEntityType(this.constructor.name)
-      .withAggregateId(this.uuid)
-      .withSequence(this._recordedEvents.length + 1)
-      .applyChain(this._correlationId);
-
-    this._recordedEvents.push(event);
-    this.eventIds.push(event.uuid);
-
-    return event.uuid;
+    this.eventIds.push(id);
+    return id;
   }
 }
 

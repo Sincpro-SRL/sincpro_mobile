@@ -1,8 +1,7 @@
+import type { HearingContext, Subscriptions } from "@sincpro/client-framework";
 import type { IMigration } from "@sincpro/mobile/domain/database";
-import type { Subscriber } from "@sincpro/mobile/event_driven";
 import type { WebViewMessageHandler } from "@sincpro/mobile/infrastructure/webview/message_handlers";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
-import type { EventInterceptor } from "@sincpro/mobile/infrastructure/workers/interceptors";
 
 export abstract class DomainModule {
   abstract readonly key: string;
@@ -18,19 +17,21 @@ export abstract class DomainModule {
   }
 
   /**
-   * Subscribers of this module. One can answer instead of a core subscriber by declaring
-   * `static replaces = CoreSubscriber`: the core one stops running.
+   * The bounded contexts of this module (`xBoundedContext`): their use cases, including those
+   * whose input is an event — they hear it while the module's domain is active. Around their use
+   * cases goes `boundedContext.interceptor(...)`.
    */
-  subscribers(): Subscriber[] {
+  boundedContexts(): readonly HearingContext[] {
     return [];
   }
 
   /**
-   * Interceptors around the subscribers of an event, by event name (`"*"` for all of them).
-   * They change core behavior from the app without modifying the core.
+   * The subscriptions of this module (`entrypoints/queue`): the `EventSubscriber`s that hear an
+   * event and execute its Command, while the module's domain is active. One replaces a core
+   * subscriber on the core's own: `commonSubscriptions.subscribe(Event, { replaces })(...)`.
    */
-  interceptors(): Record<string, EventInterceptor | EventInterceptor[]> {
-    return {};
+  subscribers(): readonly Subscriptions[] {
+    return [];
   }
 
   /**

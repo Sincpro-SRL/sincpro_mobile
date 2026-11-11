@@ -1,10 +1,8 @@
+import { logger, type LogLayer } from "@sincpro/client-framework";
 import { GeoAdapter } from "@sincpro/mobile/adapters/Geo.adapter";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
 import { Debug } from "@sincpro/mobile/infrastructure/debug";
-import logger, {
-  EApplicationLogger,
-  getEnabledLoggers,
-} from "@sincpro/mobile/infrastructure/logger";
+import { errorAttributes, getEnabledLayers } from "@sincpro/mobile/infrastructure/logger";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import type { ThemeTokens } from "@sincpro/mobile-ui/theme";
 import { DEFAULT_DARK_THEME, DEFAULT_THEME, setActiveTheme } from "@sincpro/mobile-ui/theme";
@@ -39,10 +37,10 @@ interface ICommonContext {
   debugMode: boolean;
   debugModeLoaded: boolean;
   toggleDebugMode: () => Promise<void>;
-  /** Which application loggers may emit INFO while debug mode is on. */
-  loggerContexts: Record<EApplicationLogger, boolean>;
-  setLoggerContextEnabled: (context: EApplicationLogger, enabled: boolean) => Promise<void>;
-  resetLoggerContexts: () => Promise<void>;
+  /** Which layers may emit INFO while debug mode is on. */
+  logLayers: Record<LogLayer, boolean>;
+  setLogLayerEnabled: (layer: LogLayer, enabled: boolean) => Promise<void>;
+  resetLogLayers: () => Promise<void>;
   hasGeoPermission: boolean;
   geoIsLoading: boolean;
   geoError: string | null;
@@ -66,7 +64,7 @@ interface CommonProviderProps {
 export function CommonProvider({ children, lightTheme, darkTheme }: CommonProviderProps) {
   const [debugMode, setDebugMode] = useState(false);
   const [debugModeLoaded, setDebugModeLoaded] = useState(false);
-  const [loggerContexts, setLoggerContexts] = useState(getEnabledLoggers);
+  const [logLayers, setLogLayers] = useState(getEnabledLayers);
 
   const [hasGeoPermission, setHasGeoPermission] = useState(false);
   const [geoIsLoading, setGeoIsLoading] = useState(false);
@@ -79,13 +77,13 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
     async function loadDebug() {
       const snapshot = await Debug.hydrate();
       setDebugMode(snapshot.enabled);
-      setLoggerContexts(snapshot.loggers);
+      setLogLayers(snapshot.layers);
       setDebugModeLoaded(true);
     }
     loadDebug();
     return Debug.subscribe(() => {
       setDebugMode(Debug.isEnabled());
-      setLoggerContexts(Debug.loggers.get());
+      setLogLayers(Debug.layers.get());
     });
   }, []);
 
@@ -93,15 +91,12 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
     await Debug.setEnabledPersist(!debugMode);
   }, [debugMode]);
 
-  const setLoggerContextEnabled = useCallback(
-    async (context: EApplicationLogger, enabled: boolean) => {
-      await Debug.loggers.setEnabledPersist(context, enabled);
-    },
-    [],
-  );
+  const setLogLayerEnabled = useCallback(async (layer: LogLayer, enabled: boolean) => {
+    await Debug.layers.setEnabledPersist(layer, enabled);
+  }, []);
 
-  const resetLoggerContexts = useCallback(async () => {
-    await Debug.loggers.resetPersist();
+  const resetLogLayers = useCallback(async () => {
+    await Debug.layers.resetPersist();
   }, []);
 
   const checkGeoPermission = useCallback(async () => {
@@ -147,7 +142,7 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
       setTimezone(tz.timezone);
       setLocale(tz.locale);
     } catch (error) {
-      logger.warn(error);
+      logger.warn("Failed to save the time zone", errorAttributes(error));
     }
   }, []);
 
@@ -167,7 +162,7 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
     const sub = AppState.addEventListener("change", (state) => {
       if (state !== "active") return;
       GeoAdapter.hasPermission().then(setHasGeoPermission, (error: unknown) =>
-        logger.warn("Failed to refresh location permission", error),
+        logger.warn("Failed to refresh location permission", errorAttributes(error)),
       );
     });
     return () => sub.remove();
@@ -192,7 +187,8 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
         setColorSchemeState(choice);
         follower.choose(choice);
       },
-      (error: unknown) => logger.warn("Failed to load the color scheme", error),
+      (error: unknown) =>
+        logger.warn("Failed to load the color scheme", errorAttributes(error)),
     );
     return () => {
       active = false;
@@ -211,7 +207,7 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
         setTimezone(timezoneResult);
         setLocale(localeResult);
       } catch (error) {
-        logger.warn("Failed to load timezone/locale", error);
+        logger.warn("Failed to load timezone/locale", errorAttributes(error));
       }
     }
     loadTimezoneAndLocale();
@@ -222,9 +218,9 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
       debugMode,
       debugModeLoaded,
       toggleDebugMode,
-      loggerContexts,
-      setLoggerContextEnabled,
-      resetLoggerContexts,
+      logLayers,
+      setLogLayerEnabled,
+      resetLogLayers,
       hasGeoPermission,
       geoIsLoading,
       geoError,
@@ -240,9 +236,9 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
       debugMode,
       debugModeLoaded,
       toggleDebugMode,
-      loggerContexts,
-      setLoggerContextEnabled,
-      resetLoggerContexts,
+      logLayers,
+      setLogLayerEnabled,
+      resetLogLayers,
       hasGeoPermission,
       geoIsLoading,
       geoError,

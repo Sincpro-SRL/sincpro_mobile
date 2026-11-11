@@ -15,7 +15,8 @@ component + sequence diagrams and the rationale behind each decision.
 - [**architecture-consumer.md**](architecture-consumer.md) — recommended structure for a
   consumer app: adapters, services (use cases / workflows), ui, and subscribers.
 - [**prd/PRD_01_feature-y-application-service.md**](prd/PRD_01_feature-y-application-service.md)
-  — `Feature` and `ApplicationService`: a public method is a span, with no decorator.
+  — `Feature` and `ApplicationService` of 1.x (a public method is a span). Superseded in 2.0
+  by `@sincpro/client-framework`'s, run through a `BoundedContext`.
 - [**prd/PRD_02_cadena-del-evento.md**](prd/PRD_02_cadena-del-evento.md)
   — correlation, causation and the queue: the first cut of SP-2026-1065.
 - [**prd/PRD_03_orm-y-base-de-datos.md**](prd/PRD_03_orm-y-base-de-datos.md)

@@ -1,4 +1,5 @@
 export { EBuiltinCron } from "@sincpro/mobile/entrypoints/cron/EBuiltinCron";
+export { commonSubscriptions } from "@sincpro/mobile/entrypoints/queue";
 export type {
   AppShellConfig,
   AppShellDefinition,
@@ -21,9 +22,11 @@ export { BaseModule, baseModule } from "@sincpro/mobile/framework/base_module";
 export type { AppConfig } from "@sincpro/mobile/framework/createApp";
 export { createApp, createKernel, startApp } from "@sincpro/mobile/framework/createApp";
 export { DomainModule } from "@sincpro/mobile/framework/domain_module";
-export { ApplicationService, Feature } from "@sincpro/mobile/framework/feature";
 export { Kernel } from "@sincpro/mobile/framework/kernel";
 export { orchestrator } from "@sincpro/mobile/framework/orchestrator";
+export { commonBoundedContext } from "@sincpro/mobile/infrastructure/bounded_context";
+export { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
+export { eventOutbox } from "@sincpro/mobile/infrastructure/events/outbox";
 export { installGlobalErrorHandler } from "@sincpro/mobile/infrastructure/ui/errorHandler";
 
 // Observability — opt-in, tree-shakeable
@@ -37,20 +40,24 @@ export {
   interceptFunction,
   interceptInstance,
 } from "@sincpro/mobile/infrastructure/interceptor/intercept";
-export type { Logger } from "@sincpro/mobile/infrastructure/interceptor/logging_hooks";
 export { loggingHooks } from "@sincpro/mobile/infrastructure/interceptor/logging_hooks";
+export type { LoggerPolicy } from "@sincpro/mobile/infrastructure/logger";
 export {
-  DEFAULT_ENABLED_LOGS,
-  EApplicationLogger,
-  getEnabledLoggers,
+  configureLogger,
+  DEFAULT_ENABLED_LAYERS,
+  errorAttributes,
+  getEnabledLayers,
   isConsoleDebug,
-  isLoggerEnabled,
-  resetEnabledLoggers,
+  isLayerEnabled,
+  LOG_LAYERS,
+  mobileLogger,
+  resetEnabledLayers,
   setConsoleDebug,
-  setEnabledLoggers,
-  setLoggerEnabled,
+  setEnabledLayers,
+  setLayerEnabled,
   subscribeLoggerConfig,
 } from "@sincpro/mobile/infrastructure/logger";
+export { configureObservability } from "@sincpro/mobile/infrastructure/observability";
 export type {
   LokiAuth,
   LokiConfig,

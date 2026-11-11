@@ -1,4 +1,4 @@
-import { loggerCronJobs } from "@sincpro/mobile/infrastructure/logger";
+import { logger } from "@sincpro/client-framework";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 
 interface SyncState {
@@ -76,7 +76,7 @@ class Cron {
     this.currentCrons = desired;
     this.lastSyncState = newState;
 
-    loggerCronJobs.info(
+    logger.info(
       `Cron.sync: +${added} -${removed} crons (domains=${[...domains].join(",")}, auth=${isAuthenticated})`,
     );
 

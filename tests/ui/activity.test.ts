@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { showsDelivery } from "../../sincpro_mobile/domain/events/delivery.ts";
 import { textOf } from "../../sincpro_mobile/domain/events/label.ts";
 import {
   ACTIVITY_EVENT,
   type ActivityFact,
   activityVisible,
   applyActivity,
-  declaresUi,
   emptyActivity,
   notifyDevice,
 } from "../../sincpro_mobile/infrastructure/ui/activity.ts";
@@ -65,8 +65,9 @@ test("an event is silent until its class sets ui", () => {
     static readonly ui = true;
   }
 
-  assert.equal(declaresUi(new Quiet()), false);
-  assert.equal(declaresUi(new Shown()), true);
+  assert.equal(showsDelivery(Quiet), false);
+  assert.equal(showsDelivery(Shown), true);
+  assert.equal(showsDelivery(undefined), false);
 });
 
 test("a fact without ui stays out of the toast unless the reader asks for all", () => {

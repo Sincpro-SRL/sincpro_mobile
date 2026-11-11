@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { DomainEvent } from "@sincpro/client-framework";
+
 import { Entity } from "../../sincpro_mobile/domain/entity/entity.ts";
-import { IntegrationEvent } from "../../sincpro_mobile/domain/events/integration_event.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal subclass — Entity has a protected constructor
@@ -14,37 +15,41 @@ class TestEntity extends Entity {
   }
 }
 
-class OrderEvent extends IntegrationEvent {
-  public readonly name = "OrderEvent";
-  public readonly label = "Order";
-  public orderId: string = "";
+class OrderEvent extends DomainEvent {
+  static readonly eventName = "test.order.v1.placed";
+  static readonly label = "Order";
+  orderId: string = "";
 }
 
-class ShipEvent extends IntegrationEvent {
-  public readonly name = "ShipEvent";
-  public readonly label = "Ship";
-  public address: string = "";
+class ShipEvent extends DomainEvent {
+  static readonly eventName = "test.order.v1.shipped";
+  static readonly label = "Ship";
+  address: string = "";
 }
 
 // ---------------------------------------------------------------------------
-// record — correlation + sequence invariants
+// record — one flow per save, in order
 //
-// These properties are what makes distributed tracing and event ordering work.
-// If broken, trace IDs are wrong and event replay is out of order.
+// What an aggregate records before one save is one flow: the stored queue keeps them in
+// order and the trace links them by their correlationId.
 // ---------------------------------------------------------------------------
 
-test("record: all events in one batch share the same correlationId", () => {
+test("record: all events in one batch share one flow, the first one's id", () => {
   const entity = TestEntity.make();
-  entity.record(OrderEvent, { orderId: "a" });
+  const first = entity.record(OrderEvent, { orderId: "a" });
   entity.record(ShipEvent, { address: "123 St" });
 
   const events = entity.recordedEvents();
   assert.equal(events.length, 2);
   const [e1, e2] = events;
-  assert.ok(e1.correlationId !== null, "correlationId must be set");
+  assert.equal(e1.correlationId, first, "the first event heads the flow");
   assert.equal(e1.correlationId, e2.correlationId, "batch must share one correlationId");
-  assert.equal(e1.causationId, null);
-  assert.equal(e1.entityType, "TestEntity");
+  assert.equal(e1.event.name, "test.order.v1.placed");
+  assert.ok(e1.event instanceof OrderEvent);
+  assert.deepEqual(
+    entity.eventIds,
+    events.map((recorded) => recorded.id),
+  );
 });
 
 test("record: sequence numbers are 1-based and monotonically increasing", () => {
@@ -60,31 +65,23 @@ test("record: sequence numbers are 1-based and monotonically increasing", () => 
   );
 });
 
-test("record: aggregateId equals the entity uuid", () => {
-  const entity = TestEntity.make();
-  entity.record(OrderEvent, { orderId: "x" });
-
-  const [event] = entity.recordedEvents();
-  assert.equal(event.aggregateId, entity.uuid);
-});
-
 // ---------------------------------------------------------------------------
-// Duplicate guard — record must skip identical business payload
+// Duplicate guard — record must skip identical values
 //
 // Without this guard, calling record twice with the same data
 // publishes two events, causing double-processing on the subscriber side.
 // ---------------------------------------------------------------------------
 
-test("record: duplicate business payload returns existing uuid and is not added", () => {
+test("record: duplicate values return the existing id and are not added", () => {
   const entity = TestEntity.make();
   const id1 = entity.record(OrderEvent, { orderId: "dup" });
   const id2 = entity.record(OrderEvent, { orderId: "dup" });
 
-  assert.equal(id1, id2, "duplicate must return the original event uuid");
+  assert.equal(id1, id2, "duplicate must return the original event id");
   assert.equal(entity.recordedEvents().length, 1, "only one event must be stored");
 });
 
-test("record: same event class with different payload is NOT a duplicate", () => {
+test("record: same event class with different values is NOT a duplicate", () => {
   const entity = TestEntity.make();
   entity.record(OrderEvent, { orderId: "aaa" });
   entity.record(OrderEvent, { orderId: "bbb" });
@@ -124,15 +121,15 @@ test("pullEvents: next batch gets an independent correlationId", () => {
 // Callers should not be able to silently corrupt the staged event list.
 // ---------------------------------------------------------------------------
 
-test("recordedEvents: returns clones — mutating a returned event does not affect entity", () => {
+test("recordedEvents: returns copies — mutating a returned event does not affect entity", () => {
   const entity = TestEntity.make();
   entity.record(OrderEvent, { orderId: "abc" });
 
-  const [clone] = entity.recordedEvents() as OrderEvent[];
-  (clone as any).orderId = "MUTATED";
+  const [copy] = entity.recordedEvents();
+  (copy.event as OrderEvent).orderId = "MUTATED";
 
-  const [fresh] = entity.recordedEvents() as OrderEvent[];
-  assert.equal(fresh.orderId, "abc", "internal event must be unaffected by clone mutation");
+  const [fresh] = entity.recordedEvents();
+  assert.equal((fresh.event as OrderEvent).orderId, "abc");
 });
 
 // ---------------------------------------------------------------------------
@@ -160,23 +157,21 @@ test("equals: null/undefined → false", () => {
 // ---------------------------------------------------------------------------
 // copyRecordedFrom — entity transplant
 //
-// Used when domain logic moves events from one aggregate to another.
-// The transplanted events must be stamped with the TARGET entity's uuid,
-// not the source's — otherwise the aggregate link in the event store is wrong.
+// Used when domain logic moves events from one aggregate to another. The transplanted
+// events belong to the TARGET: new ids, in the target's own flow.
 // ---------------------------------------------------------------------------
 
-test("copyRecordedFrom: transplanted events carry the target entity uuid", () => {
+test("copyRecordedFrom: transplanted events join the target's flow under new ids", () => {
   const source = TestEntity.make();
   source.record(OrderEvent, { orderId: "from-source" });
 
   const target = TestEntity.make();
   target.copyRecordedFrom(source);
 
+  const [original] = source.recordedEvents();
   const [transplanted] = target.recordedEvents();
-  assert.equal(transplanted.aggregateId, target.uuid, "must reference the target entity");
-  assert.notEqual(
-    transplanted.aggregateId,
-    source.uuid,
-    "must NOT reference the source entity",
-  );
+  assert.equal((transplanted.event as OrderEvent).orderId, "from-source");
+  assert.notEqual(transplanted.id, original.id);
+  assert.notEqual(transplanted.correlationId, original.correlationId);
+  assert.deepEqual(target.eventIds, [transplanted.id]);
 });

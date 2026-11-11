@@ -1,5 +1,5 @@
+import { logger } from "@sincpro/client-framework";
 import type { IPrinterDriver } from "@sincpro/mobile/domain/print/printer";
-import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 
 const noopDriver: IPrinterDriver = {
   getPairedDevices: () => [],
@@ -9,17 +9,17 @@ const noopDriver: IPrinterDriver = {
   getConnection: () => ({ state: "DISCONNECTED", address: null }),
   onConnectionChange: () => () => {},
   connectBluetooth: async () => {
-    loggerUseCases.warn("Printer driver no registrado: connectBluetooth ignorado");
+    logger.warn("Printer driver no registrado: connectBluetooth ignorado");
   },
   disconnect: async () => {},
   printText: async () => {
-    loggerUseCases.warn("Printer driver no registrado: printText ignorado");
+    logger.warn("Printer driver no registrado: printText ignorado");
   },
   printImageBase64: async () => {
-    loggerUseCases.warn("Printer driver no registrado: printImageBase64 ignorado");
+    logger.warn("Printer driver no registrado: printImageBase64 ignorado");
   },
   printPdfBase64: async () => {
-    loggerUseCases.warn("Printer driver no registrado: printPdfBase64 ignorado");
+    logger.warn("Printer driver no registrado: printPdfBase64 ignorado");
   },
 };
 

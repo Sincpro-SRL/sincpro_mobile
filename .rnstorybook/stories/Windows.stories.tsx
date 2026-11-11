@@ -1,4 +1,4 @@
-import { EEventStatus, IntegrationEvent } from "@sincpro/mobile/domain/events";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
 import { ActivityStrip } from "@sincpro/mobile/ui/activity/ActivityStrip";
 import EventTimelineItem from "@sincpro/mobile/ui/components/molecules/EventTimelineItem";
 import GeoPermissionCard from "@sincpro/mobile/ui/components/molecules/GeoPermissionCard";
@@ -12,10 +12,22 @@ import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { View } from "react-native";
 
-function sampleEvent(fields: Partial<IntegrationEvent>): IntegrationEvent {
-  const event = IntegrationEvent.create();
-  Object.assign(event, fields);
-  return event;
+function sampleEvent(fields: Partial<EventRecord>): EventRecord {
+  return {
+    id: `${fields.name ?? "event"}-${fields.publishedAt ?? ""}`,
+    name: "",
+    label: "",
+    state: "pending",
+    attempts: 0,
+    publishedAt: new Date().toISOString(),
+    settledAt: null,
+    correlationId: "flow",
+    causationId: null,
+    failures: [],
+    error: null,
+    payload: {},
+    ...fields,
+  };
 }
 
 function daysAgo(days: number): string {
@@ -29,35 +41,31 @@ const EVENTS = [
   sampleEvent({
     name: "sale.order.confirmed",
     label: "Pedido confirmado",
-    status: EEventStatus.ACKNOWLEDGED,
+    state: "delivered",
     attempts: 1,
-    sequence: 1,
-    createdAt: daysAgo(0),
+    publishedAt: daysAgo(0),
   }),
   sampleEvent({
     name: "stock.picking.done",
     label: "Entrega validada",
-    status: EEventStatus.PENDING,
+    state: "pending",
     attempts: 0,
-    sequence: 2,
-    createdAt: daysAgo(3),
+    publishedAt: daysAgo(3),
   }),
   sampleEvent({
     name: "account.move.posted",
     label: "Factura publicada",
-    status: EEventStatus.FAILED,
+    state: "set_aside",
     attempts: 4,
-    errorMessage: "El servidor no respondió a tiempo",
-    sequence: 3,
-    createdAt: daysAgo(20),
+    error: "El servidor no respondió a tiempo",
+    publishedAt: daysAgo(20),
   }),
   sampleEvent({
     name: "account.payment.posted",
     label: "Pago registrado",
-    status: EEventStatus.CANCELLED,
+    state: "set_aside",
     attempts: 0,
-    sequence: 4,
-    createdAt: daysAgo(40),
+    publishedAt: daysAgo(40),
   }),
 ];
 
@@ -70,7 +78,7 @@ function EventBrowser({
 }: {
   name: string;
   description: string;
-  events: IntegrationEvent[];
+  events: EventRecord[];
   failedOnly?: boolean;
   activity?: { label: string; detail?: string; tone: "running" | "failed" };
 }) {
@@ -101,9 +109,9 @@ function EventBrowser({
       <ListViewV2.Content>
         {(event) =>
           failedOnly ? (
-            <DeadLetterQueueRow item={event as IntegrationEvent} onOpen={() => undefined} />
+            <DeadLetterQueueRow item={event as EventRecord} onOpen={() => undefined} />
           ) : (
-            <EventRow item={event as IntegrationEvent} onOpen={() => undefined} />
+            <EventRow item={event as EventRecord} onOpen={() => undefined} />
           )
         }
       </ListViewV2.Content>
@@ -169,7 +177,7 @@ export const EventosFallidos: Story = {
         tone: "failed",
       }}
       description="Eventos que no pudieron ser procesados"
-      events={EVENTS.filter((event) => event.status === EEventStatus.FAILED)}
+      events={EVENTS.filter((event) => event.state === "set_aside")}
       failedOnly
       name="Eventos fallidos"
     />
@@ -200,7 +208,7 @@ export const LineaDeTiempo: Story = {
         <EventTimelineItem
           event={event}
           isLast={index === EVENTS.length - 1}
-          key={event.uuid}
+          key={event.id}
           onOpen={() => undefined}
         />
       ))}

@@ -1,42 +1,43 @@
+import type { LogLayer } from "@sincpro/client-framework";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
 import {
-  DEFAULT_ENABLED_LOGS,
-  EApplicationLogger,
-  getEnabledLoggers,
+  DEFAULT_ENABLED_LAYERS,
+  getEnabledLayers,
   isConsoleDebug,
-  isLoggerEnabled,
-  resetEnabledLoggers,
+  isLayerEnabled,
+  LOG_LAYERS,
+  resetEnabledLayers,
   setConsoleDebug,
-  setEnabledLoggers,
-  setLoggerEnabled,
+  setEnabledLayers,
+  setLayerEnabled,
   subscribeLoggerConfig,
 } from "@sincpro/mobile/infrastructure/logger";
 
 const DEBUG_MODE_SETTING_KEY = "app.debug_mode";
-const DEBUG_LOGGERS_SETTING_KEY = "app.debug_loggers";
+const DEBUG_LAYERS_SETTING_KEY = "app.debug_log_layers";
 
-const LOGGER_CONTEXTS = Object.values(EApplicationLogger);
-
-function isLoggerMap(value: unknown): value is Partial<Record<EApplicationLogger, boolean>> {
+function isLayerMap(value: unknown): value is Partial<Record<LogLayer, boolean>> {
   if (value == null || typeof value !== "object" || Array.isArray(value)) return false;
-  return Object.keys(value as object).every((key) =>
-    (LOGGER_CONTEXTS as string[]).includes(key),
+  return Object.entries(value as object).every(
+    ([key, enabled]) =>
+      (LOG_LAYERS as readonly string[]).includes(key) && typeof enabled === "boolean",
   );
 }
 
-async function persistLoggers(): Promise<void> {
-  await SettingsRepository.saveOneSetting(DEBUG_LOGGERS_SETTING_KEY, getEnabledLoggers());
+async function persistLayers(): Promise<void> {
+  await SettingsRepository.saveOneSetting(DEBUG_LAYERS_SETTING_KEY, getEnabledLayers());
 }
 
 /**
  * Runtime debug surface for hosts and screens.
  *
- * Two layers:
+ * Two levels:
  * 1. Master switch — INFO/DEBUG console output (`setEnabled`).
- * 2. Per-context mask — which loggers may speak when the master is on
- *    (`loggers.setEnabled`, `loggers.set`, …).
+ * 2. Per-layer mask — which layers may speak when the master is on (`layers.setEnabled`,
+ *    `layers.set`, …): infrastructure, adapter, entrypoint, bounded context, application
+ *    service, feature.
  *
- * ERROR/WARN always print. Loki INFO also respects the context mask.
+ * ERROR/WARN always print. Loki INFO also respects the layer mask.
  */
 export const Debug = {
   isEnabled: isConsoleDebug,
@@ -51,72 +52,69 @@ export const Debug = {
   },
 
   /**
-   * Restore master switch + logger mask from settings after bootstrap.
+   * Restore master switch + layer mask from settings after bootstrap.
    * Safe to call once from CommonProvider.
    */
   async hydrate(): Promise<{
     enabled: boolean;
-    loggers: Record<EApplicationLogger, boolean>;
+    layers: Record<LogLayer, boolean>;
   }> {
-    const [mode, loggers] = await Promise.all([
+    const [mode, layers] = await Promise.all([
       SettingsRepository.getSettingByName(DEBUG_MODE_SETTING_KEY),
-      SettingsRepository.getSettingByName(DEBUG_LOGGERS_SETTING_KEY),
+      SettingsRepository.getSettingByName(DEBUG_LAYERS_SETTING_KEY),
     ]);
     setConsoleDebug(mode === true);
-    if (isLoggerMap(loggers)) setEnabledLoggers(loggers);
-    return { enabled: isConsoleDebug(), loggers: getEnabledLoggers() };
+    if (isLayerMap(layers)) setEnabledLayers(layers);
+    return { enabled: isConsoleDebug(), layers: getEnabledLayers() };
   },
 
   subscribe: subscribeLoggerConfig,
 
-  loggers: {
-    contexts: LOGGER_CONTEXTS,
+  layers: {
+    all: LOG_LAYERS,
 
-    defaults: (): Record<EApplicationLogger, boolean> => ({ ...DEFAULT_ENABLED_LOGS }),
+    defaults: (): Record<LogLayer, boolean> => ({ ...DEFAULT_ENABLED_LAYERS }),
 
-    get: getEnabledLoggers,
+    get: getEnabledLayers,
 
-    isEnabled: isLoggerEnabled,
+    isEnabled: isLayerEnabled,
 
-    setEnabled(context: EApplicationLogger, enabled: boolean): void {
-      setLoggerEnabled(context, enabled);
+    setEnabled(layer: LogLayer, enabled: boolean): void {
+      setLayerEnabled(layer, enabled);
     },
 
-    async setEnabledPersist(context: EApplicationLogger, enabled: boolean): Promise<void> {
-      setLoggerEnabled(context, enabled);
-      await persistLoggers();
+    async setEnabledPersist(layer: LogLayer, enabled: boolean): Promise<void> {
+      setLayerEnabled(layer, enabled);
+      await persistLayers();
     },
 
-    set(patch: Partial<Record<EApplicationLogger, boolean>>): void {
-      setEnabledLoggers(patch);
+    set(patch: Partial<Record<LogLayer, boolean>>): void {
+      setEnabledLayers(patch);
     },
 
-    async setPersist(patch: Partial<Record<EApplicationLogger, boolean>>): Promise<void> {
-      setEnabledLoggers(patch);
-      await persistLoggers();
+    async setPersist(patch: Partial<Record<LogLayer, boolean>>): Promise<void> {
+      setEnabledLayers(patch);
+      await persistLayers();
     },
 
-    /** Turn every context on — useful for a short diagnostic session. */
+    /** Turn every layer on — useful for a short diagnostic session. */
     enableAll(): void {
-      const all = Object.fromEntries(
-        LOGGER_CONTEXTS.map((context) => [context, true]),
-      ) as Record<EApplicationLogger, boolean>;
-      setEnabledLoggers(all);
+      setEnabledLayers(Object.fromEntries(LOG_LAYERS.map((layer) => [layer, true])));
     },
 
     async enableAllPersist(): Promise<void> {
       this.enableAll();
-      await persistLoggers();
+      await persistLayers();
     },
 
-    /** Back to the packaged quiet defaults (Odoo/adapters/repos off). */
+    /** Back to the packaged quiet defaults (adapters off). */
     reset(): void {
-      resetEnabledLoggers();
+      resetEnabledLayers();
     },
 
     async resetPersist(): Promise<void> {
-      resetEnabledLoggers();
-      await persistLoggers();
+      resetEnabledLayers();
+      await persistLayers();
     },
   },
 };

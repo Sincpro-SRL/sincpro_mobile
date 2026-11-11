@@ -57,11 +57,11 @@ export class TelemetryFlushWorker {
     // Trigger 2 — reconnect events (opt-in). Up → drain now (reset backoff);
     // Down → mark offline (informational; delivery still self-recovers via backoff).
     if (this.opts.onConnectivityEvents) {
-      const offUp = UIEventBus.on(InternetIsUpEvent.name, () => {
+      const offUp = UIEventBus.on(InternetIsUpEvent.eventName, () => {
         this.connectivity.markOnline();
         this.flush.run({ resetBackoff: true }).catch(() => {});
       });
-      const offDown = UIEventBus.on(InternetIsDownEvent.name, () => {
+      const offDown = UIEventBus.on(InternetIsDownEvent.eventName, () => {
         this.connectivity.markOffline();
       });
       this.unsubscribe = () => {

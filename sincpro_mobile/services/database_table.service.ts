@@ -1,21 +1,21 @@
+import { logger } from "@sincpro/client-framework";
 import { IDatabaseTable } from "@sincpro/mobile/domain/database";
 import { ECommonRepository, repos } from "@sincpro/mobile/entrypoints/db";
 import { replaceable } from "@sincpro/mobile/framework/replaceable";
-import { loggerUseCases } from "@sincpro/mobile/infrastructure/logger";
 
 export class DatabaseTablesUseCase {
   private get repository() {
     return repos.get(ECommonRepository.DATABASE_TABLE);
   }
   async getAllTables(): Promise<IDatabaseTable[]> {
-    loggerUseCases.info("Getting all database tables");
+    logger.info("Getting all database tables");
     const tables = await this.repository.findAll();
     return tables.toArray();
   }
   async getTableData(tableName: string): Promise<any[]> {
-    loggerUseCases.info(`Getting data for ${tableName}`);
+    logger.info(`Getting data for ${tableName}`);
     const result = await this.repository.getTableData(tableName);
-    loggerUseCases.info(`Retrieved ${result.length} records from ${tableName}`);
+    logger.info(`Retrieved ${result.length} records from ${tableName}`);
     return result;
   }
 }

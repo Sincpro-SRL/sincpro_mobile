@@ -1,4 +1,5 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/events";
+import type { StoredState } from "@sincpro/client-framework";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
 import {
   eventStatusIcon,
   eventStatusLabel,
@@ -11,29 +12,28 @@ import { memo } from "react";
 import { View } from "react-native";
 
 interface EventTimelineItemProps {
-  event: IntegrationEvent;
+  event: EventRecord;
   isLast?: boolean;
   /** The screen owns the one action sheet; an item never mounts an overlay. */
-  onOpen: (event: IntegrationEvent) => void;
+  onOpen: (event: EventRecord) => void;
 }
 
-function readableName(event: IntegrationEvent): string {
-  if (event.label) return event.label;
+function readableName(event: EventRecord): string {
+  if (event.label && event.label !== event.name) return event.label;
   const raw = event.name.split(".").pop()?.replace(/_/g, " ") || event.name;
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
-function dotColor(status: string | undefined, theme: ReturnType<typeof useTheme>): string {
-  if (status === "FAILED") return theme.danger;
-  if (status === "ACKNOWLEDGED") return theme.success;
-  if (status === "PROCESSING") return theme.info;
-  if (status === "PENDING") return theme.warning;
+function dotColor(state: StoredState, theme: ReturnType<typeof useTheme>): string {
+  if (state === "set_aside") return theme.danger;
+  if (state === "delivered") return theme.success;
+  if (state === "pending") return theme.warning;
   return theme.text.tertiary;
 }
 
 function EventTimelineItem({ event, isLast = false, onOpen }: EventTimelineItemProps) {
   const theme = useTheme();
-  const color = dotColor(event.status, theme);
+  const color = dotColor(event.state, theme);
   const attempts = event.attempts === 1 ? "1 intento" : `${event.attempts} intentos`;
 
   return (
@@ -45,7 +45,7 @@ function EventTimelineItem({ event, isLast = false, onOpen }: EventTimelineItemP
         >
           <Display.Icon
             color={theme.text.inverse}
-            name={eventStatusIcon(event.status)}
+            name={eventStatusIcon(event.state)}
             size={12}
           />
         </View>
@@ -72,11 +72,11 @@ function EventTimelineItem({ event, isLast = false, onOpen }: EventTimelineItemP
             relative
             showTime={false}
             textVariant="caption"
-            value={event.createdAt}
+            value={event.publishedAt}
           />
         </View>
         <Typography.Text className="text-text-secondary" variant="caption">
-          {`${eventStatusLabel(event.status)} · ${attempts}`}
+          {`${eventStatusLabel(event.state)} · ${attempts}`}
         </Typography.Text>
       </Pressable>
     </View>

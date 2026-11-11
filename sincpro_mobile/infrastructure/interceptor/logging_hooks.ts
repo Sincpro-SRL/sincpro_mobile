@@ -1,11 +1,7 @@
-import type { InterceptorHooks } from "./intercept";
+import type { LayerLogger } from "@sincpro/client-framework";
+import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 
-/** Minimal logger contract — compatible with the framework's ILogger and any custom logger. */
-export interface Logger {
-  debug(...args: unknown[]): void;
-  info(...args: unknown[]): void;
-  error(...args: unknown[]): void;
-}
+import type { InterceptorHooks } from "./intercept";
 
 /**
  * Produces `InterceptorHooks` that log every method call through the given logger.
@@ -17,11 +13,11 @@ export interface Logger {
  * Args and return values are intentionally not logged to avoid leaking sensitive data.
  *
  * ```ts
- * interceptClass(DistributionWorkflowsImp, loggingHooks(loggerUseCases));
- * interceptInstance(dbCursor, loggingHooks(loggerRepositories));
+ * interceptClass(DistributionWorkflowsImp, loggingHooks(logger));
+ * interceptInstance(dbCursor, loggingHooks(loggerAdapter));
  * ```
  */
-export function loggingHooks(logger: Logger): InterceptorHooks {
+export function loggingHooks(logger: LayerLogger): InterceptorHooks {
   return {
     before(call) {
       logger.debug(`→ ${call.className}.${call.methodName}`);
@@ -30,7 +26,7 @@ export function loggingHooks(logger: Logger): InterceptorHooks {
       logger.info(`✓ ${call.className}.${call.methodName}`);
     },
     onError(call, error) {
-      logger.error(`✗ ${call.className}.${call.methodName}`, error);
+      logger.error(`✗ ${call.className}.${call.methodName}`, errorAttributes(error));
     },
   };
 }

@@ -1,4 +1,4 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/events";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
 import { EventActionSheet } from "@sincpro/mobile/ui/components/organisms/EventActionSheet";
 import EventRow from "@sincpro/mobile/ui/components/organisms/EventRow";
 import { EventListHeader } from "@sincpro/mobile/ui/events/event-query-controls";
@@ -16,23 +16,23 @@ export interface EventsScreenProps {
 function EventsScreenComponent({ onBack }: EventsScreenProps) {
   const { events, isLoading, loadEvents, retryEvent } = useEvents();
   const list = useEventQuery(events);
-  const [selected, setSelected] = useState<IntegrationEvent | null>(null);
+  const [selected, setSelected] = useState<EventRecord | null>(null);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     void loadEvents();
   }, [loadEvents]);
 
-  const openEvent = useCallback((event: IntegrationEvent) => {
+  const openEvent = useCallback((event: EventRecord) => {
     setSelected(event);
     setOpen(true);
   }, []);
   const renderEvent = useCallback(
-    (event: unknown) => <EventRow item={event as IntegrationEvent} onOpen={openEvent} />,
+    (event: unknown) => <EventRow item={event as EventRecord} onOpen={openEvent} />,
     [openEvent],
   );
   const retry = useCallback(
-    async (event: IntegrationEvent) => {
+    async (event: EventRecord) => {
       await retryEvent(event);
     },
     [retryEvent],

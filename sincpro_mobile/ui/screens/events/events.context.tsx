@@ -1,4 +1,4 @@
-import { IntegrationEvent } from "@sincpro/mobile/domain/events";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
 import { eventService } from "@sincpro/mobile/services/event.service";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import React, {
@@ -10,11 +10,11 @@ import React, {
   useState,
 } from "react";
 
-type EventFilter = "ALL" | "FAILED" | "ACKNOWLEDGED" | "PENDING";
+type EventFilter = "ALL" | "set_aside" | "delivered" | "pending";
 
 interface IEventsContext {
-  events: IntegrationEvent[];
-  pagedEvents: IntegrationEvent[];
+  events: EventRecord[];
+  pagedEvents: EventRecord[];
   isLoading: boolean;
   isLoadingMore: boolean;
   isRetrying: boolean;
@@ -26,7 +26,7 @@ interface IEventsContext {
   loadEvents: () => Promise<void>;
   refreshEvents: () => Promise<void>;
   loadMore: () => Promise<void>;
-  retryEvent: (event: IntegrationEvent) => Promise<void>;
+  retryEvent: (event: EventRecord) => Promise<void>;
 }
 
 const EventsContext = createContext<IEventsContext | null>(null);
@@ -38,7 +38,7 @@ export function EventsProvider({
   children: ReactNode;
   pageSize?: number;
 }) {
-  const [events, setEvents] = useState<IntegrationEvent[]>([]);
+  const [events, setEvents] = useState<EventRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -47,13 +47,7 @@ export function EventsProvider({
 
   const filteredEvents = useMemo(() => {
     if (filter === "ALL") return events;
-    return events.filter((ev) => {
-      if (!ev.status) return false;
-      if (filter === "FAILED") return ev.status === "FAILED";
-      if (filter === "ACKNOWLEDGED") return ev.status === "ACKNOWLEDGED";
-      if (filter === "PENDING") return ev.status === "PENDING";
-      return true;
-    });
+    return events.filter((ev) => ev.state === filter);
   }, [events, filter]);
 
   const pagedEvents = useMemo(
@@ -96,11 +90,11 @@ export function EventsProvider({
   }, [hasMore, isLoading, isLoadingMore]);
 
   const retryEvent = useCallback(
-    async (event: IntegrationEvent) => {
+    async (event: EventRecord) => {
       setIsRetrying(true);
       return withCleanup(
         async () => {
-          await eventService.republishSync(event);
+          await eventService.resendEvent(event);
           await refreshEvents();
         },
         () => setIsRetrying(false),
