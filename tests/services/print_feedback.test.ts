@@ -4,10 +4,8 @@ import path from "node:path";
 import { test } from "node:test";
 
 import type { TWebViewMessage } from "@sincpro/mobile/domain/webview";
-import {
-  printNoticeKey,
-  routePrintMessage,
-} from "@sincpro/mobile/domain/webview/print_cycle";
+import { routePrintMessage } from "@sincpro/mobile/entrypoints/webview/print_cycle";
+import { printNoticeKey } from "@sincpro/mobile/services/printer/print_jobs/common";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const read = (file: string) => readFileSync(path.join(root, file), "utf8");
@@ -62,9 +60,12 @@ test("a print is one notice that changes: preparing, printing, then printed or t
     /event\.jobId \|\| this\.execution\.causationId/,
     "the handler, which knows the message, keys a print stored without its job by the message",
   );
-  assert.match(feature, /printFollowed\(this\.notifier, \{ key, title: request\.title \}/);
+  assert.match(
+    feature,
+    /this\.notifier\.notify\(printingNotice\(key, title\)\);[\s\S]*?await this\.printer\.printImage\(image\);[\s\S]*?this\.notifier\.notify\(printFailedNotice\(key, title, error\)\);\s*throw error;[\s\S]*?this\.notifier\.notify\(printedNotice\(key, title\)\);/,
+    "the use case notifies and prints itself, step by step",
+  );
   const followed = read("sincpro_mobile/services/printer/print_jobs/common.ts");
-  assert.equal(followed.match(/key: job\.key,/g)?.length, 3);
   assert.match(followed, /title: "Imprimiendo",[\s\S]*?variant: "loading"/);
   for (const source of [feature, followed, page]) {
     assert.doesNotMatch(source, /infrastructure\/ui|infrastructure\/logger/);
@@ -125,12 +126,28 @@ test("a failed print offers both the failed list and the printer", () => {
     /<DeviceNotices onAction=\{config\.onNoticeAction\} \/>/,
   );
   const followed = read("sincpro_mobile/services/printer/print_jobs/common.ts");
-  const failure = followed.slice(followed.indexOf('name: "printer.print_failed"'));
-  assert.ok(
-    failure.indexOf("actions: PRINT_FAILURE_ACTIONS") < failure.indexOf("throw error"),
+  assert.match(
+    followed,
+    /name: "printer\.print_failed",[\s\S]*?actions: PRINT_FAILURE_ACTIONS,/,
   );
   assert.match(followed, /name: "printer\.printed"/);
   const service = read("sincpro_mobile/services/printer/common.ts");
   assert.match(service, /failed: \{ label: "Ver fallidas", intent: "failed-prints" \}/);
   assert.match(service, /printer: \{ label: "Impresora", intent: "printer" \}/);
+});
+
+test("a common.ts holds constants, types and pure rules — never a dependency", async () => {
+  const { readdirSync } = await import("node:fs");
+  const commons = readdirSync(path.join(root, "sincpro_mobile/services"), { recursive: true })
+    .map(String)
+    .filter((file) => path.basename(file) === "common.ts");
+  assert.ok(commons.length > 0);
+  for (const file of commons) {
+    const source = read(path.join("sincpro_mobile/services", file));
+    assert.doesNotMatch(
+      source,
+      /async function|\.notify\(|from "@sincpro\/mobile\/(adapters|infrastructure)\//,
+      `${file}: what a use case does with its dependencies is written in the use case`,
+    );
+  }
 });

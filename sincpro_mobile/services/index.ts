@@ -36,7 +36,6 @@ export {
 } from "@sincpro/mobile/services/domains/deactivate_domain.feature";
 export {
   DEFAULT_EVENT_RETENTION_DAYS,
-  type EventDelivery,
   RECENT_EVENTS_LIMIT,
 } from "@sincpro/mobile/services/events/common";
 export {
@@ -64,6 +63,7 @@ export {
   RetryEvents,
 } from "@sincpro/mobile/services/events/retry_events.feature";
 export {
+  BLUETOOTH_REQUIRED,
   PRINT_FAILURE_ACTIONS,
   PRINT_NOTICE_ACTIONS,
   type PrinterStatus,

@@ -1,56 +1,62 @@
-import type { Notice, Notifier } from "@sincpro/mobile/domain/notifier";
+import type { Notice } from "@sincpro/mobile/domain/notifier";
 import {
   PRINT_FAILURE_ACTIONS,
   PRINT_NOTICE_ACTIONS,
   whyNotPrinted,
 } from "@sincpro/mobile/services/printer/common";
 
+/**
+ * What the print jobs' use cases share: the notices of one job, built from what it is — never
+ * sent from here. Each use case notifies, prints and publishes with its own dependencies.
+ */
+
 /** A page that sent no job id: its steps still share one notice. */
 export const UNTRACKED_PAGE_JOB = "page";
 
-/**
- * A print the person follows in one notice (`key`):
- * 1. It turns into "Imprimiendo" while the printer connects and prints.
- * 2. Printed: it turns into "Impreso".
- * Final: not printed, it says why — with a way to the failed prints and to the printer — and
- *    the failure is thrown as it came, so the run keeps its kind.
- */
-export async function printFollowed(
-  notifier: Notifier,
-  job: { key: string; title: string },
-  print: () => Promise<void>,
-): Promise<void> {
-  notifier.notify({
-    key: job.key,
+/** The notice of one print job: preparing, printing and the result share it. */
+export function printNoticeKey(jobId: string): string {
+  return `print:${jobId}`;
+}
+
+/** The job's notice while the printer connects and prints. */
+export function printingNotice(key: string, title: string): Notice {
+  return {
+    key,
     name: "printer.printing",
     title: "Imprimiendo",
-    message: job.title || "Enviando a la impresora…",
+    message: title || "Enviando a la impresora…",
     variant: "loading",
-  });
-  try {
-    await print();
-  } catch (error) {
-    notifier.notify({
-      key: job.key,
-      name: "printer.print_failed",
-      title: "No se imprimió",
-      message: whyNotPrinted(error, job.title),
-      variant: "danger",
-      actions: PRINT_FAILURE_ACTIONS,
-    });
-    throw error;
-  }
-  notifier.notify({
-    key: job.key,
+  };
+}
+
+/** The job's notice once it came out. */
+export function printedNotice(key: string, title: string): Notice {
+  return {
+    key,
     name: "printer.printed",
     title: "Impreso",
-    message: job.title || "La impresión salió",
+    message: title || "La impresión salió",
     variant: "success",
-  });
+  };
+}
+
+/**
+ * The job's notice when it did not come out: why, by the failure's kind, with a way to the
+ * failed prints and to the printer.
+ */
+export function printFailedNotice(key: string, title: string, error: unknown): Notice {
+  return {
+    key,
+    name: "printer.print_failed",
+    title: "No se imprimió",
+    message: whyNotPrinted(error, title),
+    variant: "danger",
+    actions: PRINT_FAILURE_ACTIONS,
+  };
 }
 
 /** The notice of a page's print that never reached the printer. */
-export function captureFailed(key: string, title: string): Notice {
+export function captureFailedNotice(key: string, title: string): Notice {
   return {
     key,
     name: "printer.capture_failed",

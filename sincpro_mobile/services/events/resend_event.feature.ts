@@ -1,7 +1,6 @@
 import { Command, newEntityId } from "@sincpro/client-framework";
 import type { EventRecord } from "@sincpro/mobile/domain/events";
 import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
-import { sendBack } from "@sincpro/mobile/services/events/common";
 
 export class CommandResendEvent extends Command<void> {
   constructor(readonly record: EventRecord) {
@@ -20,10 +19,16 @@ export class ResendEvent extends Feature<CommandResendEvent, void> {
   async execute(command: CommandResendEvent): Promise<void> {
     const { record } = command;
     this.span.set({ "event.id": record.id, "event.name": record.name });
-    if (record.state === "set_aside") {
-      await sendBack(this.eventStore, this.eventDelivery, [record.id]);
-      return;
-    }
+    if (record.state === "set_aside") await this.sendBack(record);
+    else await this.storeAgain(record);
+  }
+
+  private async sendBack(record: EventRecord): Promise<void> {
+    const moved = await this.eventStore.retry([record.id]);
+    if (moved > 0) void this.eventDelivery.drain();
+  }
+
+  private async storeAgain(record: EventRecord): Promise<void> {
     await this.eventStore.add({
       envelope: {
         name: record.name,

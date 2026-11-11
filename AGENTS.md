@@ -52,6 +52,18 @@ Como sincpro_framework, con @sincpro/client-framework:
   con `expectErrors` y termina `refused`, sin reporte.
 - Nada de fachadas `*.service.ts` ni `replaceable`: una app reemplaza una dependencia con
   `addDependency(nombre, suya, { replaces })` y un caso de uso con `feature(…, { replaces })`.
+- Dónde va cada cosa de la capa de aplicación:
+  - `domain/` tiene entidades, abstracciones (puertos), DTOs y eventos; nada de lógica de casos
+    de uso: esa es de los Features y ApplicationServices.
+  - Un caso de uso se desglosa en métodos privados (`private`) que su `execute` llama.
+  - El `common.ts` de una carpeta de `services/` tiene los helpers de la capa de aplicación que
+    comparten sus casos de uso: constantes, tipos y funciones puras (un aviso armado, qué
+    significa una falla). Nunca una función que reciba un repositorio, un adaptador o el
+    notifier.
+  - Lo que solo envuelve un adaptador (`this.servers.find()` y luego `this.odoo.setServer(…)`)
+    se escribe en cada caso de uso, aunque se repita. Si lo usa al menos ~40% de los casos de
+    uso del bus, va como método `protected` de la base de sus servicios (la clase que extiende
+    el `Feature` de `servicesWith<…>()`).
 - Un evento tiene tres tipos de consumidores, con una sola API (con o sin decorador):
   1. el caso de uso del bus, cuando el evento es su entrada:
      `@xBoundedContext.feature([CommandX, EventoX])`;

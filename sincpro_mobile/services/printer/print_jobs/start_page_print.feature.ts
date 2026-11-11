@@ -1,7 +1,9 @@
 import { Command } from "@sincpro/client-framework";
-import { printNoticeKey } from "@sincpro/mobile/domain/webview/print_cycle";
 import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
-import { UNTRACKED_PAGE_JOB } from "@sincpro/mobile/services/printer/print_jobs/common";
+import {
+  printNoticeKey,
+  UNTRACKED_PAGE_JOB,
+} from "@sincpro/mobile/services/printer/print_jobs/common";
 
 export class CommandStartPagePrint extends Command<void> {
   constructor(

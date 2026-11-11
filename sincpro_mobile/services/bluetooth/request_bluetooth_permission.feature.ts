@@ -17,7 +17,12 @@ export class RequestBluetoothPermission extends Feature<
   async execute(): Promise<BluetoothPermissionStatus> {
     const permissions = await this.bluetooth.requestPermissions();
     this.span.set({ "bluetooth.granted": permissions.isGranted });
-    if (permissions.isGranted) {
+    this.notifyAnswer(permissions.isGranted);
+    return permissions;
+  }
+
+  private notifyAnswer(granted: boolean): void {
+    if (granted) {
       this.notifier.notify({
         name: "bluetooth.enabled",
         title: "Bluetooth habilitado",
@@ -33,6 +38,5 @@ export class RequestBluetoothPermission extends Feature<
         variant: "danger",
       });
     }
-    return permissions;
   }
 }

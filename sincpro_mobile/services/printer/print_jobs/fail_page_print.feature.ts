@@ -1,8 +1,8 @@
 import { Command } from "@sincpro/client-framework";
-import { printNoticeKey } from "@sincpro/mobile/domain/webview/print_cycle";
 import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
 import {
-  captureFailed,
+  captureFailedNotice,
+  printNoticeKey,
   UNTRACKED_PAGE_JOB,
 } from "@sincpro/mobile/services/printer/print_jobs/common";
 
@@ -29,6 +29,6 @@ export class FailPagePrint extends Feature<CommandFailPagePrint, void> {
       jobId: command.jobId,
       reason: command.reason,
     });
-    this.notifier.notify(captureFailed(printNoticeKey(command.jobId), command.title));
+    this.notifier.notify(captureFailedNotice(printNoticeKey(command.jobId), command.title));
   }
 }
