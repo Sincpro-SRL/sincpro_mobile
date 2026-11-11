@@ -17,10 +17,12 @@ export abstract class DomainModule {
   }
 
   /**
-   * The bounded contexts of this module (`xBoundedContext`). Registering a use case for an event
-   * is its subscription: while the module's domain is active, the queue's one `Subscriber`
-   * hands that event to it. Around their use cases goes `boundedContext.interceptor(...)`; a
-   * module replaces a core use case with `commonBoundedContext.feature(dto, { replaces })`.
+   * The bounded contexts of this module (`xBoundedContext`). While its domain is active, the
+   * queue's one `Subscriber` delivers to them: an event reaches each use case registered for it
+   * (`@x.feature([CommandX, Event])`) and each event handler of theirs
+   * (`@x.handler([EventA, EventB])`, in the module's `entrypoints/queue/`). Around their use cases
+   * goes `boundedContext.interceptor(...)`; a module replaces a core use case with
+   * `commonBoundedContext.feature(dto, { replaces })`.
    */
   boundedContexts(): readonly HearingContext[] {
     return [];

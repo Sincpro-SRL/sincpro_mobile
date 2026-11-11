@@ -1,6 +1,6 @@
 # Agregado, evento y repositorio
 
-El estado de un agregado es el documento SQLite. El evento es el hecho que ese documento registró. El repositorio es quien escribe el documento, corre las reglas y deja en la cola lo que el agregado registró. No es event sourcing: no se reconstruye el estado leyendo el log. No es un broker: los casos de uso registrados para un evento corren en el mismo proceso.
+El estado de un agregado es el documento SQLite. El evento es el hecho que ese documento registró. El repositorio es quien escribe el documento, corre las reglas y deja en la cola lo que el agregado registró. No es event sourcing: no se reconstruye el estado leyendo el log. No es un broker: los casos de uso y los event handlers registrados para un evento corren en el mismo proceso.
 
 Un teléfono que ya tiene las tablas de eventos no las tira. El store crea la tabla del documento si no existe, y si ya existe agrega `version`, `data` o una columna declarada que falte. Las migraciones de infraestructura corren una vez, anotadas por nombre en `schema_migrations`. El SQL y el nombre se confirman en la misma transacción: si el paso se corta, no queda ninguno de los dos. Una base que ya tiene un nombre que esta app no conoce no se abre. Un wipe olvida solo los nombres de las tablas que borró y las vuelve a correr. El padre guarda los ids de cada `@relation`; la fila del hijo está en su tabla.
 
@@ -52,7 +52,7 @@ flowchart TB
   subgraph despues [Después del commit]
     queue["eventDelivery (storedQueue)"]
     subscriber[Subscriber]
-    useCase["casos de uso registrados para el evento"]
+    useCase["casos de uso y event handlers registrados para el evento"]
   end
 
   entity --> checks

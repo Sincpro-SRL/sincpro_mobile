@@ -32,6 +32,7 @@ export const LOG_LAYERS: readonly LogLayer[] = [
   "infrastructure",
   "adapter",
   "bounded_context",
+  "event_handler",
   "application_service",
   "feature",
 ];
@@ -41,6 +42,7 @@ export const DEFAULT_ENABLED_LAYERS: Readonly<Record<LogLayer, boolean>> = {
   infrastructure: true,
   adapter: false,
   bounded_context: true,
+  event_handler: true,
   application_service: true,
   feature: true,
 };

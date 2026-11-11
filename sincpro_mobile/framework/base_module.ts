@@ -1,3 +1,6 @@
+// The core's event handlers register on commonBoundedContext when this loads.
+import "@sincpro/mobile/entrypoints/queue";
+
 import type { HearingContext } from "@sincpro/client-framework";
 import { DatabaseTableRepository } from "@sincpro/mobile/adapters/repositories/database_table.repository";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";

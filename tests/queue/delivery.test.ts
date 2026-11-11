@@ -18,6 +18,7 @@ import { newEvent } from "../../sincpro_mobile/domain/events/delivery.ts";
 import type { Notice, Notifier } from "../../sincpro_mobile/domain/notifier.ts";
 import { PrintImageRequestedEvent } from "../../sincpro_mobile/domain/print/events.ts";
 import MIGRATIONS from "../../sincpro_mobile/entrypoints/db/migrations.ts";
+import { OnPrintImageRequested } from "../../sincpro_mobile/entrypoints/queue/print_image.handler.ts";
 import {
   DomainNetworkError,
   DomainValidationError,
@@ -320,7 +321,9 @@ function printing(outcome: () => Promise<void>) {
   }>("print");
   printBoundedContext.addDependency("printer", printer);
   printBoundedContext.addDependency("notifier", notifier);
-  printBoundedContext.feature([CommandPrintImage, PrintImageRequestedEvent])(PrintImage);
+  printBoundedContext.feature(CommandPrintImage)(PrintImage);
+  // The core's handler of the event, on this bounded context: it executes CommandPrintImage here.
+  printBoundedContext.handler([PrintImageRequestedEvent])(OnPrintImageRequested);
   eventDelivery.listen(new Subscriber(printBoundedContext));
   return { notices, printBoundedContext };
 }
@@ -328,7 +331,7 @@ function printing(outcome: () => Promise<void>) {
 const printRequest = (imageBase64: string) =>
   newEvent(PrintImageRequestedEvent, { imageBase64, title: "Ticket 7", jobId: "" });
 
-test("a print whose printer is off fails unavailable and waits to be retried", async () => {
+test("a print whose printer is off fails unavailable and waits to be retried, keyed by its message", async () => {
   const { notices } = printing(() => Promise.reject(new PrinterUnavailable("no answer")));
   const envelope = await eventDelivery.publisher.publish(printRequest("abc"));
   await eventDelivery.drain();

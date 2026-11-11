@@ -28,7 +28,7 @@ services/       casos de uso por agregado: Features y ApplicationServices con de
                  services/index.ts los importa y exporta el bounded context listo
 framework/      DomainModule, createApp, kernel y composición
 ui/             pantallas/componentes del framework
-entrypoints/    cron/, db/, ui/: puertas que construyen Commands; la cola no tiene puertas propias
+entrypoints/    queue/ (event handlers), cron/, db/, ui/: puertas que traducen a Commands
 ```
 
 ## Bounded contexts, casos de uso y la cola
@@ -43,13 +43,24 @@ Como sincpro_framework, con @sincpro/client-framework:
   producción (`keep_classnames: true` en `metro.config.js`).
 - Registro con decorador, para uno o N DTO: `@xBoundedContext.feature([CommandX, EventoX])`.
   `services/index.ts` importa cada servicio y una librería lo declara en `sideEffects`.
-- Registrar un caso de uso para un evento es la suscripción: no hay un suscriptor por evento.
-  La cola tiene un solo `Subscriber`, armado con los bounded contexts de los módulos activos;
-  un Command se toma de la cola solo si un módulo lo declara (`consumes()`).
+- Un evento tiene tres tipos de consumidores, con una sola API (con o sin decorador):
+  1. el caso de uso del bus, cuando el evento es su entrada:
+     `@xBoundedContext.feature([CommandX, EventoX])`;
+  2. un event handler del bus, en `entrypoints/queue/`: `@xBoundedContext.handler([EventoA, EventoB])`,
+     con las dependencias del bus y `this.boundedContext`;
+  3. un event handler de un `Subscriber` propio: `@appSubscriber.handler([...])`, con sus
+     dependencias explícitas.
+- Un handler traduce el evento a Commands: no decide. Toma N eventos y se confirma aparte
+  (`common/OnPrintImageRequested`).
+- La cola tiene un solo `Subscriber`, compuesto, nunca uno por handler: el kernel le agrega
+  (`addBus`) los bounded contexts de los módulos activos. `addDependency` inyecta lo que los
+  handlers llaman (un bus a llamar es una dependencia); `addBus` le entrega eventos. Un Command se
+  toma de la cola solo si un módulo lo declara (`consumes()`).
 - Un evento: `static eventName` con puntos (`<contexto>.<agregado>.vN.<hecho>`), `fromJSON`
   si lleva `Money`, `Decimal` o fechas, y `requiresNetwork`/`requiresSession` en su clase. Se
-  entrega al menos una vez: el efecto se identifica por `this.execution.causationId` o por la
-  entidad.
+  entrega al menos una vez: el efecto se identifica por la entidad o por el id del mensaje. Ese
+  id es `this.execution.causationId` en quien recibe el evento; un handler lo pasa en el Command
+  cuando el caso de uso lo necesita (como `OnPrintImageRequested`).
 - Un caso de uso no importa UI ni loggers: avisa por un puerto (`Notifier`), escribe con
   `this.logger` y nunca atrapa una falla para esconderla. Cada error declara su tipo
   (`failureKind`): reintentar, apartar, reportar y lo que muestra una pantalla salen de ahí.

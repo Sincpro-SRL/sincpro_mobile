@@ -58,10 +58,12 @@ test("a print is one notice that changes: preparing, printing, then printed or t
   );
 
   const feature = read("sincpro_mobile/services/print/print_image.feature.ts");
+  assert.match(feature, /printNoticeKey\(request\.jobId \|\| newEntityId\(\)\)/);
+  const handler = read("sincpro_mobile/entrypoints/queue/print_image.handler.ts");
   assert.match(
-    feature,
-    /printNoticeKey\(\s*request\.jobId \|\| this\.execution\.causationId \|\| newEntityId\(\),?\s*\)/,
-    "the use case, not the queue's door, decides the notice's key",
+    handler,
+    /event\.jobId \|\| this\.execution\.causationId/,
+    "the handler, which knows the message, keys a print stored without its job by the message",
   );
   const notices = feature.match(/this\.notifier\.notify\(\{\s*key,/g) ?? [];
   assert.equal(notices.length, 4);

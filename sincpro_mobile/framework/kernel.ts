@@ -1,6 +1,5 @@
 import {
   type CommandType,
-  type HearingContext,
   logger,
   loggerAdapter,
   Subscriber,
@@ -66,22 +65,24 @@ export class Kernel {
   }
 
   /**
-   * The queue's one entrypoint while these domains are active: a `Subscriber` over their modules'
-   * bounded contexts — each once, the core's first — and the Commands they consume.
+   * The queue's one entrypoint while these domains are active: a `Subscriber` that delivers to
+   * their modules' bounded contexts — each once, the core's first: their use cases and event
+   * handlers — and takes the Commands they consume.
    */
   subscriberFor(activeDomains: ReadonlySet<string>): Subscriber {
-    const boundedContexts: HearingContext[] = [];
     const commands: CommandType[] = [];
-    for (const module of this.modules) {
-      if (!activeDomains.has(module.key)) continue;
-      for (const boundedContext of module.boundedContexts()) {
-        if (!boundedContexts.includes(boundedContext)) boundedContexts.push(boundedContext);
-      }
+    const active = this.modules.filter((module) => activeDomains.has(module.key));
+    for (const module of active) {
       for (const command of module.consumes()) {
         if (!commands.includes(command)) commands.push(command);
       }
     }
-    return new Subscriber({ boundedContexts, commands });
+    const subscriber = new Subscriber("mobile", { commands });
+    for (const module of active) {
+      for (const boundedContext of module.boundedContexts())
+        subscriber.addBus(boundedContext);
+    }
+    return subscriber;
   }
 
   /**

@@ -31,7 +31,7 @@ class SalesModule extends DomainModule {
   readonly key = "SALES";
   readonly name = "Sales";
 
-  // @sincpro/client-framework: the bounded context — its use cases, those of events included
+  // @sincpro/client-framework: the bounded context — its use cases and its event handlers
   override boundedContexts() {
     return [salesBoundedContext];
   }
@@ -133,7 +133,7 @@ The framework is organized in strict layers with enforced one-way dependency flo
 │  infrastructure/ stored queue · CronWorker · SQLite │
 │  adapters/       Network · Bluetooth · Geo · WebView│
 │  services/       Printer · Events · Network        │
-│  entrypoints/    AppShell · DB · Cron               │
+│  entrypoints/    AppShell · DB · Queue · Cron       │
 └────────────────────────┬────────────────────────────┘
                          │
 ┌────────────────────────▼────────────────────────────┐
@@ -151,7 +151,7 @@ The framework is organized in strict layers with enforced one-way dependency flo
 
 ### Base infrastructure — events, queues, repositories, orchestrator
 
-`createApp` configures the **Orchestrator**, which bootstraps the **Kernel** (the set of `DomainModule`s). Each module contributes bounded contexts (and the Commands they take from the queue), crons, repositories and migrations; the orchestrator hands the stored queue one `Subscriber` over the active modules' bounded contexts and starts the crons. Everything durable is SQLite — offline-first by construction.
+`createApp` configures the **Orchestrator**, which bootstraps the **Kernel** (the set of `DomainModule`s). Each module contributes bounded contexts (and the Commands they take from the queue), crons, repositories and migrations; the orchestrator hands the stored queue one `Subscriber` over the active modules' bounded contexts — their use cases and event handlers — and starts the crons. Everything durable is SQLite — offline-first by construction.
 
 ```mermaid
 flowchart TB
@@ -232,7 +232,7 @@ class InvoiceModule extends DomainModule {
   }
 
   override boundedContexts() {
-    return [invoicesBoundedContext]; // its use cases — one registered for InvoiceCreated hears it
+    return [invoicesBoundedContext]; // its use cases and handlers — OnInvoiceCreated hears it
   }
 
   override crons(): CronWorker[] {
@@ -248,13 +248,13 @@ class InvoiceModule extends DomainModule {
 
 ### ✅ Offline-First Event Queue
 
-Events travel through `@sincpro/client-framework`'s `storedQueue` over SQLite (`stored_events`): stored first — inside the repository's own transaction when an aggregate records it —, then delivered in order by the queue's one `Subscriber` to every bounded context of the active modules that registered a use case for it. Registering a use case for an event is its subscription: nobody writes a subscriber per event. A failure a retry may fix waits and is tried again (the order holds); one that never will (`invalid`, `domain`, `not_found`…) is set aside — the failed events — and never holds back the rest. Delivery is at least once: a use case keys its effect by `this.execution.causationId` or by the entity the event names.
+Events travel through `@sincpro/client-framework`'s `storedQueue` over SQLite (`stored_events`): stored first — inside the repository's own transaction when an aggregate records it —, then delivered in order by the queue's one `Subscriber` — composite: the kernel adds the active modules' bounded contexts to it (`addBus`) — to every consumer registered for the event there. An event has three kinds of consumers, one API, with or without a decorator: the use case of a bounded context whose input it is (`@salesBoundedContext.feature([CommandX, TheEvent])`), an event handler of the bounded context (`@salesBoundedContext.handler([EventA, EventB])`, in `entrypoints/queue/`, with its dependencies and `this.boundedContext`) and an event handler of a `Subscriber` (`@appSubscriber.handler([EventA])`, with the subscriber's dependencies). One `Subscriber` per queue, never one per handler; each consumer is acknowledged apart (`sales`, `sales/OnOrderConfirmed`), so a redelivery runs only the ones that do not have it yet. A failure a retry may fix waits and is tried again (the order holds); one that never will (`invalid`, `domain`, `not_found`…) is set aside — the failed events — and never holds back the rest. Delivery is at least once: a consumer keys its effect by the entity the event names, or by the message's id — `this.execution.causationId` in the handler or use case the queue delivers to, which a handler passes in its Command when the use case needs it.
 
 Whether an event may go now is the **event's** to say: its class declares whether it needs a connection or a signed-in session; it waits while the rest go on, and is delivered as soon as what it needs comes back (the network up, a login, the app in the foreground).
 
 ```tsx
 import { Command, DomainEvent } from "@sincpro/client-framework";
-import { Feature, salesBoundedContext } from "./infrastructure/framework";
+import { EventHandler, Feature, salesBoundedContext } from "./infrastructure/framework";
 
 class OrderConfirmedEvent extends DomainEvent {
   static readonly eventName = "sales.order.v1.confirmed";
@@ -276,15 +276,24 @@ class CommandSyncOrder extends Command<void> {
   }
 }
 
-// services/order/sync_order.feature.ts — a screen executes it, and the event triggers it:
-// registering it for the event is the subscription
-@salesBoundedContext.feature([CommandSyncOrder, OrderConfirmedEvent])
-export class SyncOrder extends Feature<CommandSyncOrder | OrderConfirmedEvent, void> {
-  async execute(request: CommandSyncOrder | OrderConfirmedEvent) {
-    await this.backend.syncOrder(request.orderId); // a dependency of SalesDependencies
+// services/order/sync_order.feature.ts — the use case: a screen executes it, and so does the handler
+@salesBoundedContext.feature(CommandSyncOrder)
+export class SyncOrder extends Feature<CommandSyncOrder, void> {
+  async execute(command: CommandSyncOrder) {
+    await this.backend.syncOrder(command.orderId); // a dependency of SalesDependencies
+  }
+}
+
+// entrypoints/queue/order_confirmed.handler.ts — the event's door: it translates, it decides nothing
+@salesBoundedContext.handler([OrderConfirmedEvent])
+export class OnOrderConfirmed extends EventHandler<OrderConfirmedEvent> {
+  async handle(event: OrderConfirmedEvent) {
+    await this.boundedContext.execute(new CommandSyncOrder(event.orderId));
   }
 }
 ```
+
+A handler runs in the pipeline of a use case, in its own log layer (`event_handler`): its span is `sales/OnOrderConfirmed`, and what it executes is its child. It takes N events — its type is their union. `entrypoints/queue/index.ts` imports every handler (its decorator registers it when it loads) and the module's file imports `entrypoints/queue` — a library lists both in `sideEffects` —, as the core does with its own handlers on `commonBoundedContext`.
 
 A message from outside — a push, a socket, a page — enters with `eventDelivery.receive(message)`, as CloudEvents 1.0 (structured, or in binary mode with `ce_` headers): an event the active modules hear is stored with the sender's flow and trace and delivered like one published here; a Command runs only when a module declares it in `consumes()` (`CommandNotConsumed` otherwise).
 
@@ -546,7 +555,8 @@ import { WebViewAdapter } from "@sincpro/mobile/adapters/webview";
     .map((s) => s.script)
     .join("\n")}
   onMessage={({ nativeEvent }) => {
-    // The base module hears it: ProcessWebViewMessage queues a PRINT_IMAGE, PrintImage prints it
+    // The base module hears it: OnWebViewMessage → ProcessWebViewMessage queues a PRINT_IMAGE,
+    // OnPrintImageRequested → PrintImage prints it
     void eventDelivery.publisher.publish(
       newEvent(WebViewMessageReceivedEvent, { raw: nativeEvent.data }),
     );
@@ -554,7 +564,7 @@ import { WebViewAdapter } from "@sincpro/mobile/adapters/webview";
 />;
 ```
 
-`PrintImage` tells the person what happened through the `Notifier` port it holds (`this.notifier`; on a phone, `deviceNotifier`): one notice per print, keyed by the page's print job, else by the message that carried the request.
+`PrintImage` tells the person what happened through the `Notifier` port it holds (`this.notifier`; on a phone, `deviceNotifier`): one notice per print, keyed by the page's print job, else by the message that carried the request — which only the queue's handler knows, so `OnPrintImageRequested` passes it in `CommandPrintImage` (`this.execution.causationId`, the same on every retry) —, else by one of its own.
 
 Available interceptors: `printInterceptor` (default), `ajaxInterceptor` (debug), `contentHeightReporter`.
 
@@ -644,6 +654,7 @@ A `DomainModule` is the primary building block. Here is how to create one from s
 import { DomainModule } from "@sincpro/mobile/framework/domain_module";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 import type { IMigration } from "@sincpro/mobile/domain/database";
+import "./queue"; // its event handlers register on ticketsBoundedContext when this loads
 
 export class TicketsModule extends DomainModule {
   readonly key = "TICKETS"; // unique — used as the ui map key
@@ -661,7 +672,7 @@ export class TicketsModule extends DomainModule {
   }
 
   override boundedContexts() {
-    return [ticketsBoundedContext]; // its use cases, those of events included
+    return [ticketsBoundedContext]; // its use cases and its event handlers
   }
 
   override crons(): CronWorker[] {
@@ -723,7 +734,8 @@ sincpro_mobile_myapp/
 │   └── fonts/               ← brand typeface files (.otf / .ttf)
 ├── sincpro_mobile_myapp/
 │   ├── entrypoints/
-│   │   ├── main.tsx         ← DomainModule class + defineAppShell()
+│   │   ├── main.tsx         ← DomainModule class + defineAppShell(); imports ./queue
+│   │   ├── queue/           ← event handlers: each translates events into a Command
 │   │   ├── cron/            ← CronWorker definitions: each job executes a Command
 │   │   └── ui/
 │   │       ├── App.tsx      ← root screen component
@@ -735,7 +747,8 @@ sincpro_mobile_myapp/
 │   │                          index.ts imports them all and exports the bounded context
 │   └── infrastructure/
 │       ├── dependencies.ts  ← SalesDependencies + registerDependencies
-│       └── framework.ts     ← servicesWith<SalesDependencies>() bases + salesBoundedContext
+│       └── framework.ts     ← servicesWith<SalesDependencies>() bases (Feature,
+│                              ApplicationService, EventHandler) + salesBoundedContext
 └── app/
     └── _layout.tsx          ← <AppShell shell={…}> around the router
 ```
@@ -925,7 +938,7 @@ abstract class DomainModule {
     return [];
   }
   boundedContexts(): readonly HearingContext[] {
-    return []; // registering a use case for an event is its subscription
+    return []; // added to the queue's Subscriber: their use cases and event handlers hear
   }
   consumes(): readonly CommandType[] {
     return []; // the Commands its bounded contexts take from the queue; none by default

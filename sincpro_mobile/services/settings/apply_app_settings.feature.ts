@@ -1,5 +1,4 @@
 import { Command } from "@sincpro/client-framework";
-import { NewAppSettingsEvent } from "@sincpro/mobile/domain/events/catalog";
 import type { ISetting } from "@sincpro/mobile/domain/settings";
 import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
 
@@ -12,17 +11,14 @@ export class CommandApplyAppSettings extends Command<number> {
   }
 }
 
-/** Keeps the settings an app received — from a screen or the event —; answers how many. */
-@commonBoundedContext.feature([CommandApplyAppSettings, NewAppSettingsEvent])
-export class ApplyAppSettings extends Feature<
-  CommandApplyAppSettings | NewAppSettingsEvent,
-  number
-> {
-  async execute(request: CommandApplyAppSettings | NewAppSettingsEvent): Promise<number> {
-    for (const setting of request.settings) {
+/** Keeps the settings an app received; answers how many. */
+@commonBoundedContext.feature(CommandApplyAppSettings)
+export class ApplyAppSettings extends Feature<CommandApplyAppSettings, number> {
+  async execute(command: CommandApplyAppSettings): Promise<number> {
+    for (const setting of command.settings) {
       await this.settingsStore.saveOneSetting(setting.key, setting.value);
     }
-    this.logger.info("Settings saved", { count: request.settings.length });
-    return request.settings.length;
+    this.logger.info("Settings saved", { count: command.settings.length });
+    return command.settings.length;
   }
 }

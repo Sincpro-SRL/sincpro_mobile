@@ -41,9 +41,12 @@ proceso.
 
 La orden, la factura y el pago siguen teniendo fila. El evento avisa que la
 fila cambió. La UI sigue leyendo los hechos de esa entidad para la línea de
-tiempo. No hay Kafka ni relay entre procesos: quien escucha es un caso de uso
-del mismo dispositivo, registrado para el evento en su bounded context. Esos
-casos de uso no se reescriben para este corte.
+tiempo. No hay Kafka ni relay entre procesos: quien escucha es del mismo
+dispositivo y lo recibe del único `Subscriber` de la cola: un event handler de
+`entrypoints/queue/` que traduce el evento al Command de un caso de uso
+(`@xBoundedContext.handler([EventoX])`), o el caso de uso del bounded context
+cuando el evento es su entrada. Esos handlers y casos de uso no se reescriben
+para este corte.
 
 ## Cortes, en este orden
 
