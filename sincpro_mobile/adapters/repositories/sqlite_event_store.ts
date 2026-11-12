@@ -1,8 +1,9 @@
 import type {
   DeliveryFailure,
-  EventStore,
   JsonValue,
-  StoredEvent,
+  MessageKind,
+  MessageStore,
+  StoredMessage,
   StoredState,
 } from "@sincpro/client-framework";
 import { type EventRecord, labelOf, textOf } from "@sincpro/mobile/domain/events";
@@ -12,6 +13,7 @@ import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 
 type EventRow = {
   id: string;
+  kind: string;
   name: string;
   correlation_id: string;
   causation_id: string | null;
@@ -23,10 +25,11 @@ type EventRow = {
   reached: string;
   failures: string;
   settled_at: string | null;
+  answer: string | null;
 };
 
 const COLUMNS =
-  "id, name, correlation_id, causation_id, published_at, payload, state, attempts, retry_at, reached, failures, settled_at";
+  "id, kind, name, correlation_id, causation_id, published_at, payload, state, attempts, retry_at, reached, failures, settled_at, answer";
 
 function parsed<T>(text: string | null, fallback: T): T {
   if (!text) return fallback;
@@ -42,7 +45,7 @@ function placeholders(count: number): string {
 }
 
 /**
- * The stored queue's `EventStore` on a phone: one SQLite table, `stored_events`, in the order
+ * The stored queue's `MessageStore` on a phone: one SQLite table, `stored_events`, in the order
  * the events were added (`seq`) — and what the screens read of it.
  *
  * Context: storing is this adapter's, deciding is the queue's (`storedQueue`): `add` keeps an
@@ -52,7 +55,7 @@ function placeholders(count: number): string {
  * kept exactly when the aggregate is — and asks for the delivery only after the commit. The
  * set-aside events are the failed ones a person retries.
  */
-export class SqliteEventStore implements EventStore {
+export class SqliteEventStore implements MessageStore {
   readonly name = ECommonRepository.STORED_EVENTS;
   readonly table = DATABASE_TABLES.STORED_EVENTS;
   private classOf: (name: string) => object | undefined = () => undefined;
@@ -62,10 +65,11 @@ export class SqliteEventStore implements EventStore {
     this.classOf = classOf;
   }
 
-  async add(stored: StoredEvent): Promise<void> {
+  async add(stored: StoredMessage): Promise<void> {
     await DBCursor.mutateDatabase(
-      `INSERT OR IGNORE INTO ${this.table} (${COLUMNS}) VALUES (${placeholders(12)})`,
+      `INSERT OR IGNORE INTO ${this.table} (${COLUMNS}) VALUES (${placeholders(14)})`,
       stored.envelope.id,
+      stored.kind,
       stored.envelope.name,
       stored.envelope.correlationId,
       stored.envelope.causationId,
@@ -77,10 +81,11 @@ export class SqliteEventStore implements EventStore {
       JSON.stringify(stored.reached),
       JSON.stringify(stored.failures),
       stored.state === "pending" ? null : new Date().toISOString(),
+      stored.answer === null ? null : JSON.stringify(stored.answer),
     );
   }
 
-  async next(skip: ReadonlySet<string>): Promise<StoredEvent | undefined> {
+  async next(skip: ReadonlySet<string>): Promise<StoredMessage | undefined> {
     const skipped = [...skip];
     const row = await DBCursor.getFirstAsync<EventRow>(
       `SELECT ${COLUMNS} FROM ${this.table}
@@ -92,10 +97,11 @@ export class SqliteEventStore implements EventStore {
     return row ? this.stored(row) : undefined;
   }
 
-  async save(stored: StoredEvent): Promise<void> {
+  async save(stored: StoredMessage): Promise<void> {
     await DBCursor.mutateDatabase(
       `UPDATE ${this.table}
-       SET state = ?, attempts = ?, retry_at = ?, reached = ?, failures = ?, settled_at = ?
+       SET state = ?, attempts = ?, retry_at = ?, reached = ?, failures = ?, settled_at = ?,
+           answer = ?
        WHERE id = ?`,
       stored.state,
       stored.attempts,
@@ -103,6 +109,7 @@ export class SqliteEventStore implements EventStore {
       JSON.stringify(stored.reached),
       JSON.stringify(stored.failures),
       stored.state === "pending" ? null : new Date().toISOString(),
+      stored.answer === null ? null : JSON.stringify(stored.answer),
       stored.envelope.id,
     );
   }
@@ -194,6 +201,25 @@ export class SqliteEventStore implements EventStore {
     );
   }
 
+  /** Retention of the failed ones: those set aside before `cutoff` (ISO), from when they failed. */
+  async pruneFailedBefore(cutoff: string): Promise<void> {
+    await DBCursor.mutateDatabase(
+      `DELETE FROM ${this.table}
+       WHERE state = 'set_aside' AND COALESCE(settled_at, published_at) < ?`,
+      cutoff,
+    );
+  }
+
+  /** Empties every event in `states`, whatever its age; answers how many went. */
+  async clearIn(states: readonly StoredState[]): Promise<number> {
+    if (states.length === 0) return 0;
+    const result = await DBCursor.mutateDatabase(
+      `DELETE FROM ${this.table} WHERE state IN (${placeholders(states.length)})`,
+      ...states,
+    );
+    return result.changes;
+  }
+
   async clear(): Promise<void> {
     await DBCursor.mutateDatabase(`DELETE FROM ${this.table}`);
   }
@@ -210,8 +236,9 @@ export class SqliteEventStore implements EventStore {
     return row?.count ?? 0;
   }
 
-  private stored(row: EventRow): StoredEvent {
+  private stored(row: EventRow): StoredMessage {
     return {
+      kind: row.kind as MessageKind,
       envelope: {
         name: row.name,
         id: row.id,
@@ -225,6 +252,7 @@ export class SqliteEventStore implements EventStore {
       retryAt: row.retry_at,
       reached: parsed<string[]>(row.reached, []),
       failures: parsed<DeliveryFailure[]>(row.failures, []),
+      answer: parsed<JsonValue | null>(row.answer, null),
     };
   }
 
@@ -232,6 +260,7 @@ export class SqliteEventStore implements EventStore {
     const failures = parsed<DeliveryFailure[]>(row.failures, []);
     return {
       id: row.id,
+      kind: row.kind as MessageKind,
       name: row.name,
       label: textOf(labelOf(this.classOf(row.name), row.name)),
       state: row.state as StoredState,
@@ -244,6 +273,7 @@ export class SqliteEventStore implements EventStore {
       error:
         failures.length > 0 ? failures.map((failure) => failure.message).join("; ") : null,
       payload: parsed<JsonValue>(row.payload, {}),
+      answer: parsed<JsonValue | null>(row.answer, null),
     };
   }
 }

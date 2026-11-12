@@ -1,4 +1,4 @@
-import type { StoredEvent } from "@sincpro/client-framework";
+import type { StoredMessage } from "@sincpro/client-framework";
 import { type CompiledCriteria } from "@sincpro/mobile/domain/database/criteria_sql";
 
 export enum StoreMode {
@@ -37,6 +37,6 @@ export interface DocumentStore {
  * the repository's own transaction; `schedule`, after the commit, asks for its delivery.
  */
 export interface Outbox {
-  save(stored: StoredEvent): Promise<void>;
+  save(stored: StoredMessage): Promise<void>;
   schedule(): void;
 }

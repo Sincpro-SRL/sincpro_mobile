@@ -95,7 +95,7 @@ test("debug mode shows labeled facts without a ui flag", () => {
   });
   const blank = fact({
     channel: "queue",
-    name: "common.webview.v1.message_received",
+    name: "test.thing.v1.happened",
     label: "",
     status: "running",
     ui: false,

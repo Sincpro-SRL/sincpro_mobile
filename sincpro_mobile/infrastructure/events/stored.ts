@@ -1,9 +1,12 @@
 import {
+  type AnyCommand,
   type Cause,
   type DomainEvent,
   type Envelope,
+  type MessageKind,
+  type RemoteCommand,
   type RemoteEvent,
-  type StoredEvent,
+  type StoredMessage,
   valuesOf,
 } from "@sincpro/client-framework";
 import type { Recorded } from "@sincpro/mobile/domain/events/recorded";
@@ -23,20 +26,24 @@ export function envelopeOfRecorded(recorded: Recorded, cause?: Cause): Envelope 
 }
 
 /**
- * `event` as the stored queue keeps it, waiting — what `storedQueue`'s `put` stores, written here
- * so a repository can store it inside its own transaction and ask for the delivery after.
+ * A message as the stored queue keeps it, waiting — what `storedQueue`'s `put` (an event) and
+ * `send` (a Command) store, written here so a repository can store an event inside its own
+ * transaction and ask for the delivery after.
  */
-export function storedEventOf(
-  event: DomainEvent | RemoteEvent,
+export function storedMessageOf(
+  kind: MessageKind,
+  message: DomainEvent | RemoteEvent | AnyCommand | RemoteCommand,
   envelope: Envelope,
-): StoredEvent {
+): StoredMessage {
   return {
+    kind,
     envelope,
-    payload: valuesOf(event),
+    payload: valuesOf(message),
     state: "pending",
     attempts: 0,
     retryAt: null,
     reached: [],
     failures: [],
+    answer: null,
   };
 }

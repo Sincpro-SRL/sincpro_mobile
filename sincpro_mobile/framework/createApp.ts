@@ -1,4 +1,9 @@
 import { logger } from "@sincpro/client-framework";
+import { networkAdapter } from "@sincpro/mobile/adapters/Network.adapter";
+import type { ConnectivityConfig } from "@sincpro/mobile/domain/connectivity";
+import type { EventsConfig } from "@sincpro/mobile/domain/events";
+import { listenToNetworkChanges } from "@sincpro/mobile/entrypoints/connectivity/network_changes";
+import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import {
   instrumentObservability,
@@ -25,14 +30,31 @@ export interface AppConfig {
    */
   observability?: ObservabilityConfig;
   /**
+   * What the app sets of its stored messages — events and Commands —, every key optional:
+   * sent once (`retries: 0`), a failure goes to the failed ones; what goes over the network waits
+   * for it; delivered ones kept 7 days, failed ones until a person retries or deletes them.
+   * @example
+   * events: {
+   *   retries: 0,
+   *   maxAttempts: Infinity,
+   *   backoff: { first: 1_000, longest: 60_000 },
+   *   keep: { delivered: 7, failed: "forever" },
+   *   byName: { "chat.CommandSendMessage": { requiresNetwork: true, retries: 2 } },
+   * }
+   */
+  events?: EventsConfig;
+  /**
+   * How the app knows there is internet: the phone's reading, at once on every change and on the
+   * cron; `check` adds the app's own proof — its server answers.
+   */
+  connectivity?: ConnectivityConfig;
+  /**
    * Override options for any cron by taskName.
    * `ui` marks the cron for the activity toast. Silence is the default.
    * @example
    * crons: { CHECK_NETWORK: { ui: true, label: "Verificando conexión" } }
    */
   crons?: Record<string, Partial<CronWorkerOpts>>;
-  /** Days an acknowledged event stays in the local log. Defaults to 7. */
-  eventRetentionDays?: number;
 }
 
 /**
@@ -42,11 +64,16 @@ export interface AppConfig {
  * wakes runs traced, logged and reported the same way.
  */
 export function createKernel(
-  config: Pick<AppConfig, "domains" | "crons" | "observability"> = {},
+  config: Pick<
+    AppConfig,
+    "domains" | "crons" | "observability" | "events" | "connectivity"
+  > = {},
 ): Kernel {
   // Every run needs an id before anything else, and Hermes has no Web Crypto.
   installWebCrypto();
   instrumentObservability(config.observability);
+  eventDelivery.configure(config.events);
+  networkAdapter.configure(config.connectivity);
   const kernel = new Kernel([baseModule, ...(config.domains ?? [])]);
   if (config.crons) kernel.applyCronConfig(config.crons);
   kernel.registerExtensions();
@@ -54,12 +81,12 @@ export function createKernel(
 }
 
 /**
- * Starts a kernel built with {@link createKernel}: data layer, queue, crons and the shipping of
- * what the process was instrumented with.
+ * Starts a kernel built with {@link createKernel}: data layer, queue, crons, the phone's network
+ * changes and the shipping of what the process was instrumented with.
  */
 export async function startApp(
   kernel: Kernel,
-  config: Pick<AppConfig, "eventRetentionDays"> = {},
+  config: Pick<AppConfig, "events"> = {},
 ): Promise<Kernel> {
   // The migrations first — the telemetry's tables are among them —, then shipping, and only then
   // the queue, the crons and the hooks: every run, the first ones included, is traced and logged.
@@ -68,9 +95,10 @@ export async function startApp(
   if (telemetry) await initTelemetry(telemetry);
   orchestrator.configure(kernel);
   await orchestrator.bootstrap();
+  listenToNetworkChanges();
   // Off the startup path: pruning is housekeeping, never a reason to wait.
   commonBoundedContext
-    .execute(new CommandPruneEventHistory(config.eventRetentionDays))
+    .execute(new CommandPruneEventHistory(config.events?.keep))
     .catch((error: unknown) =>
       logger.warn("Event history pruning failed", errorAttributes(error)),
     );

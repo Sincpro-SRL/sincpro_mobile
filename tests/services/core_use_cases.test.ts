@@ -17,7 +17,6 @@ import {
 } from "@sincpro/client-framework/testing";
 
 import type { Notice, Notifier } from "../../sincpro_mobile/domain/notifier.ts";
-import { PrintImageRequestedEvent } from "../../sincpro_mobile/domain/print/events.ts";
 import { printCycleHandlers } from "../../sincpro_mobile/entrypoints/webview/print_cycle.ts";
 import {
   BluetoothPermissionDenied,
@@ -27,10 +26,11 @@ import {
 import type { CommonDependencies } from "../../sincpro_mobile/infrastructure/dependencies.ts";
 import { PagePrintWatch } from "../../sincpro_mobile/infrastructure/webview/page_print_watch.ts";
 import {
+  CommandClearEvents,
   CommandConnectPrinter,
   CommandPrinterStatus,
   CommandPrintTestPage,
-  CommandProcessWebViewMessage,
+  CommandPruneEventHistory,
   CommandRequestBluetoothPermission,
   CommandRestorePrinterConnection,
   CommandRetryEvents,
@@ -211,31 +211,6 @@ function keptQueue() {
   };
 }
 
-test("a page's print image is queued by a child run, in the same trace and flow", async () => {
-  const { kept, queue } = keptQueue();
-  swap("publisher", new Publisher(queue as never));
-  const raw = JSON.stringify({
-    type: "PRINT_IMAGE",
-    image: "abc",
-    width: 1,
-    height: 2,
-    jobId: "job-1",
-    metadata: { title: "Ticket 7" },
-  });
-
-  await commonBoundedContext.execute(new CommandProcessWebViewMessage(raw));
-
-  const parent = spanOf("common/ProcessWebViewMessage");
-  const child = spanOf("common/QueuePrint");
-  assert.ok(parent && child);
-  assert.equal(child.parentSpanId, parent.spanId, "the queueing is a child of the message");
-  assert.equal(child.traceId, parent.traceId);
-  const [stored] = kept;
-  assert.ok(stored?.event instanceof PrintImageRequestedEvent);
-  assert.equal((stored.event as PrintImageRequestedEvent).jobId, "job-1");
-  assert.ok(stored.envelope.correlationId, "the event continues the run's flow");
-});
-
 test("a page's print cycle executes Commands, and a capture that never answers fails on time", async () => {
   const { kept, queue } = keptQueue();
   swap("publisher", new Publisher(queue as never));
@@ -267,4 +242,36 @@ test("a page's print cycle executes Commands, and a capture that never answers f
     spanOf("common/FailPagePrint")?.attributes["print.failure"],
     "the capture did not answer",
   );
+});
+
+test("the history is pruned as the app keeps it: by default delivered 7 days, failed until a person acts", async () => {
+  const pruned: string[] = [];
+  swap("eventStore", {
+    pruneDeliveredBefore: async () => void pruned.push("delivered"),
+    pruneFailedBefore: async () => void pruned.push("failed"),
+  });
+
+  await commonBoundedContext.execute(new CommandPruneEventHistory());
+  assert.deepEqual(pruned, ["delivered"], "unsaid, a failed one waits for the person");
+
+  pruned.length = 0;
+  await commonBoundedContext.execute(
+    new CommandPruneEventHistory({ delivered: "forever", failed: 30 }),
+  );
+  assert.deepEqual(pruned, ["failed"], '"forever" keeps the delivered ones');
+});
+
+test("emptying the events runs only when asked; pending ones only when named", async () => {
+  const asked: string[][] = [];
+  swap("eventStore", {
+    clearIn: async (states: readonly string[]) => {
+      asked.push([...states]);
+      return 3;
+    },
+  });
+
+  assert.equal(await commonBoundedContext.execute(new CommandClearEvents()), 3);
+  await commonBoundedContext.execute(new CommandClearEvents(["pending"]));
+  assert.deepEqual(asked, [["delivered", "set_aside"], ["pending"]]);
+  assert.equal(spanOf("common/ClearEvents")?.attributes["events.count"], 3);
 });

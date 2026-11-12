@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
-import type { StoredEvent } from "@sincpro/client-framework";
+import type { StoredMessage } from "@sincpro/client-framework";
 
 import { eventStore } from "../../sincpro_mobile/adapters/repositories/sqlite_event_store.ts";
 import MIGRATIONS from "../../sincpro_mobile/entrypoints/db/migrations.ts";
@@ -19,14 +19,16 @@ async function storedEventsTable(): Promise<void> {
 
 function message(
   id: string,
-  overrides: Partial<StoredEvent> & { name?: string; publishedAt?: string } = {},
-): StoredEvent {
+  overrides: Partial<StoredMessage> & { name?: string; publishedAt?: string } = {},
+): StoredMessage {
   const {
     name = "test.thing.v1.happened",
     publishedAt = new Date().toISOString(),
     ...rest
   } = overrides;
   return {
+    kind: "event",
+    answer: null,
     envelope: { name, id, correlationId: `flow-${id}`, causationId: null, publishedAt },
     payload: { value: id },
     state: "pending",
@@ -147,6 +149,37 @@ test("screens read records newest first, bounded, with the class's label and the
     (await eventStore.inState("set_aside")).map((record) => record.id),
     ["new"],
   );
+});
+
+test("the failed ones' retention deletes only those set aside before the cutoff", async () => {
+  const past = "2026-01-01T00:00:00.000Z";
+  await eventStore.add(message("failed-old", { state: "set_aside", publishedAt: past }));
+  await eventStore.add(message("delivered-old", { state: "delivered", publishedAt: past }));
+  await eventStore.add(message("pending-old", { publishedAt: past }));
+  await eventStore.add(message("failed-new", { state: "set_aside", publishedAt: past }));
+  await DBCursor.mutateDatabase(
+    "UPDATE stored_events SET settled_at = ? WHERE id = ?",
+    past,
+    "failed-old",
+  );
+  await eventStore.pruneFailedBefore("2026-06-01T00:00:00.000Z");
+  assert.deepEqual((await eventStore.recent(10)).map((record) => record.id).sort(), [
+    "delivered-old",
+    "failed-new",
+    "pending-old",
+  ]);
+});
+
+test("emptying takes the states it is given, whatever their age, and says how many", async () => {
+  await eventStore.add(message("delivered", { state: "delivered" }));
+  await eventStore.add(message("failed", { state: "set_aside" }));
+  await eventStore.add(message("pending"));
+  assert.equal(await eventStore.clearIn(["delivered", "set_aside"]), 2);
+  assert.deepEqual(
+    (await eventStore.recent(10)).map((record) => record.id),
+    ["pending"],
+  );
+  assert.equal(await eventStore.clearIn([]), 0);
 });
 
 test("retention deletes only delivered messages published before the cutoff", async () => {

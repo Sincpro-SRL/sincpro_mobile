@@ -1,5 +1,5 @@
 import { IMigration } from "@sincpro/mobile/domain/database";
-import { DBCursor } from "@sincpro/mobile/infrastructure/database";
+import { addColumnIfMissing, DBCursor } from "@sincpro/mobile/infrastructure/database";
 
 export enum DATABASE_TABLES {
   SETTINGS = "settings",
@@ -76,6 +76,7 @@ async function createStoredMessagesTable(): Promise<void> {
     CREATE TABLE IF NOT EXISTS ${table} (
       seq INTEGER PRIMARY KEY AUTOINCREMENT,
       id TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL DEFAULT 'event',
       name TEXT NOT NULL,
       correlation_id TEXT NOT NULL,
       causation_id TEXT DEFAULT NULL,
@@ -86,7 +87,8 @@ async function createStoredMessagesTable(): Promise<void> {
       retry_at TEXT DEFAULT NULL,
       reached TEXT NOT NULL DEFAULT '[]',
       failures TEXT NOT NULL DEFAULT '[]',
-      settled_at TEXT DEFAULT NULL
+      settled_at TEXT DEFAULT NULL,
+      answer TEXT DEFAULT NULL
     );
   `);
   await DBCursor.execAsync(
@@ -191,6 +193,17 @@ async function createSpansQueueTable(): Promise<void> {
   `);
 }
 
+/**
+ * The stored queue carries Commands too: what a message is (`kind`, an event unless said) and
+ * what a Command answered (`answer`). A table created before has neither; one created after
+ * already does — adding them is a no-op.
+ */
+async function addMessageColumns(): Promise<void> {
+  const table = DATABASE_TABLES.STORED_EVENTS;
+  await addColumnIfMissing(table, "kind", "TEXT NOT NULL DEFAULT 'event'");
+  await addColumnIfMissing(table, "answer", "TEXT DEFAULT NULL");
+}
+
 function migration(name: string, migrationFn: () => Promise<void>): IMigration {
   return { name, tables: [name], migrationFn };
 }
@@ -201,6 +214,11 @@ const MIGRATIONS: IMigration[] = [
   migration(DATABASE_TABLES.TELEMETRY_QUEUE, createTelemetryQueueTable),
   migration(DATABASE_TABLES.SPANS_QUEUE, createSpansQueueTable),
   migration(DATABASE_TABLES.STORED_EVENTS, createStoredMessagesTable),
+  {
+    name: "stored_events_messages",
+    tables: [DATABASE_TABLES.STORED_EVENTS],
+    migrationFn: addMessageColumns,
+  },
 ];
 
 export default MIGRATIONS;

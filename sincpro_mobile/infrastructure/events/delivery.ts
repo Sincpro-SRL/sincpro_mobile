@@ -1,31 +1,38 @@
 import {
+  type AnyCommand,
   type BinaryMessage,
   DomainEvent,
   type Envelope,
   envelopeFrom,
   eventFrom,
-  type EventQueue,
-  type EventStore,
+  failureOf,
   type Handled,
   type Message,
+  type MessageQueue,
+  type MessageStore,
   processListeners,
   Publisher,
   readMessage,
+  type RemoteCommand,
   type RemoteEvent,
-  type StoredEvent,
+  type StoredMessage,
   type StoredQueue,
   storedQueue,
   Subscriber,
+  verdictOf,
 } from "@sincpro/client-framework";
 import { eventStore } from "@sincpro/mobile/adapters/repositories/sqlite_event_store";
 import {
+  declarationOf,
+  type DeliveryDeclaration,
   deliveryNeedsOf,
+  type EventsConfig,
   InternetIsDownEvent,
   InternetIsUpEvent,
   labelOf,
   showsDelivery,
 } from "@sincpro/mobile/domain/events";
-import { storedEventOf } from "@sincpro/mobile/infrastructure/events/stored";
+import { storedMessageOf } from "@sincpro/mobile/infrastructure/events/stored";
 import {
   type ActivityStatus,
   publishActivity,
@@ -61,13 +68,17 @@ function tell(executable: unknown, status: ActivityStatus, detail?: string): voi
 }
 
 /**
- * The delivery of stored events on a phone — the `EventQueue` every publisher puts into:
- * `storedQueue` over SQLite, the active modules' `Subscriber` behind it, and what a phone adds —
- * when an event may go (its class declares whether it needs a connection or a session), and what
- * its settling tells the screens.
+ * The delivery of stored messages on a phone — the `MessageQueue` every publisher puts events
+ * into and sends Commands through: `storedQueue` over SQLite, the active modules' `Subscriber`
+ * behind it, and what a phone adds — when a message may go (its class declares whether it needs a
+ * connection or a session, the app changes it by name), its policy, a dropped connection, and
+ * what its settling tells the screens.
  *
- * Context: storing, ordering, retrying and setting aside are `storedQueue`'s, the same as on the
- * web. Who hears is said explicitly (`listen`, from `Kernel.subscriberFor`): a `Subscriber` is
+ * Context: storing, ordering and the verdict are `storedQueue`'s, the same as on the web: sent
+ * once, a failure set aside — the failed ones —, what goes over the network waits for the other
+ * side. A phone extends the verdict, never changes it: a failure that means the phone lost its
+ * connection (`NETWORK_DOWN`) waits for the connection to come back, not a time, whatever the
+ * message declared. Who hears is said explicitly (`listen`, from `Kernel.subscriberFor`): a `Subscriber` is
  * never changed, a new one takes over. An event waits while its class asks for what is missing
  * (`requiresNetwork`, `requiresSession`) and the rest go on; `drain()` runs again when it comes
  * back — the network up, a session started, the app in the foreground. Settling tells the
@@ -75,13 +86,14 @@ function tell(executable: unknown, status: ActivityStatus, detail?: string): voi
  * means there is no connection (`NETWORK_DOWN`) marks the phone offline until it comes back. The
  * activity ("procesando…") is the process's to tell (`processListeners`), never the queue's door.
  */
-class EventDelivery implements EventQueue {
+class EventDelivery implements MessageQueue {
   private generation: Generation;
   /** The retired generation's last pass: the next one starts after it, never beside it. */
   private handover: Promise<void> = Promise.resolve();
   private online = true;
   private session = false;
   private started = false;
+  private config: EventsConfig = {};
 
   /** Publishes events outside a run: the head of their own flow. */
   readonly publisher = new Publisher(this);
@@ -93,6 +105,16 @@ class EventDelivery implements EventQueue {
   /** Who hears what the queue delivers now: the active modules' bounded contexts. */
   get subscriber(): Subscriber {
     return this.generation.subscriber;
+  }
+
+  /**
+   * What the application sets of its stored messages (`AppConfig.events`): the queue's policy and
+   * backoff, and each message's by its name. The current generation is replaced, so it holds for
+   * what waits now.
+   */
+  configure(config: EventsConfig = {}): void {
+    this.config = config;
+    this.listen(this.subscriber);
   }
 
   /** Hears the connectivity and tells the activity, once per JS context. */
@@ -125,7 +147,16 @@ class EventDelivery implements EventQueue {
 
   /** Stores `event` with its envelope, then delivers what waits. */
   async put(event: DomainEvent | RemoteEvent, envelope: Envelope): Promise<void> {
-    await eventStore.add(storedEventOf(event, envelope));
+    await eventStore.add(storedMessageOf("event", event, envelope));
+    void this.drain().catch(() => undefined);
+  }
+
+  /**
+   * Stores `command` — an intention, run by the bus that consumes it (`DomainModule.consumes`)
+   * when it can, its answer kept —, then delivers what waits.
+   */
+  async send(command: AnyCommand | RemoteCommand, envelope: Envelope): Promise<void> {
+    await eventStore.add(storedMessageOf("command", command, envelope));
     void this.drain().catch(() => undefined);
   }
 
@@ -169,7 +200,7 @@ class EventDelivery implements EventQueue {
 
   private generationOf(subscriber: Subscriber): Generation {
     let retired = false;
-    const store: EventStore = {
+    const store: MessageStore = {
       add: (stored) => eventStore.add(stored),
       next: (skip) => (retired ? undefined : eventStore.next(skip)),
       save: (stored) => eventStore.save(stored),
@@ -180,6 +211,22 @@ class EventDelivery implements EventQueue {
         store,
         subscriber,
         ready: (stored) => this.ready(subscriber, stored),
+        policy: { retries: this.config.retries, maxAttempts: this.config.maxAttempts },
+        policyOf: (stored) => {
+          const declared = this.declarationOf(subscriber, stored);
+          return {
+            retries: declared.retries,
+            maxAttempts: declared.maxAttempts,
+            requiresNetwork: declared.requiresNetwork,
+          };
+        },
+        verdict: (delivery) =>
+          delivery.errors.some((error) => failureOf(error).reason === NETWORK_DOWN) &&
+          delivery.attempts < delivery.policy.maxAttempts
+            ? { settlement: "wait" }
+            : verdictOf(delivery),
+        wait: this.config.backoff?.first,
+        longestWait: this.config.backoff?.longest,
         onSettled: (stored) => this.settled(stored),
       }),
       retire: () => {
@@ -188,12 +235,34 @@ class EventDelivery implements EventQueue {
     };
   }
 
-  private ready(subscriber: Subscriber, stored: StoredEvent): boolean {
-    const needs = deliveryNeedsOf(subscriber.eventTypeOf(stored.envelope.name));
-    return (!needs.network || this.online) && (!needs.session || this.session);
+  /**
+   * Whether `stored` may go now: what it needs is there. One the connection dropped under
+   * (`NETWORK_DOWN`) needs it, whatever it declared.
+   */
+  private ready(subscriber: Subscriber, stored: StoredMessage): boolean {
+    const needs = deliveryNeedsOf(this.declarationOf(subscriber, stored));
+    const cut = stored.failures.some((failure) => failure.reason === NETWORK_DOWN);
+    return (!(needs.network || cut) || this.online) && (!needs.session || this.session);
   }
 
-  private settled(stored: StoredEvent): void {
+  /** What `stored` declares — its class's, the app's by its name over it. */
+  private declarationOf(subscriber: Subscriber, stored: StoredMessage): DeliveryDeclaration {
+    const name = stored.envelope.name;
+    const type =
+      stored.kind === "command"
+        ? subscriber.commandTypeOf(name)
+        : subscriber.eventTypeOf(name);
+    const declared = declarationOf(type);
+    const changed = this.config.byName?.[name] ?? {};
+    return {
+      ...declared,
+      ...Object.fromEntries(
+        Object.entries(changed).filter(([, value]) => value !== undefined),
+      ),
+    };
+  }
+
+  private settled(stored: StoredMessage): void {
     UIEventBus.emit(stored.envelope.name, stored);
     if (stored.failures.some((failure) => failure.reason === NETWORK_DOWN) && this.online) {
       this.online = false;
