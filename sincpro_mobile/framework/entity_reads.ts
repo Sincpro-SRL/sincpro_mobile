@@ -8,6 +8,7 @@ import {
   plain,
 } from "@sincpro/criteria";
 import { DocumentRepository } from "@sincpro/mobile/adapters/repositories/document.repository";
+import { replacedBy } from "@sincpro/mobile/domain/database/criteria";
 import type { Entity } from "@sincpro/mobile/domain/entity/entity";
 import type { EntityCollection } from "@sincpro/mobile/domain/entity/entity_collection";
 import type { AnyClass } from "@sincpro/mobile/domain/entity/relations";
@@ -164,7 +165,10 @@ export abstract class EntityReads<Q extends ReadQuery<any>> extends Feature<
     scope: CriteriaFor<EntityOf<Q>> = {},
   ): Promise<Page<EntityOf<Q>>> {
     const entity = this.entityOf(query);
-    const asked = merge(matching(metaOf(entity), query.text), query.criteria as Criteria);
+    const asked = replacedBy(
+      matching(metaOf(entity), query.text),
+      query.criteria as Criteria,
+    );
     const page = await this.readsFrom(entity).search(merge(plain(scope) as Criteria, asked));
     this.span.set({ "reads.entity": entity.name, "reads.rows": page.length });
     return pageOf(page, entity);

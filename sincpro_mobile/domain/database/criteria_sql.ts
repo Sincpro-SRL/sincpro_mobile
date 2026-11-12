@@ -126,6 +126,8 @@ export function compileCriteria<T>(
  *    the row a `token` names. A token minted under another ordering is refused.
  * 3. Past a token is a keyset over the sorts: equal on the sorts before, beyond on this one, in
  *    its own direction. NULL sorts first, as SQLite orders it.
+ * 4. A count the criteria does not name is the first page's: capped there, none on a page that
+ *    resumes or skips (a `Reading` keeps what the first page counted). Named, it is every page's.
  * Final: the page's statement, the filter alone for the count, and how to mint its cursor.
  */
 export function compilePage<T>(
@@ -162,7 +164,7 @@ export function compilePage<T>(
     limit,
     sorts,
     resumable: strategy === undefined || "token" in strategy,
-    count: criteria.count ?? "capped",
+    count: criteria.count ?? (token !== null || offset > 0 ? "none" : "capped"),
   };
 }
 

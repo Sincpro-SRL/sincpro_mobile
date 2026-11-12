@@ -38,6 +38,27 @@ export function criteriaOf<T>(asked: DocumentCriteria<T>): Criteria<T> {
   return asked;
 }
 
+/**
+ * `asked` over `defaults`, as the backend's `Criteria.replaced_by`: every part `asked` names —
+ * order, page (its cursor too), count, specification, grouping — replaces the default's, and
+ * its filter joins the default's (AND). What a read puts over what the entity says of itself:
+ * the caller wins. A scope that may only narrow is `merge`.
+ *
+ *     replacedBy({ selection: a, pagination: { limit: 8 }, specification: {} },
+ *                { selection: b, pagination: { limit: 20 }, specification: { lines: {} } })
+ *       -> { selection: { all: [a, b] }, pagination: { limit: 20 }, specification: { lines: {} } }
+ */
+export function replacedBy<T>(defaults: Criteria<T>, asked: Criteria<T>): Criteria<T> {
+  const named = Object.fromEntries(
+    Object.entries(asked).filter(([, value]) => value !== undefined),
+  ) as Criteria<T>;
+  const selection =
+    defaults.selection && asked.selection
+      ? ({ all: [defaults.selection, asked.selection] } as Criteria<T>["selection"])
+      : (asked.selection ?? defaults.selection);
+  return { ...defaults, ...named, ...(selection ? { selection } : {}) };
+}
+
 export function rowsMatching<T>(rows: readonly T[], asked: DocumentCriteria<T>): T[] {
   const criteria = criteriaOf(asked);
   if (criteria.grouping !== undefined) {
