@@ -6,6 +6,13 @@ import {
   RemoteEntityCollection,
 } from "@sincpro/mobile/domain/entity/entity_collection";
 
+/**
+ * @deprecated The port of a repository written by hand, with the old words (`findById`,
+ * `findAll`, `findByCriteria`). A repository is a `DocumentRepository` now — `get`, `browse`,
+ * `search`, `fetchAll`, `first`, `exists`, `count` —, or a class of one's own that extends it
+ * (`sqliteDocuments(Entity, table, { repository })`, docs/reads.md). Kept for the apps that still
+ * write theirs (Sincpro-SRL/sincpro_mobile_distribution#2); it goes once they move.
+ */
 export interface IRepository<T extends Entity, C extends EntityCollection<T>> {
   save(entity: T | T[] | C, options?: { deliver?: boolean }): Promise<void>;
 
@@ -28,6 +35,7 @@ export interface IRepository<T extends Entity, C extends EntityCollection<T>> {
   findByIdsSync?(ids: string[]): C;
 }
 
+/** @deprecated See `IRepository`: a `DocumentRepository` of a `RemoteEntity` answers all of it. */
 export interface IRemoteRepository<T extends RemoteEntity> extends IRepository<
   T,
   RemoteEntityCollection<T>

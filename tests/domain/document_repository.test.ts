@@ -131,8 +131,8 @@ test("two readers of the same version cannot both save", async () => {
   const repository = notes(new FakeDocumentDatabase());
   const note = Note.make({ title: "a" });
   await repository.save(note);
-  const first = await repository.findById(note.uuid);
-  const second = await repository.findById(note.uuid);
+  const first = await repository.get(note.uuid);
+  const second = await repository.get(note.uuid);
   first!.title = "left";
   second!.title = "right";
   await repository.save(first!);
@@ -156,7 +156,7 @@ test("upsert writes over a newer version and still runs before_save", async () =
   await repository.upsert(note);
   assert.equal(note.version, 1);
   assert.deepEqual(seen, ["before_save"]);
-  const stored = await repository.findById(note.uuid);
+  const stored = await repository.get(note.uuid);
   assert.equal(stored?.title, "remote");
 });
 
@@ -168,7 +168,7 @@ test("a check refuses the save and a touched field warns the form", async () => 
   );
   const project = Project.make({ state: "confirmed" });
   await assert.rejects(() => repository.save(project), ChecksFailed);
-  assert.equal(await repository.findById(project.uuid), null);
+  assert.equal(await repository.get(project.uuid), null);
 
   const { checkWarnings } = await import("../../sincpro_mobile/domain/entity/checks.ts");
   assert.equal(checkWarnings(project, ["deadline"]).length, 1);
@@ -189,7 +189,7 @@ test("a hook runs around the write and cannot re-enter the same repository", asy
   repository = notes(database, { hooks });
   await assert.rejects(() => repository.save(Note.make({ title: "a" })), DomainAppError);
   assert.deepEqual(seen, ["before:0"]);
-  assert.equal((await repository.findAll()).length, 0);
+  assert.equal((await repository.fetchAll()).length, 0);
 });
 
 test("after_save failure rolls the row and the in-memory version back", async () => {
@@ -203,7 +203,7 @@ test("after_save failure rolls the row and the in-memory version back", async ()
   const note = Note.make({ title: "a" });
   await assert.rejects(() => repository.save(note), DomainValidationError);
   assert.equal(note.version, 0);
-  assert.equal(await repository.findById(note.uuid), null);
+  assert.equal(await repository.get(note.uuid), null);
 });
 
 test("save writes an owned line and a removed line is deleted", async () => {
@@ -218,14 +218,14 @@ test("save writes an owned line and a removed line is deleted", async () => {
 
   assert.equal(line.version, 1);
   assert.equal(order.version, 1);
-  const storedLine = await lines.findById(line.uuid);
+  const storedLine = await lines.get(line.uuid);
   assert.equal(storedLine?.amount, 5);
 
-  const loaded = await orders.findById(order.uuid);
+  const loaded = await orders.get(order.uuid);
   assert.equal(loaded?.lines.length, 1);
   loaded!.lines = [];
   await orders.save(loaded!);
-  assert.equal(await lines.findById(line.uuid), null);
+  assert.equal(await lines.get(line.uuid), null);
   assert.equal(loaded!.version, 2);
 });
 
@@ -238,8 +238,8 @@ test("editing a line moves the order version, so the other reader is stale", asy
   order.lines = [Line.make({ amount: 1 })];
   await orders.save(order);
 
-  const left = await orders.findById(order.uuid);
-  const right = await orders.findById(order.uuid);
+  const left = await orders.get(order.uuid);
+  const right = await orders.get(order.uuid);
   left!.lines[0].amount = 2;
   right!.lines[0].amount = 3;
   await orders.save(left!);
@@ -298,7 +298,7 @@ test("change tracking emits one update after a read, and nothing for a new aggre
   await repository.save(note);
   assert.equal(note.recordedEvents().length, 0);
 
-  const loaded = await repository.findById(note.uuid);
+  const loaded = await repository.get(note.uuid);
   loaded!.title = "b";
   await repository.save(loaded!);
   const [recorded] = loaded!.pullEvents();
@@ -350,7 +350,7 @@ test("a broken check on an owned line refuses the save before anything is writte
     },
   );
   assert.equal(basket.version, 0);
-  assert.equal((await baskets.findAll()).length, 0);
+  assert.equal((await baskets.fetchAll()).length, 0);
 });
 
 test("findByIds returns the rows that exist and a read runs its hook", async () => {
@@ -370,7 +370,7 @@ test("findByIds returns the rows that exist and a read runs its hook", async () 
   await repository.save(first);
   await repository.save(second);
 
-  const page = await repository.findByIds([first.uuid, "missing", second.uuid]);
+  const page = await repository.browse([first.uuid, "missing", second.uuid]);
   assert.deepEqual(
     page.toArray().map((note) => note.title),
     ["a", "b"],
@@ -415,13 +415,13 @@ test("a relation that only saves leaves the line when it is dropped and when the
   order.lines = [line];
   await orders.save(order);
 
-  const loaded = await orders.findById(order.uuid);
+  const loaded = await orders.get(order.uuid);
   loaded!.lines = [];
   await orders.save(loaded!);
-  assert.equal((await lines.findById(line.uuid))?.amount, 5);
+  assert.equal((await lines.get(line.uuid))?.amount, 5);
 
   await orders.remove(loaded!);
-  assert.equal((await lines.findById(line.uuid))?.amount, 5);
+  assert.equal((await lines.get(line.uuid))?.amount, 5);
 });
 
 test("a relation that only updates writes an existing line and skips a new one", async () => {
@@ -440,8 +440,8 @@ test("a relation that only updates writes an existing line and skips a new one",
   order.lines = [line, fresh];
   await orders.save(order);
 
-  assert.equal((await lines.findById(line.uuid))?.amount, 4);
-  assert.equal(await lines.findById(fresh.uuid), null);
+  assert.equal((await lines.get(line.uuid))?.amount, 4);
+  assert.equal(await lines.get(fresh.uuid), null);
 });
 
 test("a relation that only removes deletes the line with the order and does not rewrite it", async () => {
@@ -458,10 +458,10 @@ test("a relation that only removes deletes the line with the order and does not 
   const order = RemoveOrder.make();
   order.lines = [line];
   await orders.save(order);
-  assert.equal((await lines.findById(line.uuid))?.amount, 2);
+  assert.equal((await lines.get(line.uuid))?.amount, 2);
 
   await orders.remove(order);
-  assert.equal(await lines.findById(line.uuid), null);
+  assert.equal(await lines.get(line.uuid), null);
 });
 
 test("one save of two notes rolls both back when the second fails", async () => {
@@ -479,7 +479,7 @@ test("one save of two notes rolls both back when the second fails", async () => 
   await assert.rejects(() => repository.save([first, second]), DomainValidationError);
   assert.equal(first.version, 0);
   assert.equal(second.version, 0);
-  assert.equal((await repository.findAll()).length, 0);
+  assert.equal((await repository.fetchAll()).length, 0);
 });
 
 test("two saves of different notes both persist", async () => {
@@ -490,7 +490,7 @@ test("two saves of different notes both persist", async () => {
   await Promise.all([repository.save(first), repository.save(second)]);
   assert.equal(first.version, 1);
   assert.equal(second.version, 1);
-  assert.equal((await repository.findAll()).length, 2);
+  assert.equal((await repository.fetchAll()).length, 2);
 });
 
 test("a second repository for the same entity is refused", () => {
@@ -515,7 +515,7 @@ test("before_save can satisfy a check", async () => {
   const project = Project.make({ state: "confirmed" });
   await repository.save(project);
   assert.equal(project.version, 1);
-  assert.equal((await repository.findById(project.uuid))?.deadline, "friday");
+  assert.equal((await repository.get(project.uuid))?.deadline, "friday");
 });
 
 test("the parent stores the line id and reads the line row", async () => {
@@ -532,10 +532,10 @@ test("the parent stores the line id and reads the line row", async () => {
   const stored = JSON.parse(row!.data) as { lines: unknown };
   assert.deepEqual(stored.lines, [line.uuid]);
 
-  const edited = await lines.findById(line.uuid);
+  const edited = await lines.get(line.uuid);
   edited!.amount = 9;
   await lines.save(edited!);
-  const loaded = await orders.findById(order.uuid);
+  const loaded = await orders.get(order.uuid);
   assert.equal(loaded?.lines[0].amount, 9);
 });
 
@@ -550,7 +550,7 @@ test("upsert cascades to the line", async () => {
   await orders.save(order);
   line.amount = 7;
   await orders.upsert(order);
-  assert.equal((await lines.findById(line.uuid))?.amount, 7);
+  assert.equal((await lines.get(line.uuid))?.amount, 7);
 });
 
 test("a failed order save rolls the line back too", async () => {
@@ -571,7 +571,7 @@ test("a failed order save rolls the line back too", async () => {
   await assert.rejects(() => orders.save(order), DomainValidationError);
   assert.equal(order.version, 0);
   assert.equal(line.version, 0);
-  assert.equal(await lines.findById(line.uuid), null);
+  assert.equal(await lines.get(line.uuid), null);
 });
 
 class TrackedOrder extends withChangeTracking(Order) {
@@ -592,7 +592,7 @@ test("a line change is part of the order diff", async () => {
   order.lines = [Line.make({ amount: 1 })];
   await orders.save(order);
 
-  const loaded = await orders.findById(order.uuid);
+  const loaded = await orders.get(order.uuid);
   loaded!.lines[0].amount = 9;
   await orders.save(loaded!);
   const event = loaded!.pullEvents()[0].event as EntityUpdated;
@@ -656,7 +656,7 @@ test("a local save stays dirty until Odoo accepts that version", async () => {
   assert.equal(customer.remoteState, ERemoteState.PENDING);
 
   await customers.acknowledge(customer, 15);
-  const loaded = await customers.findById(customer.uuid);
+  const loaded = await customers.get(customer.uuid);
 
   assert.equal(customer.version, 1);
   assert.equal(customer.ackedVersion, 1);
@@ -717,7 +717,7 @@ test("a synced row written before ackedVersion is not dirty", async () => {
     columns: { remoteId: 3, remoteState: ERemoteState.SYNCED },
   });
 
-  const loaded = await customers.findById(uuid);
+  const loaded = await customers.get(uuid);
   assert.equal(loaded?.ackedVersion, 4);
   assert.equal(loaded?.isDirty, false);
 });
@@ -738,13 +738,13 @@ test("a synchronous read skips hooks", async () => {
   assert.deepEqual(seen, []);
 });
 
-test("findByCriteria reads a field stored in the document JSON", async () => {
+test("fetchAll reads a field stored in the document JSON", async () => {
   DocumentRepository.reset();
   const repository = notes(new FakeDocumentDatabase());
   await repository.save(Note.make({ title: "Acme 3101" }));
   await repository.save(Note.make({ title: "Other" }));
 
-  const found = await repository.findByCriteria(
+  const found = await repository.fetchAll(
     criteria<Note>().selection(["title", "like", "3101"]),
   );
 
@@ -754,7 +754,7 @@ test("findByCriteria reads a field stored in the document JSON", async () => {
   );
 });
 
-test("findByCriteria crosses a relation whose ids live in the JSON", async () => {
+test("fetchAll crosses a relation whose ids live in the JSON", async () => {
   DocumentRepository.reset();
   const database = new FakeDocumentDatabase();
   new DocumentRepository(Line, new FakeDocumentStore(database, "lines"));
@@ -764,7 +764,7 @@ test("findByCriteria crosses a relation whose ids live in the JSON", async () =>
   await orders.save(Order.make({ lines: [large] }));
   await orders.save(Order.make({ lines: [small] }));
 
-  const found = await orders.findByCriteria(
+  const found = await orders.fetchAll(
     criteria<Order>().selection({
       through: "lines",
       selection: { field: "amount", operator: ">", value: 10 },
@@ -775,7 +775,7 @@ test("findByCriteria crosses a relation whose ids live in the JSON", async () =>
   assert.equal(found.toArray()[0].lines[0].amount, 12);
 });
 
-test("findByCriteria keeps a promoted column and a JSON field in one question", async () => {
+test("fetchAll keeps a promoted column and a JSON field in one question", async () => {
   DocumentRepository.reset();
   const database = new FakeDocumentDatabase();
   const repository = new DocumentRepository(
@@ -786,7 +786,7 @@ test("findByCriteria keeps a promoted column and a JSON field in one question", 
   await repository.save(Note.make({ title: "Posted", name: "north" }));
   await repository.save(Note.make({ title: "Draft", name: "north" }));
 
-  const found = await repository.findByCriteria(
+  const found = await repository.fetchAll(
     criteria<Note>().selection(
       ["title", "=", "Posted"],
       selection.any(["name", "like", "north"]),

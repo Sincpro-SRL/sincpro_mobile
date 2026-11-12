@@ -51,7 +51,6 @@ import {
   type HookMoment,
   Hooks,
 } from "@sincpro/mobile/domain/repositories/hooks";
-import { type IRepository } from "@sincpro/mobile/domain/repositories/repository";
 import { DomainAppError, StaleAggregate } from "@sincpro/mobile/exceptions";
 import { eventOutbox } from "@sincpro/mobile/infrastructure/events/outbox";
 import {
@@ -94,10 +93,7 @@ const IN_BATCH = 500;
 const registry = new Map<Function, DocumentRepository<Entity>>();
 const hookRepos = new Set<DocumentRepository<Entity>>();
 
-export class DocumentRepository<T extends Entity> implements IRepository<
-  T,
-  EntityCollection<T>
-> {
+export class DocumentRepository<T extends Entity> {
   private readonly inflight = new Map<string, T>();
   /** The run this view of the repository saves for (`BIND`): its events continue that flow. */
   private readonly cause: Cause | undefined = undefined;
@@ -222,18 +218,8 @@ export class DocumentRepository<T extends Entity> implements IRepository<
     return (await this.search(this.single(criteria))).isNotEmpty;
   }
 
-  /** @deprecated Use `get(uuid)`, the backend's name. Kept while the apps move. */
-  async findById(uuid: string): Promise<T | null> {
-    return this.get(uuid);
-  }
-
   findByIdSync(uuid: string): T | null {
     return this.loadByIdSync(uuid);
-  }
-
-  /** @deprecated Use `browse(uuids)`, the backend's name. Kept while the apps move. */
-  async findByIds(uuids: string[]): Promise<EntityCollection<T>> {
-    return this.browse(uuids);
   }
 
   findByIdsSync(uuids: string[]): EntityCollection<T> {
@@ -243,18 +229,6 @@ export class DocumentRepository<T extends Entity> implements IRepository<
       if (one) found.push(one);
     }
     return new EntityCollection(found);
-  }
-
-  /** @deprecated Use `fetchAll()`, or `search()` for a screen. Kept while the apps move. */
-  async findAll(): Promise<EntityCollection<T>> {
-    const found = await this.readAll();
-    await this.afterSearch(found);
-    return new EntityCollection(found);
-  }
-
-  /** @deprecated Use `fetchAll(criteria)`, or `search(criteria)` for a page. Kept while the apps move. */
-  async findByCriteria(criteria: DocumentCriteria<T>): Promise<EntityCollection<T>> {
-    return this.fetchAll(criteria);
   }
 
   /**
@@ -340,7 +314,7 @@ export class DocumentRepository<T extends Entity> implements IRepository<
       await this.afterSearch(found);
       return new EntityCollection(found);
     }
-    return this.findByCriteria({
+    return this.fetchAll({
       selection: {
         field: "version",
         operator: "!=",

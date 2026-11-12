@@ -162,23 +162,25 @@ const sales = await queryPage<Sale>(
 );
 ```
 
-## Lo que se está moviendo
+## Qué cambió y cómo se migra
 
-Lo viejo sigue funcionando mientras las apps migran: está marcado `@deprecated` (el editor lo
-tacha) y, donde corre, avisa una vez por proceso. Se va en el próximo major.
+Dentro de este paquete lo viejo se reemplaza de una vez, sin capa de compatibilidad: lo que lo
+usa se cambia en el mismo paso.
 
-| Antes                                            | Ahora                                                                    |
-| ------------------------------------------------ | ------------------------------------------------------------------------ |
-| `repository.findById(id)`                        | `get(id)`                                                                |
-| `repository.findByIds(ids)`                      | `browse(ids)`                                                            |
-| `repository.findAll()` / `findByCriteria(c)`     | `fetchAll(c)`, o `search(c)` para una pantalla                           |
-| `CommandListRecentEvents`, `RECENT_EVENTS_LIMIT` | `CommandSearchEvents(criteria)`                                          |
-| `CommandListFailedEvents`                        | `CommandSearchEvents(criteria().selection(["state", "=", "set_aside"]))` |
-| `<DeadLetterQueueList select={…} />`             | `<DeadLetterQueueList scope={criteria…} />`: se lee en SQL               |
-| Un caso de uso de lectura por entidad, vacío     | `CommandSearchEntities(Ticket, …)` y compañía                            |
+| Antes                                            | Ahora                                                                                                  |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `repository.findById(id)`                        | `get(id)`                                                                                              |
+| `repository.findByIds(ids)`                      | `browse(ids)`                                                                                          |
+| `repository.findAll()` / `findByCriteria(c)`     | `fetchAll(c)`, o `search(c)` para una pantalla                                                         |
+| `CommandListRecentEvents`, `RECENT_EVENTS_LIMIT` | `CommandSearchEvents(criteria)`                                                                        |
+| `CommandListFailedEvents`                        | `CommandSearchEvents(criteria<EventRecord>().selection(["state", "=", "set_aside"]))`, leyendo `.rows` |
+| `<DeadLetterQueueList select={…} />`             | `<DeadLetterQueueList scope={criteria…} />`: se lee en SQL                                             |
+| `CommandReadTable(tabla)` → filas                | `CommandReadTable(tabla, criteria, texto)` → una página                                                |
+| Un caso de uso de lectura por entidad, vacío     | `CommandSearchEntities(Ticket, …)` y compañía                                                          |
 
-`CommandReadTable(tabla, criteria, texto)` ya responde una página (`Page`): nadie fuera del core
-lo usaba con la forma anterior.
+Lo que rompe a **otro** repositorio que todavía no migró se marca `@deprecated` y convive hasta
+que migra: hoy, el puerto `IRepository` / `IRemoteRepository` de los repositorios escritos a
+mano (distribution, Sincpro-SRL/sincpro_mobile_distribution#2).
 
 ## Lo que esto le propone a criteria y al backend
 

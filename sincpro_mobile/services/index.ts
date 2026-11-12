@@ -38,22 +38,11 @@ export {
   ClearEvents,
   CommandClearEvents,
 } from "@sincpro/mobile/services/events/clear_events.feature";
-export {
-  DEFAULT_RETENTION,
-  RECENT_EVENTS_LIMIT,
-} from "@sincpro/mobile/services/events/common";
+export { DEFAULT_RETENTION } from "@sincpro/mobile/services/events/common";
 export {
   CommandDeleteEvents,
   DeleteEvents,
 } from "@sincpro/mobile/services/events/delete_events.feature";
-export {
-  CommandListFailedEvents,
-  ListFailedEvents,
-} from "@sincpro/mobile/services/events/list_failed_events.feature";
-export {
-  CommandListRecentEvents,
-  ListRecentEvents,
-} from "@sincpro/mobile/services/events/list_recent_events.feature";
 export {
   CommandPruneEventHistory,
   PruneEventHistory,

@@ -257,11 +257,11 @@ test("the count is what the criteria asks: none, up to the ceiling, or exact", a
   assert.deepEqual(narrowed, { value: 10, exact: true });
 });
 
-test("findByIds reads the ids asked, in their order, past one batch, skipping what is missing", async () => {
+test("browse reads the ids asked, in their order, past one batch, skipping what is missing", async () => {
   const made = await saved(Array.from({ length: 1200 }, (_, index) => ({ number: index })));
   const asked = [...made].reverse().map((record) => record.uuid);
 
-  const found = await tickets.findByIds(["missing", ...asked, made[0].uuid]);
+  const found = await tickets.browse(["missing", ...asked, made[0].uuid]);
 
   assert.deepEqual(
     found.toArray().map((record) => record.uuid),
