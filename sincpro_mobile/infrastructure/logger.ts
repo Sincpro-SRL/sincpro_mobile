@@ -5,6 +5,7 @@ import {
   type LogFilter,
   type Logger,
   type LogLayer,
+  type LogLevel,
   type LogRecord,
 } from "@sincpro/client-framework";
 import { consoleLogger } from "@sincpro/client-framework/console";
@@ -74,7 +75,13 @@ const enabledLayers: Record<LogLayer, boolean> = debugLayersOf(debugging);
 type LoggerListener = () => void;
 const listeners = new Set<LoggerListener>();
 
-let consoleEngine: Logger = consoleLogger({ mode });
+/**
+ * The levels the console colors: Metro's terminal renders ANSI; React Native's LogBox, which
+ * shows WARN and ERROR in the app, prints them as text — so those stay plain.
+ */
+const CONSOLE_COLORS: readonly LogLevel[] = ["debug", "info"];
+
+let consoleEngine: Logger = consoleLogger({ mode, colors: CONSOLE_COLORS });
 
 /** `filter` over `base`, rule by rule. */
 function over(base: LogFilter, filter: LogFilter | undefined): LogFilter {
@@ -98,7 +105,7 @@ function speaking(): LogFilter {
 }
 
 function changed(): void {
-  consoleEngine = consoleLogger({ mode });
+  consoleEngine = consoleLogger({ mode, colors: CONSOLE_COLORS });
   for (const listener of listeners) listener();
 }
 

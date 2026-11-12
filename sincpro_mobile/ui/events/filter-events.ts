@@ -1,3 +1,4 @@
+import { dayOf, instantOf, timeZoneNow } from "@sincpro/client-framework";
 import type { Criteria, Expression } from "@sincpro/criteria";
 import type { EventRecord } from "@sincpro/mobile/domain/events";
 import {
@@ -79,14 +80,24 @@ export function countConditions(node: CriteriaNode): number {
 
 type EventExpression = Expression<EventRecord>;
 
-/** The local day `day` (`YYYY-MM-DD`) starts at, as the instant `publishedAt` is compared to. */
-function dayStart(day: string, days = 0): string {
+/** `day` (`YYYY-MM-DD`) moved `days` on the calendar. */
+function shifted(day: string, days: number): string {
   const [year, month, date] = day.split("-").map(Number);
-  return new Date(year, month - 1, date + days).toISOString();
+  return new Date(Date.UTC(year, month - 1, date + days)).toISOString().slice(0, 10);
+}
+
+/**
+ * The instant the day `day` (`YYYY-MM-DD`, moved `days`) starts at on the app's wall clock
+ * (`timeZoneNow()`), written as `publishedAt` is: what a day of the filter is compared to.
+ */
+function dayStart(day: string, days = 0): string {
+  const start = instantOf(`${shifted(day, days)}T00:00`, timeZoneNow());
+  return start ? new Date(start).toISOString() : `${shifted(day, days)}T00:00:00.000Z`;
 }
 
 function startOfToday(now: Date, daysBack: number): string {
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysBack).toISOString();
+  const today = dayOf(now.toISOString(), timeZoneNow()) ?? now.toISOString().slice(0, 10);
+  return dayStart(today, -daysBack);
 }
 
 function rangeOf(range: EventDateRange, now: Date): EventExpression | undefined {
@@ -144,9 +155,9 @@ function expressionOf(node: CriteriaNode): EventExpression | undefined {
     .map(expressionOf)
     .filter((part): part is EventExpression => part !== undefined);
   if (parts.length === 0) return undefined;
-  if (node.join === "any") return { any: parts };
-  if (node.join === "none") return { negate: { any: parts } };
-  return { all: parts };
+  if (node.join === "none") return { negate: parts.length === 1 ? parts[0] : { any: parts } };
+  if (parts.length === 1) return parts[0];
+  return node.join === "any" ? { any: parts } : { all: parts };
 }
 
 /**
