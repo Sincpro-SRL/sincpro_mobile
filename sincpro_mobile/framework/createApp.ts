@@ -61,6 +61,11 @@ export async function startApp(
   kernel: Kernel,
   config: Pick<AppConfig, "eventRetentionDays"> = {},
 ): Promise<Kernel> {
+  // The migrations first — the telemetry's tables are among them —, then shipping, and only then
+  // the queue, the crons and the hooks: every run, the first ones included, is traced and logged.
+  await kernel.bootstrap();
+  const telemetry = processObservability()?.telemetry;
+  if (telemetry) await initTelemetry(telemetry);
   orchestrator.configure(kernel);
   await orchestrator.bootstrap();
   // Off the startup path: pruning is housekeeping, never a reason to wait.
@@ -69,9 +74,6 @@ export async function startApp(
     .catch((error: unknown) =>
       logger.warn("Event history pruning failed", errorAttributes(error)),
     );
-
-  const telemetry = processObservability()?.telemetry;
-  if (telemetry) await initTelemetry(telemetry);
 
   return kernel;
 }

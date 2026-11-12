@@ -45,11 +45,17 @@ test("one option instruments everything, each signal saying who sent it", () => 
   });
   assert.equal(processObservability(), observability, "the background flush reads the same");
   assert.deepEqual(
-    processIdentity(),
+    {
+      release: processIdentity()?.release,
+      serviceName: processIdentity()?.serviceName,
+      serviceVersion: processIdentity()?.serviceVersion,
+      tenant: processIdentity()?.tenant,
+    },
     {
       release: app.release,
       serviceName: app.name,
       serviceVersion: app.version,
+      tenant: undefined,
     },
     "client-framework puts the release on every span, line and report — no tenant on an open app",
   );

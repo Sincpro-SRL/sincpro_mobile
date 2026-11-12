@@ -97,8 +97,13 @@ function attributesText(attributes: Attributes | undefined): string {
     .join("");
 }
 
+/** An unexpected failure's stack, after its line, cut here: enough frames to find it. */
+const MAX_STACK = 4096;
+
 /**
- * A record as one Loki line: `[layer] [use case] message key=value trace_id=… span_id=…`.
+ * A record as one Loki line, with sincpro_framework's keys:
+ * `[layer] [use case] message key=value release=… tenant=… user_id=… error_type=… error_at=…
+ * trace_id=… span_id=…` — and, below it, an unexpected failure's stack.
  * The run's trace when the record carries one, else the span active in the context manager.
  */
 export function lokiLine(record: LogRecord): string {
@@ -106,9 +111,26 @@ export function lokiLine(record: LogRecord): string {
   const trace = record.traceId
     ? ` trace_id=${record.traceId} span_id=${record.spanId ?? ""}`
     : activeTraceLabel();
-  const line = `[${record.layer}]${where} ${record.message}${attributesText(record.attributes)}`;
+  const failure = record.failure;
+  const keys = attributesText({
+    ...(record.release ? { release: record.release } : {}),
+    ...(record.tenant ? { tenant: record.tenant } : {}),
+    ...(record.userId ? { user_id: record.userId } : {}),
+    ...(failure
+      ? {
+          error_type: failure.type,
+          sincpro_outcome: failure.kind,
+          ...(failure.at ? { error_at: failure.at } : {}),
+          ...(failure.failedIn ? { failed_in: failure.failedIn } : {}),
+        }
+      : {}),
+  });
+  const line = `[${record.layer}]${where} ${record.message}${attributesText(record.attributes)}${keys}`;
   const kept = line.length > MAX_LINE ? `${line.slice(0, MAX_LINE)}…` : line;
-  return kept + trace;
+  const stack = failure?.stack
+    ? `\n${failure.stack.length > MAX_STACK ? `${failure.stack.slice(0, MAX_STACK)}…` : failure.stack}`
+    : "";
+  return kept + trace + stack;
 }
 
 /** Loki's policy: ERROR and WARN always; INFO and DEBUG from enabled layers, at its level. */

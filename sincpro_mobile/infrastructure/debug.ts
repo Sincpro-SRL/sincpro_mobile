@@ -63,7 +63,9 @@ export const Debug = {
       SettingsRepository.getSettingByName(DEBUG_MODE_SETTING_KEY),
       SettingsRepository.getSettingByName(DEBUG_LAYERS_SETTING_KEY),
     ]);
-    setConsoleDebug(mode === true);
+    // Only a switch someone saved wins; never saved, the level the app was built with stays
+    // (`observability.logs.level`, `EXPO_PUBLIC_LOG_LEVEL`).
+    if (typeof mode === "boolean") setConsoleDebug(mode);
     if (isLayerMap(layers)) setEnabledLayers(layers);
     return { enabled: isConsoleDebug(), layers: getEnabledLayers() };
   },

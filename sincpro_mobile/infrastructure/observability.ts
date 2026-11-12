@@ -1,6 +1,7 @@
 import {
   configureProcess,
   type ErrorReporter,
+  type IdentityKeys,
   type ProcessIdentity,
   processIdentity,
 } from "@sincpro/client-framework";
@@ -45,6 +46,12 @@ export type ObservabilityConfig = {
    * app is open to whoever installs it. A run's own tenant comes from its context (`tenant`).
    */
   tenant?: string;
+  /**
+   * The keys of a run's context that say its tenant and its user — optional both. By default
+   * `tenant`/`tenant_id` and `user_id`; an app whose tenant is its company says
+   * `{ tenant: "company_id" }`. Nothing is sent when the context says none.
+   */
+  keys?: IdentityKeys;
   /** Traces, to an OTLP collector (`https://otlp.sincpro.dev`; `/v1/traces` is added). */
   traces?: { endpoint: string; headers?: Record<string, string> };
   /**
@@ -101,7 +108,11 @@ export function instrumentObservability(config: ObservabilityConfig = {}): Obser
   const client = config.errors?.(app);
   const reporter = client ? sentryReporter(client) : undefined;
   configureProcess({
-    identity: { release: app.release, ...(config.tenant ? { tenant: config.tenant } : {}) },
+    identity: {
+      release: app.release,
+      ...(config.tenant ? { tenant: config.tenant } : {}),
+      ...(config.keys ? { keys: config.keys } : {}),
+    },
     tracer: openTelemetryTracer(getTracer(TRACER_SCOPE)),
     logger: { engine: mobileLogger },
     ...(reporter ? { reporter } : {}),
