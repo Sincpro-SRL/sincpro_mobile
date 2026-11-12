@@ -299,43 +299,42 @@ A message from outside — a push, a socket, a page — enters with `eventDelive
 
 ### ✅ Failed events
 
-What the queue set aside is the failed list (`state: "set_aside"`): a person retries — once per failure —, or deletes it.
+What the queue set aside is the failed list (`state: "set_aside"`): a person retries — once per
+failure —, or deletes it. Every stored message keeps the label its class gave it when it was
+queued, so the screens show and search it even when its module is no longer active.
 
 ```tsx
 import {
   CommandDeleteEvents,
-  CommandListFailedEvents,
   CommandRetryEvents,
   CommandSearchEvents,
   commonBoundedContext,
 } from "@sincpro/mobile";
 
-const failed = await commonBoundedContext.execute(new CommandListFailedEvents());
-const retried = await commonBoundedContext.execute(new CommandRetryEvents(failed)); // how many went back
-await commonBoundedContext.execute(new CommandDeleteEvents([failed[0]]));
-```
-
-The screens never load the whole history. `CommandSearchEvents(criteria)` answers a
-`Page<EventRecord>` read in SQL: newest first, filtered by state, name, kind, date or attempts,
-and by `label` (the class's, matched without accents or case), with the cursor of the next page
-and a count. `CommandReadTable(table, criteria, text)` pages the database screen the same way,
-newest row first. The event, failed-event and table screens load more with `useReading`
-(`@sincpro/criteria-react`).
-
-```tsx
-const page = await commonBoundedContext.execute(
+const failed = await commonBoundedContext.execute(
   new CommandSearchEvents({
     selection: { field: "state", operator: "=", value: "set_aside" },
     pagination: { limit: 25 },
   }),
-); // page.rows, page.cursor, page.count
+); // Page<EventRecord>: rows, cursor, count
+const retried = await commonBoundedContext.execute(new CommandRetryEvents(failed.rows)); // how many went back
+await commonBoundedContext.execute(new CommandDeleteEvents([failed.rows[0]]));
+```
 
+The screens never load the whole history. `CommandSearchEvents(criteria)` is the one read of
+the stored messages: a page in SQL, newest first, filtered by state, name, kind, date, attempts
+or `label` (matched without accents or case), with the cursor of the next page and a count.
+`CommandReadTable(table, criteria, text)` pages the database screen the same way, newest row
+first. The event, failed-event and table screens load more with `useReading`
+(`@sincpro/criteria-react`).
+
+```tsx
 // The failed-events screen lists what the app scopes, read in SQL with its filters:
 <DeadLetterQueueList
   scope={{
     selection: { field: "name", operator: "=", value: PrintImageRequestedEvent.eventName },
   }}
-/>;
+/>
 ```
 
 ### ✅ Domain Entity and its events
@@ -382,31 +381,36 @@ A repository in `StoreMode.RELAY` stores them through `eventOutbox()` (the `stor
 table) and asks for the delivery after the commit. One in `StoreMode.LOCAL` without an outbox
 keeps them on the entity: nothing is delivered.
 
-### ✅ Entity reads — Get, GetMany, LiteralSearch, Search
+### ✅ Entity reads — nothing to declare
 
-A local entity is read the way the backend reads one, and answers in the same shape as a
-remote source (`Page<T>` of `@sincpro/criteria`), so a screen or a `Reading` does not care
-where the data lives. The entity declares how it is read (`DEFAULT_GET_ID`, `DEFAULT_ORDER`,
-`DEFAULT_DISPLAY`, `DEFAULT_LITERAL_SEARCH` with `TEXT`); each read is a use case with its
-own file, whose Feature writes nothing:
+A local entity is read the way the backend reads one, and answers in the same shape as a remote
+source (`Page<T>` of `@sincpro/criteria`), so a screen or a `Reading` does not care where the
+data lives. The entity only says how it is read — `DEFAULT_GET_ID`, `DEFAULT_ORDER`,
+`DEFAULT_DISPLAY`, `DEFAULT_LITERAL_SEARCH` with `TEXT` —, and the core reads **any** entity
+with a document repository: pass the entity, get its type back.
 
 ```ts
-import { Search } from "@sincpro/mobile/domain/reads";
-import { EntityReads } from "@sincpro/mobile";
+import {
+  CommandFindEntities,
+  CommandGetEntity,
+  CommandSearchEntities,
+  commonBoundedContext,
+} from "@sincpro/mobile";
 
-export class CommandSearchTickets extends Search(Ticket) {}
-
-@ticketsBoundedContext.feature(CommandSearchTickets)
-export class SearchTickets extends EntityReads<CommandSearchTickets> {}
-
-const page = await ticketsBoundedContext.execute(
-  new CommandSearchTickets({ pagination: { limit: 20 } }),
-); // page.rows, page.cursor (keyset, SQL), page.count
+const page = await commonBoundedContext.execute(
+  new CommandSearchEntities(Ticket, { pagination: { limit: 20 } }),
+); // Page<Ticket>: rows, cursor (keyset, SQL), count
+const ticket = await commonBoundedContext.execute(new CommandGetEntity(Ticket, id));
+const options = await commonBoundedContext.execute(new CommandFindEntities(Ticket, typed));
 ```
 
-`DocumentRepository.search(criteria)` answers the page underneath: the entity's order closed
-by `uuid`, fifty rows unless asked, a cursor in `@sincpro/criteria`'s token format and a count
-that is `none`, capped at 10 000 (the default) or `exact`. See
+A read is declared as a use case of its own only when it has a rule — a scope, a permission, a
+name in the module's traces: `class CommandSearchOpenTickets extends Search(Ticket)` answered by
+an `EntityReads` Feature that overrides `search` and calls `super.search(query, scope)`.
+
+`DocumentRepository.search(criteria)` answers the page underneath: the entity's order closed by
+`uuid`, fifty rows unless asked, a cursor in `@sincpro/criteria`'s token format and a count that
+is `none`, capped at 10 000 (the default) or `exact`. See
 [docs/architecture-aggregate.md](docs/architecture-aggregate.md#leer).
 
 ### ✅ Remote Entity Sync

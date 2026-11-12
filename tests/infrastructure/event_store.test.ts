@@ -1,11 +1,21 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
-import type { StoredMessage } from "@sincpro/client-framework";
+import type { StoredMessage, StoredState } from "@sincpro/client-framework";
 
 import { eventStore } from "../../sincpro_mobile/adapters/repositories/sqlite_event_store.ts";
+import type { EventRecord } from "../../sincpro_mobile/domain/events/index.ts";
 import MIGRATIONS from "../../sincpro_mobile/entrypoints/db/migrations.ts";
 import { DBCursor } from "../../sincpro_mobile/infrastructure/database/index.ts";
+
+/** The stored messages in `state`, newest first: what the event screens read of it. */
+async function inState(state: StoredState): Promise<EventRecord[]> {
+  const page = await eventStore.search({
+    selection: { field: "state", operator: "=", value: state },
+    pagination: { limit: 500 },
+  });
+  return page.rows;
+}
 
 let tableReady = false;
 
@@ -146,7 +156,7 @@ test("screens read records newest first, bounded, with the class's label and the
   const [old] = eventStore.findByIdsSync(["old"]);
   assert.equal(old?.label, "Pedido pagado");
   assert.deepEqual(
-    (await eventStore.inState("set_aside")).map((record) => record.id),
+    (await inState("set_aside")).map((record) => record.id),
     ["new"],
   );
 });

@@ -44,10 +44,6 @@ export {
   DeleteEvents,
 } from "@sincpro/mobile/services/events/delete_events.feature";
 export {
-  CommandListFailedEvents,
-  ListFailedEvents,
-} from "@sincpro/mobile/services/events/list_failed_events.feature";
-export {
   CommandPruneEventHistory,
   PruneEventHistory,
 } from "@sincpro/mobile/services/events/prune_event_history.feature";
@@ -117,6 +113,22 @@ export {
   CommandScanPrinters,
   ScanPrinters,
 } from "@sincpro/mobile/services/printer/scan_printers.feature";
+export {
+  CommandFindEntities,
+  FindEntities,
+} from "@sincpro/mobile/services/reads/find_entities.feature";
+export {
+  CommandGetEntity,
+  GetEntity,
+} from "@sincpro/mobile/services/reads/get_entity.feature";
+export {
+  CommandGetManyEntities,
+  GetManyEntities,
+} from "@sincpro/mobile/services/reads/get_many_entities.feature";
+export {
+  CommandSearchEntities,
+  SearchEntities,
+} from "@sincpro/mobile/services/reads/search_entities.feature";
 export {
   ApplyAppSettings,
   CommandApplyAppSettings,

@@ -11,7 +11,6 @@ import {
   type Criteria,
   type Expression,
   InvalidCriteria,
-  matches,
   type Page,
   type Value,
 } from "@sincpro/criteria";
@@ -46,10 +45,12 @@ type EventRow = {
   failures: string;
   settled_at: string | null;
   answer: string | null;
+  label: string | null;
+  label_key: string | null;
 };
 
 const COLUMNS =
-  "id, kind, name, correlation_id, causation_id, published_at, payload, state, attempts, retry_at, reached, failures, settled_at, answer";
+  "id, kind, name, correlation_id, causation_id, published_at, payload, state, attempts, retry_at, reached, failures, settled_at, answer, label, label_key";
 
 function parsed<T>(text: string | null, fallback: T): T {
   if (!text) return fallback;
@@ -64,26 +65,32 @@ function placeholders(count: number): string {
   return Array.from({ length: count }, () => "?").join(", ");
 }
 
-/** What a criteria over the stored events reads, by the name `EventRecord` gives each field. */
-const EVENT_FIELDS: ReadonlySet<string> = new Set([
-  "seq",
-  "id",
-  "kind",
-  "name",
-  "state",
-  "attempts",
-  "publishedAt",
-  "settledAt",
-  "correlationId",
-  "causationId",
-]);
+/**
+ * What a criteria over the stored events reads: each field by the name `EventRecord` gives it,
+ * and the column that holds it. `labelKey` is the label as a person searches it — a condition
+ * on `label` reads it.
+ */
+const EVENT_COLUMNS: Readonly<Record<string, string>> = {
+  seq: "seq",
+  id: "id",
+  kind: "kind",
+  name: "name",
+  label: "label",
+  labelKey: "label_key",
+  state: "state",
+  attempts: "attempts",
+  publishedAt: "published_at",
+  settledAt: "settled_at",
+  correlationId: "correlation_id",
+  causationId: "causation_id",
+};
 
 /** The alias of the view a search reads: the table, its columns named as `EventRecord`'s. */
 const EVENTS = "events";
 
 const EVENTS_TARGET: CriteriaSqlTarget = {
   table: EVENTS,
-  column: (field) => EVENT_FIELDS.has(field),
+  column: (field) => field in EVENT_COLUMNS,
 };
 
 type ViewRow = EventRow & Record<string, SqlParam>;
@@ -103,27 +110,13 @@ function searchableValue(value: Value): Value {
   return value;
 }
 
-/**
- * The filter with every condition on `label` read as the names that carry such a label: a
- * label is the class's, not a column, and a few names carry every event there is.
- */
-function relabelled(
-  expression: Expression,
-  labelled: readonly { name: string; label: string }[],
-): Expression {
-  if ("all" in expression) {
-    return { all: expression.all.map((one) => relabelled(one, labelled)) };
-  }
-  if ("any" in expression) {
-    return { any: expression.any.map((one) => relabelled(one, labelled)) };
-  }
-  if ("negate" in expression) return { negate: relabelled(expression.negate, labelled) };
+/** The filter with every condition on `label` reading its key: without accents or case. */
+function keyed(expression: Expression): Expression {
+  if ("all" in expression) return { all: expression.all.map(keyed) };
+  if ("any" in expression) return { any: expression.any.map(keyed) };
+  if ("negate" in expression) return { negate: keyed(expression.negate) };
   if (!("field" in expression) || expression.field !== "label") return expression;
-  const condition = { ...expression, value: searchableValue(expression.value) };
-  const names = labelled
-    .filter((one) => matches<Record<string, unknown>>({ label: one.label }, condition))
-    .map((one) => one.name);
-  return { field: "name", operator: "in", value: names };
+  return { ...expression, field: "labelKey", value: searchableValue(expression.value) };
 }
 
 function assertEventFields(criteria: Criteria): void {
@@ -131,10 +124,18 @@ function assertEventFields(criteria: Criteria): void {
     ...conditionsOf(criteria.selection).map((condition) => condition.field),
     ...(criteria.order ?? []).map((sort) => sort.field),
   ];
-  const unknown = fields.find((field) => !EVENT_FIELDS.has(field));
+  const unknown = fields.find((field) => !(field in EVENT_COLUMNS));
   if (unknown !== undefined) {
     throw new InvalidCriteria(`events are not read by '${unknown}'`);
   }
+}
+
+/** The table as a search reads it: its columns under the names `EventRecord` gives them. */
+function viewOf(table: string): string {
+  const named = Object.entries(EVENT_COLUMNS)
+    .filter(([field, column]) => field !== column)
+    .map(([field, column]) => `${column} AS ${field}`);
+  return `(SELECT ${COLUMNS}, seq, ${named.join(", ")} FROM ${table}) AS ${EVENTS}`;
 }
 
 /**
@@ -158,9 +159,11 @@ export class SqliteEventStore implements MessageStore {
     this.classOf = classOf;
   }
 
+  /** Keeps a message waiting, with the label its class gives it then: what the screens show. */
   async add(stored: StoredMessage): Promise<void> {
+    const label = this.labelOf(stored.envelope.name);
     await DBCursor.mutateDatabase(
-      `INSERT OR IGNORE INTO ${this.table} (${COLUMNS}) VALUES (${placeholders(14)})`,
+      `INSERT OR IGNORE INTO ${this.table} (${COLUMNS}) VALUES (${placeholders(16)})`,
       stored.envelope.id,
       stored.kind,
       stored.envelope.name,
@@ -175,6 +178,8 @@ export class SqliteEventStore implements MessageStore {
       JSON.stringify(stored.failures),
       stored.state === "pending" ? null : new Date().toISOString(),
       stored.answer === null ? null : JSON.stringify(stored.answer),
+      label,
+      searchable(label),
     );
   }
 
@@ -210,22 +215,24 @@ export class SqliteEventStore implements MessageStore {
   /**
    * The page of stored events a criteria asks — what the event screens read, never the whole
    * history:
-   * 1. A condition on `label` becomes the names whose label answers it, without accents or case.
-   * 2. The other fields are columns, named as `EventRecord` names them; another is refused.
+   * 1. A condition on `label` reads the label kept with the event, without accents or case.
+   * 2. Every field is a column, named as `EventRecord` names it (`EVENT_COLUMNS`); another is
+   *    refused.
    * 3. Newest first (`seq`) unless the criteria orders it; fifty unless it says; past its cursor.
    * Final: the page, the next page's cursor and the count its `count` asks.
    */
   async search(asked: Criteria<EventRecord> = {}): Promise<Page<EventRecord>> {
+    const selection = asked.selection as Expression | undefined;
     const criteria: Criteria = {
       ...(asked as Criteria),
-      selection: await this.withLabels(asked.selection as Expression | undefined),
+      selection: selection && keyed(selection),
     };
     assertEventFields(criteria);
     const page = compilePage(criteria, EVENTS_TARGET, {
       order: [{ field: "seq", descending: true }],
       identity: "seq",
     });
-    const { sql, params } = selectStatement(page.rows, this.view());
+    const { sql, params } = selectStatement(page.rows, viewOf(this.table));
     const rows = await DBCursor.getAllAsync<ViewRow>(sql, ...params);
     const shown = rows.slice(0, page.limit);
     const last = shown.at(-1);
@@ -242,15 +249,6 @@ export class SqliteEventStore implements MessageStore {
       meta: null,
       dropped: [],
     };
-  }
-
-  /** Every event in `state`, newest first. */
-  async inState(state: StoredState): Promise<EventRecord[]> {
-    const rows = await DBCursor.getAllAsync<EventRow>(
-      `SELECT ${COLUMNS} FROM ${this.table} WHERE state = ? ORDER BY seq DESC`,
-      state,
-    );
-    return rows.map((row) => this.record(row));
   }
 
   async byIds(ids: readonly string[]): Promise<EventRecord[]> {
@@ -357,28 +355,8 @@ export class SqliteEventStore implements MessageStore {
     return row?.count ?? 0;
   }
 
-  /** The table as a search reads it: its columns under the names `EventRecord` gives them. */
-  private view(): string {
-    return `(SELECT ${COLUMNS}, seq, published_at AS publishedAt, settled_at AS settledAt, correlation_id AS correlationId, causation_id AS causationId FROM ${this.table}) AS ${EVENTS}`;
-  }
-
-  private async withLabels(
-    selection: Expression | undefined,
-  ): Promise<Expression | undefined> {
-    if (!conditionsOf(selection).some((condition) => condition.field === "label")) {
-      return selection;
-    }
-    const names = await DBCursor.getAllAsync<{ name: string }>(
-      `SELECT DISTINCT name FROM ${this.table}`,
-    );
-    return relabelled(
-      selection as Expression,
-      names.map(({ name }) => ({ name, label: searchable(this.labelOf(name)) })),
-    );
-  }
-
   private async counted(filter: CompiledCriteria, mode: "capped" | "exact"): Promise<number> {
-    const { sql, params } = countStatement(filter, this.view(), countCeiling(mode));
+    const { sql, params } = countStatement(filter, viewOf(this.table), countCeiling(mode));
     const row = await DBCursor.getFirstAsync<{ total: number }>(sql, ...params);
     return Number(row?.total ?? 0);
   }
@@ -413,7 +391,7 @@ export class SqliteEventStore implements MessageStore {
       id: row.id,
       kind: row.kind as MessageKind,
       name: row.name,
-      label: this.labelOf(row.name),
+      label: row.label ?? this.labelOf(row.name),
       state: row.state as StoredState,
       attempts: row.attempts,
       publishedAt: row.published_at,

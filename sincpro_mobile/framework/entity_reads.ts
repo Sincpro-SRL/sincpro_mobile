@@ -194,11 +194,14 @@ export abstract class EntityReads<Q extends ReadQuery<any>> extends Feature<
     return merge(scope, asked as Criteria);
   }
 
+  /** The entity the query asks about: its own (`new CommandSearchEntities(Ticket)`), or its class's (`Search(Ticket)`). */
   private entityOf(query: ReadQuery<EntityOf<Q>>): DeclaredEntity<EntityOf<Q>> {
-    const declared = (query.constructor as Partial<ReadsEntity<EntityOf<Q>>>).entity;
+    const declared =
+      (query as Partial<ReadsEntity<EntityOf<Q>>>).entity ??
+      (query.constructor as Partial<ReadsEntity<EntityOf<Q>>>).entity;
     if (!declared) {
       throw new DomainAppError(
-        `${query.constructor.name} names no entity: extend Get(Entity), GetMany(Entity), LiteralSearch(Entity) or Search(Entity)`,
+        `${query.constructor.name} names no entity: pass it (CommandSearchEntities(Ticket, …)) or extend Search(Ticket)`,
       );
     }
     return declared as DeclaredEntity<EntityOf<Q>>;

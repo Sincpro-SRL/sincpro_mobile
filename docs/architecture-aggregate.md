@@ -6,25 +6,26 @@ Un teléfono que ya tiene las tablas de eventos no las tira. El store crea la ta
 
 ## Piezas
 
-| Pieza                 | Dónde                                            | Qué decide                                                                             |
-| --------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `Entity`              | `domain/entity/entity.ts`                        | Identidad (`uuid`), `version`, tiempos, `record`                                       |
-| `DEFAULT_*`           | estáticos de `Entity`                            | Cómo se lee: su clave, su orden, su display y cómo la encuentra un texto               |
-| `RemoteEntity`        | el mismo archivo                                 | El `id` de Odoo (`remoteId`) y `remoteState`. No reemplaza el `uuid`                   |
-| `@check`              | `domain/entity/checks.ts`                        | Regla sobre campos del propio agregado                                                 |
-| `valueRule`           | `domain/entity/values.ts`                        | Predicado de un valor: `parse` / `holds`                                               |
-| `@relation`           | `domain/entity/relations.ts`                     | Otra entidad que viaja con esta. El segundo argumento es `RelationCascade`             |
-| `@mapped`             | `infrastructure/database/mapped.ts`              | Puntero por ids a una entidad que vive sola. Cada lectura reconsulta. No se escribe    |
-| `withChangeTracking`  | `domain/entity/change_tracking.ts`               | Diff contra la última lectura. Emite `entity.updated`                                  |
-| `DomainEvent`         | `@sincpro/client-framework`                      | El hecho que el agregado registra (`record`), con su `eventName`                       |
-| `Subscriber`          | `@sincpro/client-framework` (`subscriberFor`)    | Quién ejecuta un hecho ya guardado: los bounded contexts que lo registraron            |
-| `Hook`                | `domain/repositories/hooks.ts`                   | Qué corre el repositorio alrededor de leer, guardar y borrar                           |
-| `IRepository`         | `domain/repositories/repository.ts`              | El puerto: guardar, upsert, borrar, publicar, leer                                     |
-| `DocumentRepository`  | `adapters/repositories/document.repository.ts`   | Ese puerto sobre un `DocumentStore`                                                    |
-| `SqliteDocumentStore` | `adapters/repositories/sqlite_document_store.ts` | La fila real: `uuid`, `version`, `data`, columnas declaradas                           |
-| `Get`, `Search`, …    | `domain/reads/queries.ts`                        | Las lecturas de una entidad como Commands: `Get`, `GetMany`, `LiteralSearch`, `Search` |
-| `EntityReads`         | `framework/entity_reads.ts`                      | El Feature que las responde desde el repositorio de la entidad. No se escribe          |
-| `Outbox`              | `domain/repositories/document_store.ts`          | `save` del evento en `stored_events` y `schedule` de la entrega (`eventOutbox()`)      |
+| Pieza                      | Dónde                                            | Qué decide                                                                               |
+| -------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `Entity`                   | `domain/entity/entity.ts`                        | Identidad (`uuid`), `version`, tiempos, `record`                                         |
+| `DEFAULT_*`                | estáticos de `Entity`                            | Cómo se lee: su clave, su orden, su display y cómo la encuentra un texto                 |
+| `RemoteEntity`             | el mismo archivo                                 | El `id` de Odoo (`remoteId`) y `remoteState`. No reemplaza el `uuid`                     |
+| `@check`                   | `domain/entity/checks.ts`                        | Regla sobre campos del propio agregado                                                   |
+| `valueRule`                | `domain/entity/values.ts`                        | Predicado de un valor: `parse` / `holds`                                                 |
+| `@relation`                | `domain/entity/relations.ts`                     | Otra entidad que viaja con esta. El segundo argumento es `RelationCascade`               |
+| `@mapped`                  | `infrastructure/database/mapped.ts`              | Puntero por ids a una entidad que vive sola. Cada lectura reconsulta. No se escribe      |
+| `withChangeTracking`       | `domain/entity/change_tracking.ts`               | Diff contra la última lectura. Emite `entity.updated`                                    |
+| `DomainEvent`              | `@sincpro/client-framework`                      | El hecho que el agregado registra (`record`), con su `eventName`                         |
+| `Subscriber`               | `@sincpro/client-framework` (`subscriberFor`)    | Quién ejecuta un hecho ya guardado: los bounded contexts que lo registraron              |
+| `Hook`                     | `domain/repositories/hooks.ts`                   | Qué corre el repositorio alrededor de leer, guardar y borrar                             |
+| `IRepository`              | `domain/repositories/repository.ts`              | El puerto: guardar, upsert, borrar, publicar, leer                                       |
+| `DocumentRepository`       | `adapters/repositories/document.repository.ts`   | Ese puerto sobre un `DocumentStore`                                                      |
+| `SqliteDocumentStore`      | `adapters/repositories/sqlite_document_store.ts` | La fila real: `uuid`, `version`, `data`, columnas declaradas                             |
+| `CommandSearchEntities`, … | `services/reads/`                                | Las lecturas de cualquier entidad, sin declarar nada: `Get`, `GetMany`, `Find`, `Search` |
+| `Get`, `Search`, …         | `domain/reads/queries.ts`                        | La base de una lectura declarada, cuando el caso de uso tiene una regla propia           |
+| `EntityReads`              | `framework/entity_reads.ts`                      | El Feature que las responde desde el repositorio de la entidad. No se escribe            |
+| `Outbox`                   | `domain/repositories/document_store.ts`          | `save` del evento en `stored_events` y `schedule` de la entrega (`eventOutbox()`)        |
 
 `StoreMode.LOCAL` guarda el documento y no encola. `StoreMode.RELAY` guarda el documento y deja cada evento que el agregado registró en el outbox, dentro de la misma transacción.
 
@@ -180,16 +181,73 @@ export class Ticket extends RemoteEntity {
 
 `TEXT` es donde va lo que se escribió. Con el texto vacío, las condiciones que lo tienen se caen y el resto (`state = open`) sigue. `null` es que la entidad no se busca: un texto no encuentra nada.
 
-### Lecturas como casos de uso
+### Leer una entidad: sin declarar nada
 
-Una pantalla no escribe sus lecturas. Cada caso de uso tiene su archivo, como cualquier otro: el Command dice qué entidad lee, y el Feature hereda la lectura de `EntityReads` sin escribir nada.
+Una pantalla o un caso de uso no escribe sus lecturas. El core responde las de **cualquier** entidad que tenga su `DocumentRepository` (`sqliteDocuments(Ticket, …)`): se le pasa la entidad y lo que se pide, y el tipo sale de la entidad.
 
 ```ts
-// services/ticket/search_tickets.feature.ts
-export class CommandSearchTickets extends Search(Ticket) {}
+import {
+  CommandFindEntities,
+  CommandGetEntity,
+  CommandGetManyEntities,
+  CommandSearchEntities,
+  commonBoundedContext,
+} from "@sincpro/mobile";
 
-@ticketsBoundedContext.feature(CommandSearchTickets)
-export class SearchTickets extends EntityReads<CommandSearchTickets> {}
+const page = await commonBoundedContext.execute(
+  new CommandSearchEntities(Ticket, { pagination: { limit: 20 } }),
+); // Page<Ticket>: rows, cursor, count
+const ticket = await commonBoundedContext.execute(new CommandGetEntity(Ticket, id)); // Ticket
+const { records, missing } = await commonBoundedContext.execute(
+  new CommandGetManyEntities(Ticket, ids),
+);
+const options = await commonBoundedContext.execute(new CommandFindEntities(Ticket, typed)); // un select
+```
+
+| Command                                          | Responde                                                          |
+| ------------------------------------------------ | ----------------------------------------------------------------- |
+| `CommandGetEntity(Entity, id, criteria?)`        | La entidad por su clave (`DEFAULT_GET_ID`), o `AggregateNotFound` |
+| `CommandGetManyEntities(Entity, ids, criteria?)` | `{ records, missing }`, en el orden pedido                        |
+| `CommandFindEntities(Entity, text?, criteria?)`  | `Page<T>` corta (8): lo que un select muestra para el texto       |
+| `CommandSearchEntities(Entity, criteria?)`       | `Page<T>`: la página, su cursor y el conteo                       |
+
+Pasan por el bus como cualquier Command: cada una tiene su span (`common/SearchEntities`, con `reads.entity: "Ticket"`), su tipo de falla y su reporte. Desde un caso de uso de la app se ejecutan como hijos de su corrida: `this.commonBoundedContext.execute(new CommandSearchEntities(Ticket, criteria))`.
+
+`Page<T>` es la de `@sincpro/criteria`: `rows`, `cursor`, `count`, `meta` (`null`: el modelo no viaja) y `dropped`. Es la misma forma que responde un `Transport` remoto, así que una pantalla o un `Reading` no saben dónde viven los datos:
+
+```ts
+const tickets = resource<Ticket>((criteria) =>
+  commonBoundedContext.execute(new CommandSearchEntities(Ticket, criteria)),
+);
+const { rows, hasMore, more } = useReading(tickets, { pagination: { limit: 20 } }); // @sincpro/criteria-react
+```
+
+El `criteria` de quien llama va sobre lo que la entidad lee por default: su filtro se suma, y lo demás que nombra (orden, página, conteo) reemplaza. Lo que la entidad declara (`DEFAULT_*`, arriba) es lo único que se escribe para que se lea bien.
+
+### Cuándo sí se declara un caso de uso de lectura
+
+Solo cuando la lectura **tiene una regla propia**: un alcance (solo los abiertos), un permiso, un nombre que las trazas del módulo deben mostrar en su propio bounded context, u otro repositorio. Entonces tiene su archivo, como cualquier caso de uso: el Command dice qué entidad lee y el Feature hereda la lectura de `EntityReads`.
+
+```ts
+// services/ticket/search_open_tickets.feature.ts
+export class CommandSearchOpenTickets extends Search(Ticket) {
+  constructor(
+    criteria: Criteria<Ticket> = {},
+    readonly includeClosed = false,
+  ) {
+    super(criteria);
+  }
+}
+
+@ticketsBoundedContext.feature(CommandSearchOpenTickets)
+export class SearchOpenTickets extends EntityReads<CommandSearchOpenTickets> {
+  protected override search(query: CommandSearchOpenTickets) {
+    if (query.includeClosed) return super.search(query);
+    return super.search(query, {
+      selection: { field: "state", operator: "=", value: "open" },
+    });
+  }
+}
 ```
 
 | Command base            | Construye            | Responde                        |
@@ -199,41 +257,9 @@ export class SearchTickets extends EntityReads<CommandSearchTickets> {}
 | `LiteralSearch(Ticket)` | `(text?, criteria?)` | `Page<Ticket>` corta (8)        |
 | `Search(Ticket)`        | `(criteria?)`        | `Page<Ticket>`                  |
 
-`Page<T>` es la de `@sincpro/criteria`: `rows`, `cursor`, `count`, `meta` (`null`: el modelo no viaja) y `dropped`. Es la misma forma que responde un `Transport` remoto, así que una pantalla o un `Reading` no saben dónde viven los datos:
+El alcance (`super.search(query, scope)`) se suma al filtro de quien llama. Lo mismo con `get`, `getMany` y `literalSearch`. Un Feature puede responder varias lecturas de su entidad (`feature([CommandGetTicket, CommandFindTickets])` con `EntityReads<CommandGetTicket | CommandFindTickets>`). Lee del repositorio registrado para la entidad; otro se elige sobrescribiendo `readsFrom(entity)`. `AggregateNotFound` es `not_found`: la ejecución termina `refused` y no se reporta.
 
-```ts
-const tickets = resource<Ticket>((criteria) =>
-  ticketsBoundedContext.execute(new CommandSearchTickets(criteria)),
-);
-const reading = tickets.read({ pagination: { limit: 20 } }); // useReading(tickets, criteria)
-```
-
-El `criteria` de quien llama va sobre lo que la entidad lee por default: su filtro se suma, y lo demás que nombra (orden, página, conteo) reemplaza.
-
-Un caso de uso que lee dentro de un alcance sobrescribe su lectura y llama a `super` con él. El alcance se suma al filtro de quien llama:
-
-```ts
-export class CommandSearchTickets extends Search(Ticket) {
-  constructor(
-    criteria: Criteria<Ticket> = {},
-    readonly includeClosed = false,
-  ) {
-    super(criteria);
-  }
-}
-
-@ticketsBoundedContext.feature(CommandSearchTickets)
-export class SearchTickets extends EntityReads<CommandSearchTickets> {
-  protected override search(query: CommandSearchTickets) {
-    if (query.includeClosed) return super.search(query);
-    return super.search(query, {
-      selection: { field: "state", operator: "=", value: "open" },
-    });
-  }
-}
-```
-
-Lo mismo con `get`, `getMany` y `literalSearch`. Un Feature puede responder varias lecturas de su entidad (`feature([CommandGetTicket, CommandFindTickets])` con `EntityReads<CommandGetTicket | CommandFindTickets>`). Lee del repositorio registrado para la entidad (`sqliteDocuments(Ticket, …)`); otro se elige sobrescribiendo `readsFrom(entity)`. `AggregateNotFound` es `not_found`: la ejecución termina `refused` y no se reporta.
+Sin regla, no se declara: `CommandSearchEntities(Ticket, …)` ya lo hace, y un `class CommandSearchTickets extends Search(Ticket) {}` vacío solo agrega un nombre.
 
 `findByIdSync` y `findByIdsSync` existen para `@mapped`. No corren hooks: un getter no puede esperar.
 

@@ -163,8 +163,9 @@ test("a typed text finds an event by its label or its name, and pages through th
   assert.deepEqual(first.count, { value: 4, exact: true });
 });
 
-test("a field an event does not have is refused, and so is ordering by its label", async () => {
-  await added(1);
+test("a field an event does not have is refused; its label is kept, so it orders too", async () => {
+  await eventStore.add(message("pay", "shop.order.v1.paid"));
+  await eventStore.add(message("print", "shop.print.v1.requested"));
 
   await assert.rejects(
     eventStore.search({
@@ -172,7 +173,18 @@ test("a field an event does not have is refused, and so is ordering by its label
     }),
     InvalidCriteria,
   );
-  await assert.rejects(eventStore.search({ order: [{ field: "label" }] }), InvalidCriteria);
+  const byLabel = await eventStore.search({ order: [{ field: "label" }] });
+
+  assert.deepEqual(ids(byLabel.rows), ["print", "pay"]);
+});
+
+test("the label is the one the class gave when the event was queued", async () => {
+  await eventStore.add(message("print", "shop.print.v1.requested"));
+  eventStore.useCatalog(() => undefined);
+
+  const [kept] = (await eventStore.search()).rows;
+
+  assert.equal(kept.label, "Impresión de ticket", "the module may no longer be active");
 });
 
 test("the count can be skipped, and a page past rows has no cursor", async () => {
