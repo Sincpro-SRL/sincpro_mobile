@@ -1,4 +1,5 @@
 export { BluetoothPrinterSelector } from "./BluetoothPrinterSelector";
+export { CrashRecovery } from "./CrashRecovery";
 export { default as DatabaseInfoRow } from "./DatabaseInfoRow";
 export { default as DeadLetterQueueRow } from "./DeadLetterQueueRow";
 export { default as EventRow } from "./EventRow";

@@ -799,16 +799,20 @@ function AppSwitcher() {
 }
 ```
 
-### ✅ Global Error Handling
+### ✅ Unexpected failures — logged, reported, recoverable
 
-`DomainException` instances that escape to the React root are bridged to native `Alert` dialogs automatically:
+What fails outside a use case — a screen that breaks while drawing, the app's start, an error that reaches the JS thread's top — is never a blank screen nor a message without a stack:
 
-```tsx
-import { installGlobalErrorHandler } from "@sincpro/mobile";
+| Where it failed                | What the core does                                                                                                                                                                                                                                    |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A screen, while drawing        | One ERROR line with its stack and React's component stack (console and Loki); reported once to the app's error client, the component stack linked as its cause; **«Algo salió mal»** with «Reintentar» (the screens mount again) and «Enviar reporte» |
+| The app's start                | The same line and report; the start screen offers «Reintentar»                                                                                                                                                                                        |
+| The JS thread's top (global)   | The line, then handed to the app's error client (Sentry's SDK reports it); a fatal one waits up to 2 s for its line to leave before the app closes                                                                                                    |
+| A `DomainException` at the top | The business answering: a native `Alert`, not reported                                                                                                                                                                                                |
 
-// Call once before defineAppShell
-installGlobalErrorHandler();
-```
+`defineAppShell` installs the global handler after the app's error client (`observability.errors`) set up its own, so nothing is reported twice; `installGlobalErrorHandler()` is idempotent. «Enviar reporte» is `CommandSendErrorReport`: what the app logged leaves now instead of with the next batch.
+
+**Original file and line.** A release bundle is minified: the line carries `release` and the native build (`app.build`, Sentry's `dist`) to find its source maps. GlitchTip shows the original file and line once the app's release pipeline uploads the source maps (and Android's R8 mapping) for that release — Sentry's Expo plugin does it on `eas build` and `eas update`.
 
 ---
 
@@ -1154,7 +1158,7 @@ const {
 
 ### `installGlobalErrorHandler()`
 
-Bridges `DomainException` to native `Alert`. Call once before `defineAppShell`.
+Installed by `defineAppShell`: logs what reaches the JS thread's top with its stack and hands it to the app's error client; a `DomainException` becomes a native `Alert`. Idempotent.
 
 ### `baseModule` / `BaseModule`
 

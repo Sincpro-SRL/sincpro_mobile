@@ -21,10 +21,12 @@ import { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 import { appSettings } from "@sincpro/mobile/infrastructure/app_settings";
 import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 import { permissionStates } from "@sincpro/mobile/infrastructure/permission_states";
+import { telemetryDelivery } from "@sincpro/mobile/infrastructure/telemetry/init_telemetry";
 import { deviceNotifier } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 import type { DomainSwitch } from "@sincpro/mobile/services/domains/common";
 import type { SettingsStore } from "@sincpro/mobile/services/settings/apply_app_settings.feature";
+import type { TelemetryDelivery } from "@sincpro/mobile/services/telemetry/send_error_report.feature";
 
 /** The stored queue as the event use cases need it: deliver what waits. */
 export type EventDelivery = { drain(): Promise<void> };
@@ -56,6 +58,8 @@ export interface CommonDependencies {
   /** The stored queue: it delivers what a person retried or resent. */
   eventDelivery: EventDelivery;
   databaseTables: typeof DatabaseTableRepository;
+  /** The app's log lines and spans, sent now when a person sends a report. */
+  telemetry: TelemetryDelivery;
 }
 
 /** Supplies each dependency at runtime. */
@@ -75,5 +79,6 @@ export function registerDependencies(
   boundedContext.addDependency("eventStore", eventStore);
   boundedContext.addDependency("eventDelivery", eventDelivery);
   boundedContext.addDependency("databaseTables", DatabaseTableRepository);
+  boundedContext.addDependency("telemetry", telemetryDelivery);
   return boundedContext;
 }

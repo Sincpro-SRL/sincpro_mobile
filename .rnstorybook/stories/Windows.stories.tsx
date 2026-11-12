@@ -5,6 +5,7 @@ import { ActivityStrip } from "@sincpro/mobile/ui/activity/ActivityStrip";
 import EventTimelineItem from "@sincpro/mobile/ui/components/molecules/EventTimelineItem";
 import { PermissionCard } from "@sincpro/mobile/ui/components/molecules/PermissionCard";
 import { TimeZoneSelector } from "@sincpro/mobile/ui/components/molecules/TimeZoneSelector";
+import { CrashRecovery } from "@sincpro/mobile/ui/components/organisms/CrashRecovery";
 import DatabaseInfoRow from "@sincpro/mobile/ui/components/organisms/DatabaseInfoRow";
 import DeadLetterQueueRow from "@sincpro/mobile/ui/components/organisms/DeadLetterQueueRow";
 import EventRow from "@sincpro/mobile/ui/components/organisms/EventRow";
@@ -150,6 +151,18 @@ export const Ubicacion: Story = {
       <PermissionCard kind={EPermission.LOCATION} />
       <PermissionCard kind={EPermission.BLUETOOTH} />
     </View>
+  ),
+};
+
+export const AlgoSalioMal: Story = {
+  parameters: screen,
+  render: () => (
+    <CrashRecovery
+      canSendReport
+      error={new TypeError("Cannot read property 'child' of undefined")}
+      onRetry={() => undefined}
+      showDetails
+    />
   ),
 };
 

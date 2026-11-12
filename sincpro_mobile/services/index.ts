@@ -139,3 +139,8 @@ export {
   CommandApplyAppSettings,
   type SettingsStore,
 } from "@sincpro/mobile/services/settings/apply_app_settings.feature";
+export {
+  CommandSendErrorReport,
+  SendErrorReport,
+  type TelemetryDelivery,
+} from "@sincpro/mobile/services/telemetry/send_error_report.feature";
