@@ -1,11 +1,19 @@
 import {
   type Criteria,
   CriteriaBuilder,
+  dynamic,
   type Expression,
   type Filter,
   InvalidCriteria,
+  type Param,
 } from "@sincpro/criteria";
 import { filtered, paginate, sortRows } from "@sincpro/criteria/engine";
+
+/**
+ * Where the typed text goes in an entity's literal search (`DEFAULT_LITERAL_SEARCH`): a
+ * condition holding it gets the text, and is dropped when the text is blank.
+ */
+export const TEXT: Param = dynamic.param("text");
 
 /**
  * What the document store accepts.

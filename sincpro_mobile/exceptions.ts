@@ -6,6 +6,7 @@
  *     UserError, RejectedFailure  domain       the business refused: never retried, not reported
  *     ValidationError, ChecksFailed  invalid   the input is wrong: fix it, never retried
  *     StaleAggregate               conflict    refresh and retry
+ *     AggregateNotFound            not_found   no record under that key: never retried
  *     NetworkError, RepeatableFailure  unavailable  retried after a wait
  *     PrinterUnavailable           unavailable  the printer is off or out of reach: retried
  *     PrinterNotSelected           domain       no printer chosen: set aside until one is
@@ -68,6 +69,16 @@ export class StaleAggregate extends DomainException {
   constructor(message: string) {
     super(message);
     this.name = "StaleAggregate";
+  }
+}
+
+/** No record under the key a read asked for (`Get`): the backend's `AggregateNotFound`. */
+export class AggregateNotFound extends DomainException {
+  static readonly failureKind = "not_found";
+  static readonly reason = "AGGREGATE_NOT_FOUND";
+  constructor(message: string) {
+    super(message);
+    this.name = "AggregateNotFound";
   }
 }
 

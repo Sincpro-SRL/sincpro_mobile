@@ -1,10 +1,14 @@
 import {
+  type CountMode,
+  type Criteria,
   type Expression,
   InvalidCriteria,
   isOperator,
   type Operator,
+  type Sort,
   type Value,
 } from "@sincpro/criteria";
+import { DEFAULT_LIMIT, mintCursor, readCursor, signatureOf } from "@sincpro/criteria/engine";
 
 import { criteriaOf, type DocumentCriteria } from "./criteria";
 import {
@@ -59,6 +63,20 @@ export interface SqlDocument {
   version: number;
   data: string;
   columns: Record<string, SqlParam>;
+}
+
+/**
+ * One page of a document query, as the engine pages: `rows` reads the page (one row more than
+ * `limit`, to know whether another follows), `filter` is what a count counts, and `sorts` the
+ * ordering a cursor is minted under, tiebreaker included.
+ */
+export interface CompiledPage {
+  rows: CompiledCriteria;
+  filter: CompiledCriteria;
+  limit: number;
+  sorts: Sort[];
+  resumable: boolean;
+  count: CountMode;
 }
 
 export type { CriteriaClock };
@@ -121,6 +139,161 @@ export function rowsFor(
   const start = compiled.offset;
   const end = compiled.limit === undefined ? undefined : start + compiled.limit;
   return ordered.slice(start, end);
+}
+
+/**
+ * The page a criteria asks of a document collection, compiled as the engine pages it.
+ *
+ * 1. The order is the criteria's, else `defaultOrder` (the entity's), closed by `uuid` in the
+ *    direction of the first sort unless it already names it.
+ * 2. The page is `limit` rows (fifty unless the criteria says), after `rows` skipped or past
+ *    the row a `token` names. A token minted under another ordering is refused.
+ * 3. Past a token is a keyset over the sorts: equal on the sorts before, beyond on this one, in
+ *    its own direction. NULL sorts first, as SQLite orders it.
+ * Final: the page's statement, the filter alone for the count, and how to mint its cursor.
+ */
+export function compilePage<T>(
+  asked: DocumentCriteria<T>,
+  target: CriteriaSqlTarget,
+  defaultOrder: readonly Sort[],
+  clock: CriteriaClock = deviceClock(),
+): CompiledPage {
+  const criteria = criteriaOf(asked) as Criteria;
+  const sorts = orderingOf(criteria.order ?? [], defaultOrder);
+  const filter = compileCriteria(
+    { selection: criteria.selection, order: sorts, grouping: criteria.grouping },
+    target,
+    clock,
+  );
+  const limit = wholeNumber(criteria.pagination?.limit ?? DEFAULT_LIMIT, "a page limit");
+  const strategy = criteria.pagination?.strategy;
+  const offset =
+    strategy && "rows" in strategy ? wholeNumber(strategy.rows, "a page offset") : 0;
+  const token = strategy && "token" in strategy ? strategy.token : null;
+  const after =
+    token === null
+      ? null
+      : keysetPast(filter, readCursor(token, signatureOf(sorts)).keys, target.table);
+  return {
+    rows: {
+      ...filter,
+      whereSql: after ? joinedWhere(filter.whereSql, after.sql) : filter.whereSql,
+      params: after ? [...filter.params, ...after.params] : filter.params,
+      predicate: after
+        ? { op: "and", items: [filter.predicate, after.predicate] }
+        : filter.predicate,
+      limit: limit + 1,
+      offset,
+    },
+    filter,
+    limit,
+    sorts,
+    resumable: strategy === undefined || "token" in strategy,
+    count: criteria.count ?? "capped",
+  };
+}
+
+/** The token the page after `row` resumes from, under the page's ordering. */
+export function cursorAfter(row: SqlDocument, page: CompiledPage): string {
+  const keys: Record<string, unknown> = {};
+  page.filter.order.forEach((item, index) => {
+    keys[page.sorts[index].field] = readField(row, item.ref);
+  });
+  return mintCursor(keys, page.sorts);
+}
+
+function orderingOf(asked: readonly Sort[], defaultOrder: readonly Sort[]): Sort[] {
+  const sorts = asked.length > 0 ? [...asked] : [...defaultOrder];
+  if (sorts.length === 0) return [{ field: "uuid", descending: true }];
+  if (sorts.some((sort) => sort.field === "uuid")) return sorts;
+  return [...sorts, { field: "uuid", descending: sorts[0].descending === true }];
+}
+
+function wholeNumber(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new InvalidCriteria(`${label} is a whole number from zero`);
+  }
+  return value;
+}
+
+function joinedWhere(where: string, after: string): string {
+  return where ? `(${where}) AND (${after})` : after;
+}
+
+function keysetPast(
+  filter: CompiledCriteria,
+  keys: readonly unknown[],
+  table: string,
+): { sql: string; params: SqlParam[]; predicate: Predicate } {
+  if (keys.length !== filter.order.length) {
+    throw new InvalidCriteria("this cursor does not carry a key for every sort");
+  }
+  const params: SqlParam[] = [];
+  const clauses: string[] = [];
+  const items: Predicate[] = [];
+  filter.order.forEach((sort, index) => {
+    const parts: string[] = [];
+    const held: Predicate[] = [];
+    for (let before = 0; before < index; before++) {
+      const tie = equalTo(filter.order[before].ref, keyParam(keys[before]), table, params);
+      parts.push(tie.sql);
+      held.push(tie.predicate);
+    }
+    const beyond = beyondKey(sort, keyParam(keys[index]), table, params);
+    parts.push(beyond.sql);
+    held.push(beyond.predicate);
+    clauses.push(`(${parts.join(" AND ")})`);
+    items.push({ op: "and", items: held });
+  });
+  return { sql: `(${clauses.join(" OR ")})`, params, predicate: { op: "or", items } };
+}
+
+function equalTo(
+  ref: FieldRef,
+  key: SqlParam,
+  table: string,
+  params: SqlParam[],
+): { sql: string; predicate: Predicate } {
+  const expr = sqlOf(table, ref);
+  const predicate: Predicate = { op: "cmp", left: ref, operator: "=", right: { value: key } };
+  if (key === null) return { sql: `${expr} IS NULL`, predicate };
+  params.push(key);
+  return { sql: `${expr} = ?`, predicate };
+}
+
+function beyondKey(
+  sort: { ref: FieldRef; descending: boolean },
+  key: SqlParam,
+  table: string,
+  params: SqlParam[],
+): { sql: string; predicate: Predicate } {
+  const expr = sqlOf(table, sort.ref);
+  const isNull: Predicate = {
+    op: "cmp",
+    left: sort.ref,
+    operator: "=",
+    right: { value: null },
+  };
+  if (!sort.descending && key === null) {
+    return { sql: `${expr} IS NOT NULL`, predicate: { op: "not", item: isNull } };
+  }
+  if (sort.descending && key === null) return { sql: "(0)", predicate: { op: "false" } };
+  params.push(key);
+  const operator = sort.descending ? "<" : ">";
+  const past: Predicate = { op: "cmp", left: sort.ref, operator, right: { value: key } };
+  if (!sort.descending) return { sql: `${expr} > ?`, predicate: past };
+  return {
+    sql: `(${expr} < ? OR ${expr} IS NULL)`,
+    predicate: { op: "or", items: [past, isNull] },
+  };
+}
+
+function keyParam(value: unknown): SqlParam {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number" || typeof value === "string") return value;
+  if (value instanceof Date) return value.toISOString();
+  throw new InvalidCriteria("a page is ordered by fields that hold one value each");
 }
 
 function compileExpression(

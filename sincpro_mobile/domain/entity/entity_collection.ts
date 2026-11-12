@@ -1,4 +1,5 @@
 import { type DomainEvent, logger } from "@sincpro/client-framework";
+import type { Count } from "@sincpro/criteria";
 import {
   type DocumentCriteria,
   rowsMatching,
@@ -39,6 +40,10 @@ import { ValueObject } from "./value_object";
 export class EntityCollection<T extends Entity> extends ValueObject {
   public uuid: string;
   public eventIds: string[] = [];
+  /** Where the next page starts, when this collection is a page a search answered. */
+  public cursor: string | null = null;
+  /** How many the search matched in total, when it counted (`Count.exact: false` is "at least"). */
+  public total: Count | null = null;
   private entities: T[] = [];
   private _recorded = new RecordedEvents();
 
