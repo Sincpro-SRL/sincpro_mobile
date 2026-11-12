@@ -642,8 +642,7 @@ await commonBoundedContext.execute(new CommandPrintImage(base64Png, "Ticket 7"))
 | Command                                | What it does                                                                              |
 | -------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `CommandPrinterStatus`                 | `{ bluetoothGranted, selected, connected }`, never asking                                 |
-| `CommandRequestBluetoothPermission`    | The system's dialog; tells the person granted or denied, answers the status               |
-| `CommandScanPrinters`                  | The devices in reach; asks for Bluetooth first                                            |
+| `CommandScanPrinters`                  | The devices in reach; without Bluetooth granted, `BluetoothPermissionDenied`              |
 | `CommandConnectPrinter(address, name)` | Connects and keeps it as the chosen printer                                               |
 | `CommandDisconnectPrinter`             | Disconnects on purpose: nothing reconnects until the person connects again                |
 | `CommandPrintTestPage`                 | A short page that proves the printer works                                                |
@@ -653,6 +652,8 @@ await commonBoundedContext.execute(new CommandPrintImage(base64Png, "Ticket 7"))
 | `CommandQueuePrint(...)`               | Queues the print (`PrintImageRequestedEvent`): it survives a closed app and a printer off |
 
 Each use case tells the person what happened through the `Notifier` port; the screen only decides its own state. A failure says its kind: no printer chosen is `PrinterNotSelected` (`domain`), a printer off or out of reach `PrinterUnavailable` (`unavailable`), Bluetooth not granted `BluetoothPermissionDenied` (`permission_denied`). The three are the device answering, not a fault: the run ends `refused` and nothing is reported.
+
+**Never asks for Bluetooth.** Connecting, scanning, printing from the queue and reconnecting only _read_ the permission; the system's dialog is shown by `CommandRequestPermission(EPermission.BLUETOOTH)` when the person taps «Permitir» in the printer settings (see [Permissions](#-permissions--asked-only-when-a-person-acts)).
 
 **Grace reconnect:** if a print fails on a stale link, the adapter disconnects, reconnects to the chosen printer and tries once more.
 
@@ -721,9 +722,42 @@ function StatusBar() {
 | `timezone`               | `string \| null`                | The app's time zone (`null`: platform's) |
 | `locale`                 | `string \| null`                | The app's language (`null`: phone's)     |
 | `updateTimezone(tz)`     | function                        | Saves and installs zone + language       |
-| `hasGeoPermission`       | `boolean`                       | Current geo permission state             |
-| `requestGeoPermission()` | `async () => boolean`           | Requests location permission             |
-| `checkGeoPermission()`   | `async () => void`              | Rechecks without prompting               |
+| `hasGeoPermission`       | `boolean`                       | Deprecated: `usePermission(LOCATION)`    |
+| `requestGeoPermission()` | `async () => boolean`           | Deprecated: `usePermission(LOCATION)`    |
+| `checkGeoPermission()`   | `async () => void`              | Deprecated: `usePermission(LOCATION)`    |
+
+### ✅ Permissions — asked only when a person acts
+
+One service for every permission the app asks the phone for (`EPermission.BLUETOOTH`, `EPermission.LOCATION`). It reads a permission without asking, shows the system's dialog only from a person's action, after they read what it is for, and leads to the system's settings when it was blocked.
+
+```tsx
+import { EPermission } from "@sincpro/mobile/domain";
+import { PermissionCard, usePermission } from "@sincpro/mobile/ui";
+
+<PermissionCard
+  kind={EPermission.LOCATION}
+  reason="Para registrar dónde se entrega cada pedido."
+/>;
+
+const location = usePermission(EPermission.LOCATION); // { status, granted, busy, request, openSettings, act }
+```
+
+| Status        | Means                                                                | `PermissionCard` offers |
+| ------------- | -------------------------------------------------------------------- | ----------------------- |
+| `granted`     | Granted                                                              | —                       |
+| `denied`      | Not granted; the system's dialog can still ask                       | «Permitir»              |
+| `blocked`     | Only the system's settings grant it (Android «don't ask again», iOS) | «Abrir ajustes»         |
+| `unavailable` | This phone or platform does not have it (Bluetooth on the web)       | —                       |
+
+| Command                               | What it does                                                                                             |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `CommandCheckPermission(kind)`        | Where it stands, never asking; every screen following it (`usePermission`) sees the answer               |
+| `CommandRequestPermission(kind)`      | The system's dialog, only when it can still ask; tells the person the answer — a denial is not a failure |
+| `CommandOpenPermissionSettings(kind)` | This app's page in the system's settings                                                                 |
+
+`usePermission` reads the permission when the screen mounts and again whenever the app comes back to the foreground, so a permission granted in the settings shows at once. Nothing in a background task, a cron or the queue asks: the printer adapter, for one, only reads Bluetooth and fails `BluetoothPermissionDenied` (`permission_denied`, refused, not reported).
+
+**Migrating from 2.x:** `CommandRequestBluetoothPermission` / `CommandCheckBluetoothPermission` → `CommandRequestPermission(EPermission.BLUETOOTH)` / `CommandCheckPermission(EPermission.BLUETOOTH)`; the `bluetooth` dependency → `permissions`; `GeoPermissionCard` → `PermissionCard`. `useCommon()`'s `hasGeoPermission`, `requestGeoPermission`, `checkGeoPermission`, `geoIsLoading` and `geoError` and `GeoAdapter.requestPermission` / `hasPermission` still work, deprecated: use `usePermission(EPermission.LOCATION)`.
 
 ### ✅ App settings — time zone, language, colors
 
@@ -1114,8 +1148,6 @@ const {
   setColorScheme,
   timezone,
   updateTimezone,
-  hasGeoPermission,
-  requestGeoPermission,
   debugMode,
 } = useCommon();
 ```

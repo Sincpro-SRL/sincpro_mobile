@@ -1,6 +1,7 @@
 import { loggerAdapter } from "@sincpro/client-framework";
 import { ReceiptExporterAdapter } from "@sincpro/mobile/adapters/ReceiptExporter.adapter";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
+import { type DevicePermissions, EPermission } from "@sincpro/mobile/domain/permissions";
 import {
   type BluetoothDevice,
   getPrinterDriver,
@@ -25,7 +26,7 @@ import * as Print from "expo-print";
 import type { RefObject } from "react";
 import type { View } from "react-native";
 
-import { bluetoothAdapter } from "./Bluetooth.adapter";
+import { devicePermissions } from "./permissions.adapter";
 
 export interface PrinterOptions {
   /** Reconnect the saved printer on start, on return and after a lost link. Default: true. */
@@ -51,7 +52,8 @@ export interface PrinterOptions {
  * `commonBoundedContext.addDependency("printer", new MyPrinter(), { replaces: printerAdapter })`.
  */
 export class PrinterAdapter {
-  private readonly bluetooth = bluetoothAdapter;
+  constructor(private readonly permissions: DevicePermissions = devicePermissions) {}
+
   private cachedPrinter: ISelectedPrinter | null = null;
   /** The person disconnected on purpose: nothing reconnects until they connect again. */
   private userDisconnected = false;
@@ -94,7 +96,7 @@ export class PrinterAdapter {
     return getPrinterDriver().getPairedPrinters();
   }
 
-  /** The printers in reach; asks for the Bluetooth permission first. */
+  /** The printers in reach; without the Bluetooth permission `BluetoothPermissionDenied`. */
   async scanPrinters(): Promise<BluetoothDevice[]> {
     await this.requireBluetooth();
     return getPrinterDriver().scanPrinters();
@@ -114,7 +116,7 @@ export class PrinterAdapter {
 
   /**
    * Connects to a printer and keeps it as the chosen one:
-   * 1. The Bluetooth permission, asked for when missing: denied is `BluetoothPermissionDenied`.
+   * 1. Without the Bluetooth permission: `BluetoothPermissionDenied` — never asked for here.
    * 2. The driver connects: one that does not answer is `PrinterUnavailable`.
    * Final: the printer is saved as the chosen one.
    */
@@ -220,7 +222,7 @@ export class PrinterAdapter {
     if (this.isConnected() || this.userDisconnected) return;
     const printer = await this.getSelectedPrinter();
     if (!printer) return;
-    if (!(await this.bluetooth.hasPermissions()).isGranted) return;
+    if ((await this.permissions.check(EPermission.BLUETOOTH)) !== "granted") return;
     try {
       await getPrinterDriver().connectBluetooth(printer.address);
     } catch (error) {
@@ -230,9 +232,14 @@ export class PrinterAdapter {
     }
   }
 
+  /**
+   * Bluetooth granted, or `BluetoothPermissionDenied`. The adapter never asks: a print from the
+   * queue or a reconnection runs with no one looking, and the system's dialog is shown only
+   * when a person asks for it (`CommandRequestPermission`).
+   */
   private async requireBluetooth(): Promise<void> {
-    if (!(await this.bluetooth.ensurePermissions())) {
-      throw new BluetoothPermissionDenied("The Bluetooth permission was not granted");
+    if ((await this.permissions.check(EPermission.BLUETOOTH)) !== "granted") {
+      throw new BluetoothPermissionDenied("The Bluetooth permission is not granted");
     }
   }
 

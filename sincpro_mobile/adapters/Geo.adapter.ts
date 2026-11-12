@@ -2,11 +2,13 @@ import { Coordinates } from "@sincpro/mobile/domain/connectivity";
 import * as Location from "expo-location";
 
 export const GeoAdapter = {
+  /** @deprecated `CommandRequestPermission(EPermission.LOCATION)`, run only from a person's action. */
   async requestPermission(): Promise<boolean> {
     const { status } = await Location.requestForegroundPermissionsAsync();
     return status === Location.PermissionStatus.GRANTED;
   },
 
+  /** @deprecated `CommandCheckPermission(EPermission.LOCATION)`. */
   async hasPermission(): Promise<boolean> {
     const { status } = await Location.getForegroundPermissionsAsync();
     return status === Location.PermissionStatus.GRANTED;

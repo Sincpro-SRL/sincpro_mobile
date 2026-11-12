@@ -1,14 +1,19 @@
+import { EPermission } from "@sincpro/mobile/domain/permissions";
 import { BluetoothDevice, ISelectedPrinter } from "@sincpro/mobile/domain/print";
 import {
   CommandConnectPrinter,
   CommandPrinterStatus,
   CommandPrintTestPage,
-  CommandRequestBluetoothPermission,
   commonBoundedContext,
 } from "@sincpro/mobile/services";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import PrinterIcon from "@sincpro/mobile/ui/components/atoms/PrinterIcon";
 import { BluetoothDeviceSelectorModal } from "@sincpro/mobile/ui/components/molecules/BluetoothDeviceSelectorModal";
+import {
+  type PermissionPrompt,
+  permissionPrompt,
+  usePermission,
+} from "@sincpro/mobile/ui/permissions";
 import { Actions } from "@sincpro/mobile-ui/Actions";
 import { Display } from "@sincpro/mobile-ui/Display";
 import { useTheme } from "@sincpro/mobile-ui/theme";
@@ -34,24 +39,29 @@ const statusTextVariants = tv({
 });
 
 function PermissionRequired({
+  prompt,
   loading,
-  onRequestPermission,
+  onAct,
 }: {
+  prompt: PermissionPrompt;
   loading: boolean;
-  onRequestPermission: () => void;
+  onAct: () => void;
 }) {
   return (
     <>
       <Typography.Text className={statusTextVariants({ granted: false })}>
-        Permiso de Bluetooth requerido
+        {prompt.message}
       </Typography.Text>
-      <Actions.Button
-        loading={loading}
-        onPress={onRequestPermission}
-        size="small"
-        title="Solicitar Permiso"
-        variant="cta"
-      />
+      {prompt.actionLabel ? (
+        <Actions.Button
+          className="mt-2"
+          loading={loading}
+          onPress={onAct}
+          size="small"
+          title={prompt.actionLabel}
+          variant="cta"
+        />
+      ) : null}
     </>
   );
 }
@@ -138,7 +148,8 @@ function BluetoothPrinterSelector({
   compact = false,
 }: BluetoothPrinterSelectorProps) {
   const theme = useTheme();
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const bluetooth = usePermission(EPermission.BLUETOOTH);
+  const prompt = permissionPrompt(EPermission.BLUETOOTH, bluetooth.status);
   const [selectedPrinter, setSelectedPrinter] = useState<ISelectedPrinter | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -146,7 +157,6 @@ function BluetoothPrinterSelector({
 
   const checkStatus = useCallback(async () => {
     const status = await commonBoundedContext.execute(new CommandPrinterStatus());
-    setHasPermission(status.bluetoothGranted);
     setSelectedPrinter(status.selected);
     setIsConnected(status.connected);
   }, []);
@@ -172,17 +182,9 @@ function BluetoothPrinterSelector({
     onConnectionChange?.(isConnected);
   }, [isConnected, onConnectionChange]);
 
-  async function handleRequestPermission() {
-    setLoading(true);
-    return withCleanup(
-      async () => {
-        const permissions = await commonBoundedContext.execute(
-          new CommandRequestBluetoothPermission(),
-        );
-        setHasPermission(permissions.isGranted);
-      },
-      () => setLoading(false),
-    );
+  /** Asks for Bluetooth, or opens the settings when it is blocked; the run tells the answer. */
+  function handlePermission() {
+    if (prompt.action) void bluetooth.act(prompt.action).catch(() => undefined);
   }
 
   async function handleConnect() {
@@ -227,7 +229,7 @@ function BluetoothPrinterSelector({
     onPrinterSelected?.(printer);
   }
 
-  const granted = hasPermission === true;
+  const granted = bluetooth.granted;
 
   const modal = (
     <BluetoothDeviceSelectorModal
@@ -238,7 +240,7 @@ function BluetoothPrinterSelector({
   );
 
   if (compact) {
-    if (hasPermission === null) {
+    if (bluetooth.status === undefined) {
       return (
         <>
           <Display.MenuButton
@@ -256,10 +258,10 @@ function BluetoothPrinterSelector({
       return (
         <>
           <Display.MenuButton
-            description="Permiso de Bluetooth requerido"
+            description={prompt.message}
             icon={PrinterIcon}
             label="Impresora Bluetooth"
-            onPress={handleRequestPermission}
+            onPress={prompt.action && !bluetooth.busy ? handlePermission : undefined}
             showDivider={false}
           />
           {modal}
@@ -317,14 +319,15 @@ function BluetoothPrinterSelector({
             Impresora Bluetooth
           </Typography.Text>
 
-          {hasPermission === null ? (
+          {bluetooth.status === undefined ? (
             <Typography.Text className="text-text-secondary">
               Verificando permisos...
             </Typography.Text>
           ) : !granted ? (
             <PermissionRequired
-              loading={loading}
-              onRequestPermission={handleRequestPermission}
+              loading={bluetooth.busy}
+              onAct={handlePermission}
+              prompt={prompt}
             />
           ) : (
             <>

@@ -1,11 +1,11 @@
 import { logger, type LogLayer } from "@sincpro/client-framework";
-import { GeoAdapter } from "@sincpro/mobile/adapters/Geo.adapter";
+import { EPermission } from "@sincpro/mobile/domain/permissions";
 import { EAppSetting } from "@sincpro/mobile/domain/settings";
 import { appSettings } from "@sincpro/mobile/infrastructure/app_settings";
 import { Debug } from "@sincpro/mobile/infrastructure/debug";
 import { errorAttributes, getEnabledLayers } from "@sincpro/mobile/infrastructure/logger";
 import { CommandApplyAppSettings, commonBoundedContext } from "@sincpro/mobile/services";
-import { withCleanup } from "@sincpro/mobile/tools/utils/async";
+import { usePermission } from "@sincpro/mobile/ui/permissions";
 import type { ThemeTokens } from "@sincpro/mobile-ui/theme";
 import { DEFAULT_DARK_THEME, DEFAULT_THEME, setActiveTheme } from "@sincpro/mobile-ui/theme";
 import {
@@ -19,7 +19,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Appearance, AppState } from "react-native";
+import { Appearance } from "react-native";
 
 import {
   type ColorSchemeChoice,
@@ -40,10 +40,15 @@ interface ICommonContext {
   logLayers: Record<LogLayer, boolean>;
   setLogLayerEnabled: (layer: LogLayer, enabled: boolean) => Promise<void>;
   resetLogLayers: () => Promise<void>;
+  /** @deprecated `usePermission(EPermission.LOCATION).granted`, or `<PermissionCard kind={EPermission.LOCATION} />`. */
   hasGeoPermission: boolean;
+  /** @deprecated `usePermission(EPermission.LOCATION).busy`. */
   geoIsLoading: boolean;
+  /** @deprecated A failed run is recorded and reported by itself; `usePermission` keeps its last status. */
   geoError: string | null;
+  /** @deprecated `usePermission(EPermission.LOCATION).check()`. */
   checkGeoPermission: () => Promise<void>;
+  /** @deprecated `usePermission(EPermission.LOCATION).request()`, only from a person's action. */
   requestGeoPermission: () => Promise<boolean>;
   locale: string | null;
   timezone: string | null;
@@ -83,8 +88,9 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
   const [logLayers, setLogLayers] = useState(getEnabledLayers);
   const settings = useSyncExternalStore(appSettings.subscribe, appSettings.snapshot);
 
-  const [hasGeoPermission, setHasGeoPermission] = useState(false);
-  const [geoIsLoading, setGeoIsLoading] = useState(false);
+  const location = usePermission(EPermission.LOCATION);
+  const hasGeoPermission = location.granted;
+  const geoIsLoading = location.busy;
   const [geoError, setGeoError] = useState<string | null>(null);
   const locale = settings.locale;
   const timezone = settings.timeZone;
@@ -111,41 +117,23 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
     await Debug.layers.resetPersist();
   }, []);
 
+  const checkLocation = location.check;
   const checkGeoPermission = useCallback(async () => {
-    setGeoIsLoading(true);
     setGeoError(null);
-    return withCleanup(
-      async () => {
-        try {
-          const granted = await GeoAdapter.hasPermission();
-          setHasGeoPermission(granted);
-        } catch (error) {
-          setGeoError((error as Error).message);
-          setHasGeoPermission(false);
-        }
-      },
-      () => setGeoIsLoading(false),
-    );
-  }, []);
+    await checkLocation().catch((error: unknown) => setGeoError((error as Error).message));
+  }, [checkLocation]);
 
+  const requestLocation = location.request;
   const requestGeoPermission = useCallback(async () => {
-    setGeoIsLoading(true);
     setGeoError(null);
-    return withCleanup(
-      async () => {
-        try {
-          const granted = await GeoAdapter.requestPermission();
-          setHasGeoPermission(granted);
-          return granted;
-        } catch (error) {
-          setGeoError((error as Error).message);
-          setHasGeoPermission(false);
-          return false;
-        }
+    return requestLocation().then(
+      (status) => status === "granted",
+      (error: unknown) => {
+        setGeoError((error as Error).message);
+        return false;
       },
-      () => setGeoIsLoading(false),
     );
-  }, []);
+  }, [requestLocation]);
 
   const updateTimezone = useCallback(async (tz: TimezoneLocale) => {
     await applySettings([
@@ -159,20 +147,6 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
   const setColorScheme = useCallback(async (choice: ColorSchemeChoice) => {
     await applySettings([{ key: EAppSetting.COLOR_SCHEME, value: choice }]);
   }, []);
-
-  // Returning to the foreground re-reads the permission quietly: no loading
-  // flag, and React skips the update when the value did not change, so the
-  // whole tree under this provider does not re-render on every resume.
-  useEffect(() => {
-    Promise.resolve().then(() => checkGeoPermission());
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state !== "active") return;
-      GeoAdapter.hasPermission().then(setHasGeoPermission, (error: unknown) =>
-        logger.warn("Failed to refresh location permission", errorAttributes(error)),
-      );
-    });
-    return () => sub.remove();
-  }, [checkGeoPermission]);
 
   // Follows the persisted color scheme, and the phone's while it is "system".
   useEffect(() => {

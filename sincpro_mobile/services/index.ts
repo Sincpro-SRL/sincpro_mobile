@@ -6,14 +6,6 @@
  */
 export { commonBoundedContext } from "@sincpro/mobile/infrastructure/framework";
 export {
-  CheckBluetoothPermission,
-  CommandCheckBluetoothPermission,
-} from "@sincpro/mobile/services/bluetooth/check_bluetooth_permission.feature";
-export {
-  CommandRequestBluetoothPermission,
-  RequestBluetoothPermission,
-} from "@sincpro/mobile/services/bluetooth/request_bluetooth_permission.feature";
-export {
   CheckConnectivity,
   CommandCheckConnectivity,
 } from "@sincpro/mobile/services/connectivity/check_connectivity.feature";
@@ -59,6 +51,19 @@ export {
   CommandSearchEvents,
   SearchEvents,
 } from "@sincpro/mobile/services/events/search_events.feature";
+export {
+  CheckPermission,
+  CommandCheckPermission,
+} from "@sincpro/mobile/services/permissions/check_permission.feature";
+export { PERMISSION_NAMES } from "@sincpro/mobile/services/permissions/common";
+export {
+  CommandOpenPermissionSettings,
+  OpenPermissionSettings,
+} from "@sincpro/mobile/services/permissions/open_permission_settings.feature";
+export {
+  CommandRequestPermission,
+  RequestPermission,
+} from "@sincpro/mobile/services/permissions/request_permission.feature";
 export {
   BLUETOOTH_REQUIRED,
   PRINT_FAILURE_ACTIONS,

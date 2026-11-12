@@ -24,12 +24,16 @@ export const PRINT_FAILURE_ACTIONS = [
   PRINT_NOTICE_ACTIONS.printer,
 ];
 
-/** What the person reads when the printer needs Bluetooth and it is not granted. */
+/**
+ * What the person reads when the printer needs Bluetooth and it is not granted: the printer
+ * settings are where they allow it (nothing else asks for it).
+ */
 export const BLUETOOTH_REQUIRED: Notice = {
   name: "bluetooth.required",
   title: "Permisos de Bluetooth requeridos",
-  message: "Habilita los permisos de Bluetooth en configuración",
+  message: "Permite Bluetooth en la configuración de la impresora",
   variant: "danger",
+  actions: [PRINT_NOTICE_ACTIONS.printer],
 };
 
 /** What the printer settings show: Bluetooth granted, the printer chosen, and its link. */

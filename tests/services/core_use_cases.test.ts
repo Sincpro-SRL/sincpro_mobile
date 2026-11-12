@@ -31,7 +31,6 @@ import {
   CommandPrinterStatus,
   CommandPrintTestPage,
   CommandPruneEventHistory,
-  CommandRequestBluetoothPermission,
   CommandRestorePrinterConnection,
   CommandRetryEvents,
   commonBoundedContext,
@@ -135,7 +134,7 @@ test("an unexpected failure of the printer adapter is a fault: the run fails and
 });
 
 test("the printer settings read their status through a use case, traced", async () => {
-  swap("bluetooth", { hasPermissions: async () => ({ isGranted: true }) });
+  swap("permissions", { check: async () => "granted" });
   swap("printer", {
     getSelectedPrinter: async () => ({ name: "Caja 1", address: "AA:BB", selectedAt: "" }),
     isConnected: () => false,
@@ -149,23 +148,6 @@ test("the printer settings read their status through a use case, traced", async 
     connected: false,
   });
   assert.equal(spanOf("common/ReadPrinterStatus")?.attributes["printer.connected"], false);
-});
-
-test("a denied Bluetooth permission is the person's answer: told, answered, not a failure", async () => {
-  swap("bluetooth", { requestPermissions: async () => ({ isGranted: false }) });
-
-  const permissions = await commonBoundedContext.execute(
-    new CommandRequestBluetoothPermission(),
-  );
-
-  assert.equal(permissions.isGranted, false);
-  assert.deepEqual(
-    notices.map((notice) => notice.name),
-    ["bluetooth.denied"],
-  );
-  const span = spanOf("common/RequestBluetoothPermission");
-  assert.equal(span?.outcome, "ok");
-  assert.equal(span?.attributes["bluetooth.granted"], false);
 });
 
 test("each reconnection try is a run; a printer that stays off is refused, never reported", async () => {

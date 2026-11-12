@@ -1,12 +1,9 @@
 import { type BoundedContext, Publisher } from "@sincpro/client-framework";
 import {
-  type BluetoothAdapter,
-  bluetoothAdapter,
-} from "@sincpro/mobile/adapters/Bluetooth.adapter";
-import {
   type NetworkAdapter,
   networkAdapter,
 } from "@sincpro/mobile/adapters/Network.adapter";
+import { devicePermissions } from "@sincpro/mobile/adapters/permissions.adapter";
 import {
   type PrinterAdapter,
   printerAdapter,
@@ -18,10 +15,12 @@ import {
   type SqliteEventStore,
 } from "@sincpro/mobile/adapters/repositories/sqlite_event_store";
 import type { Notifier } from "@sincpro/mobile/domain/notifier";
+import type { DevicePermissions, PermissionStates } from "@sincpro/mobile/domain/permissions";
 import type { AppSettings } from "@sincpro/mobile/domain/settings";
 import { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 import { appSettings } from "@sincpro/mobile/infrastructure/app_settings";
 import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
+import { permissionStates } from "@sincpro/mobile/infrastructure/permission_states";
 import { deviceNotifier } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
 import type { DomainSwitch } from "@sincpro/mobile/services/domains/common";
@@ -45,7 +44,10 @@ export interface CommonDependencies {
   /** Bound to each run: what a use case queues joins its flow and its trace. */
   publisher: Publisher;
   printer: PrinterAdapter;
-  bluetooth: BluetoothAdapter;
+  /** The phone's permissions: only `CommandRequestPermission` shows the system's dialog. */
+  permissions: DevicePermissions;
+  /** Each permission's last known status, for the screens (`usePermission`). */
+  permissionStates: PermissionStates;
   network: NetworkAdapter;
   /** Where the screens and the queue hear of the connection (`InternetIsUp` / `InternetIsDown`). */
   uiEvents: typeof UIEventBus;
@@ -66,7 +68,8 @@ export function registerDependencies(
   boundedContext.addDependency("notifier", deviceNotifier);
   boundedContext.addDependency("publisher", new Publisher(eventDelivery));
   boundedContext.addDependency("printer", printerAdapter);
-  boundedContext.addDependency("bluetooth", bluetoothAdapter);
+  boundedContext.addDependency("permissions", devicePermissions);
+  boundedContext.addDependency("permissionStates", permissionStates);
   boundedContext.addDependency("network", networkAdapter);
   boundedContext.addDependency("uiEvents", UIEventBus);
   boundedContext.addDependency("eventStore", eventStore);
