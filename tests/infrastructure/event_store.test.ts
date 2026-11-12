@@ -1,11 +1,21 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
-import type { StoredMessage } from "@sincpro/client-framework";
+import type { StoredMessage, StoredState } from "@sincpro/client-framework";
 
 import { eventStore } from "../../sincpro_mobile/adapters/repositories/sqlite_event_store.ts";
+import type { EventRecord } from "../../sincpro_mobile/domain/events/index.ts";
 import MIGRATIONS from "../../sincpro_mobile/entrypoints/db/migrations.ts";
 import { DBCursor } from "../../sincpro_mobile/infrastructure/database/index.ts";
+
+/** The stored messages in `state`, newest first: what the event screens read of it. */
+async function inState(state: StoredState): Promise<EventRecord[]> {
+  const page = await eventStore.search({
+    selection: { field: "state", operator: "=", value: state },
+    pagination: { limit: 500 },
+  });
+  return page.rows;
+}
 
 let tableReady = false;
 
@@ -138,7 +148,7 @@ test("screens read records newest first, bounded, with the class's label and the
       ],
     }),
   );
-  const recent = await eventStore.recent(1);
+  const recent = (await eventStore.search({ pagination: { limit: 1 } })).rows;
   assert.deepEqual(
     recent.map((record) => [record.id, record.label, record.error]),
     [["new", "test.thing.v1.happened", "no email"]],
@@ -146,7 +156,7 @@ test("screens read records newest first, bounded, with the class's label and the
   const [old] = eventStore.findByIdsSync(["old"]);
   assert.equal(old?.label, "Pedido pagado");
   assert.deepEqual(
-    (await eventStore.inState("set_aside")).map((record) => record.id),
+    (await inState("set_aside")).map((record) => record.id),
     ["new"],
   );
 });
@@ -163,11 +173,12 @@ test("the failed ones' retention deletes only those set aside before the cutoff"
     "failed-old",
   );
   await eventStore.pruneFailedBefore("2026-06-01T00:00:00.000Z");
-  assert.deepEqual((await eventStore.recent(10)).map((record) => record.id).sort(), [
-    "delivered-old",
-    "failed-new",
-    "pending-old",
-  ]);
+  assert.deepEqual(
+    (await eventStore.search({ pagination: { limit: 10 } })).rows
+      .map((record) => record.id)
+      .sort(),
+    ["delivered-old", "failed-new", "pending-old"],
+  );
 });
 
 test("emptying takes the states it is given, whatever their age, and says how many", async () => {
@@ -176,7 +187,7 @@ test("emptying takes the states it is given, whatever their age, and says how ma
   await eventStore.add(message("pending"));
   assert.equal(await eventStore.clearIn(["delivered", "set_aside"]), 2);
   assert.deepEqual(
-    (await eventStore.recent(10)).map((record) => record.id),
+    (await eventStore.search({ pagination: { limit: 10 } })).rows.map((record) => record.id),
     ["pending"],
   );
   assert.equal(await eventStore.clearIn([]), 0);
@@ -189,9 +200,10 @@ test("retention deletes only delivered messages published before the cutoff", as
   await eventStore.add(message("failed-old", { state: "set_aside", publishedAt: past }));
   await eventStore.add(message("delivered-new", { state: "delivered" }));
   await eventStore.pruneDeliveredBefore("2026-06-01T00:00:00.000Z");
-  assert.deepEqual((await eventStore.recent(10)).map((record) => record.id).sort(), [
-    "delivered-new",
-    "failed-old",
-    "pending-old",
-  ]);
+  assert.deepEqual(
+    (await eventStore.search({ pagination: { limit: 10 } })).rows
+      .map((record) => record.id)
+      .sort(),
+    ["delivered-new", "failed-old", "pending-old"],
+  );
 });

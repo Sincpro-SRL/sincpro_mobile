@@ -1,15 +1,18 @@
+import { type Page, resource } from "@sincpro/criteria";
+import { useReading } from "@sincpro/criteria-react";
 import {
   CommandListTables,
   CommandReadTable,
   commonBoundedContext,
 } from "@sincpro/mobile/services";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
-import { safeJsonParse, safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
+import { safeJsonStringify } from "@sincpro/mobile/tools/utils/serializer";
 import React, {
   createContext,
   ReactNode,
   useCallback,
   useContext,
+  useDeferredValue,
   useMemo,
   useState,
 } from "react";
@@ -20,11 +23,28 @@ export enum EDatabaseView {
   JSON_DETAIL = "JSON_DETAIL",
 }
 
+type TableRow = Record<string, unknown>;
+
+/** Rows a page: a table is read a page at a time, the next one with its cursor. */
+const PAGE_SIZE = 50;
+
+const NO_ROWS: Page<TableRow> = {
+  rows: [],
+  cursor: null,
+  count: null,
+  meta: null,
+  dropped: [],
+};
+
 interface IDatabaseContext {
   currentView: EDatabaseView;
   tables: any[];
-  data: any[];
-  filteredData: any[];
+  /** The rows read so far of the table, as the person searched it. */
+  rows: TableRow[];
+  /** How many rows match in all, when counted. */
+  total: number | null;
+  hasMore: boolean;
+  loadMore: () => Promise<void>;
   isLoading: boolean;
   selectedTable: string;
   selectedRowJson: string;
@@ -47,62 +67,48 @@ const DatabaseContext = createContext<IDatabaseContext | null>(null);
 export function DatabaseProvider({ children }: { children: ReactNode }) {
   const [currentView, setCurrentView] = useState<EDatabaseView>(EDatabaseView.TABLES_LIST);
   const [tables, setTables] = useState<any[]>([]);
-  const [data, setData] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingTables, setIsLoadingTables] = useState(false);
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [selectedRowJson, setSelectedRowJson] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const searched = useDeferredValue(searchQuery);
   const [currentRowIndex, setCurrentRowIndex] = useState<number>(0);
   const [previousSearchQuery, setPreviousSearchQuery] = useState<string>("");
   const [isTransitioning, setIsTransitioning] = useState<boolean>(false);
 
-  const filteredData = useMemo(() => {
-    if (!searchQuery.trim()) return data;
-    const query = searchQuery.toLowerCase().trim();
-    return data.filter((row) => {
-      const parsedData = safeJsonParse(typeof row === "string" ? row : JSON.stringify(row));
-      if (!parsedData) return false;
-      const remoteId = parsedData.remote_id?.toString().toLowerCase() || "";
-      const uuid = parsedData.uuid?.toLowerCase() || "";
-      const name = parsedData.name?.toLowerCase() || "";
-      return remoteId.includes(query) || uuid.includes(query) || name.includes(query);
-    });
-  }, [data, searchQuery]);
+  const tableRows = useMemo(
+    () =>
+      resource<TableRow>((criteria) =>
+        selectedTable
+          ? commonBoundedContext.execute(
+              new CommandReadTable(selectedTable, criteria, searched),
+            )
+          : NO_ROWS,
+      ),
+    [selectedTable, searched],
+  );
+  const reading = useReading(tableRows, { pagination: { limit: PAGE_SIZE } });
+  const rows = reading.rows;
+  const isLoading = isLoadingTables || reading.status === "loading";
 
   const loadTables = useCallback(async () => {
-    setIsLoading(true);
+    setIsLoadingTables(true);
     return withCleanup(
       async () => {
         const result = await commonBoundedContext.execute(new CommandListTables());
         setTables(result);
       },
-      () => setIsLoading(false),
+      () => setIsLoadingTables(false),
     );
   }, []);
 
-  const loadTableData = useCallback(async (tableName: string) => {
-    setIsLoading(true);
-    return withCleanup(
-      async () => {
-        const dataTable = await commonBoundedContext.execute(new CommandReadTable(tableName));
-        setData(dataTable);
-      },
-      () => setIsLoading(false),
-    );
+  const selectTable = useCallback(async (tableName: string) => {
+    setSelectedTable(tableName);
+    setCurrentView(EDatabaseView.TABLE_ROWS);
   }, []);
-
-  const selectTable = useCallback(
-    async (tableName: string) => {
-      setSelectedTable(tableName);
-      await loadTableData(tableName);
-      setCurrentView(EDatabaseView.TABLE_ROWS);
-    },
-    [loadTableData],
-  );
 
   const goBackFromRows = useCallback(() => {
     setSelectedTable("");
-    setData([]);
     setCurrentRowIndex(0);
     setSearchQuery("");
     setPreviousSearchQuery("");
@@ -136,18 +142,18 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
   const goToNextRow = useCallback(() => {
     if (isTransitioning) return; // Protección contra clics rápidos
 
-    if (currentRowIndex < filteredData.length - 1) {
+    if (currentRowIndex < rows.length - 1) {
       setIsTransitioning(true);
       const newIndex = currentRowIndex + 1;
       setCurrentRowIndex(newIndex);
-      const nextRow = filteredData[newIndex];
+      const nextRow = rows[newIndex];
       setSelectedRowJson(safeJsonStringify(nextRow));
 
       setTimeout(() => {
         setIsTransitioning(false);
       }, 300);
     }
-  }, [currentRowIndex, filteredData, isTransitioning]);
+  }, [currentRowIndex, rows, isTransitioning]);
 
   const goToPreviousRow = useCallback(() => {
     if (isTransitioning) return; // Protección contra clics rápidos
@@ -156,16 +162,16 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
       setIsTransitioning(true);
       const newIndex = currentRowIndex - 1;
       setCurrentRowIndex(newIndex);
-      const prevRow = filteredData[newIndex];
+      const prevRow = rows[newIndex];
       setSelectedRowJson(safeJsonStringify(prevRow));
 
       setTimeout(() => {
         setIsTransitioning(false);
       }, 300);
     }
-  }, [currentRowIndex, filteredData, isTransitioning]);
+  }, [currentRowIndex, rows, isTransitioning]);
 
-  const hasNextRow = currentRowIndex < filteredData.length - 1;
+  const hasNextRow = currentRowIndex < rows.length - 1;
   const hasPreviousRow = currentRowIndex > 0;
 
   if (currentView === EDatabaseView.JSON_DETAIL && searchQuery !== previousSearchQuery) {
@@ -177,8 +183,10 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     () => ({
       currentView,
       tables,
-      data,
-      filteredData,
+      rows,
+      total: reading.count?.value ?? null,
+      hasMore: reading.hasMore,
+      loadMore: reading.more,
       isLoading,
       selectedTable,
       selectedRowJson,
@@ -198,8 +206,8 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     [
       currentView,
       tables,
-      data,
-      filteredData,
+      rows,
+      reading,
       isLoading,
       selectedTable,
       selectedRowJson,

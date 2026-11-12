@@ -1,48 +1,57 @@
+import { type Criteria, merge, type Resource, resource } from "@sincpro/criteria";
+import { useReading } from "@sincpro/criteria-react";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
+import { CommandSearchEvents, commonBoundedContext } from "@sincpro/mobile/services";
 import type { CriteriaGroup } from "@sincpro/mobile-ui/utils/criteria";
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 
 import {
   emptyCriteria,
+  eventCriteria,
   type EventDateRange,
-  type EventListItem,
   type EventStatusFilter,
-  filterEvents,
 } from "./filter-events";
 
 const PAGE_SIZE = 25;
 
-export function useEventQuery<T extends EventListItem>(events: readonly T[]) {
+const storedEvents = resource<EventRecord>((criteria) =>
+  commonBoundedContext.execute(new CommandSearchEvents(criteria)),
+);
+
+/**
+ * The stored events a screen lists, as the person filters them: every filter is one criteria,
+ * read in SQL a page at a time (`CommandSearchEvents`); `loadMore` asks the next page with its
+ * cursor. `scope` is what the screen always reads within — the failed ones, an app's prints;
+ * `events` is where they are read, the stored ones unless a story hands rows in memory.
+ */
+export function useEventQuery(
+  scope: Criteria<EventRecord> = {},
+  events: Resource<EventRecord> = storedEvents,
+) {
   const [status, setStatus] = useState<EventStatusFilter>("ALL");
   const [query, setQuery] = useState("");
-  // The field shows each keystroke at once; filtering and the list follow at low
-  // priority, so typing never waits for a 500-row filter and a list re-render.
+  // The field shows each keystroke at once; the read follows at low priority.
   const searchedQuery = useDeferredValue(query);
   const [searching, setSearching] = useState(false);
   const [range, setRange] = useState<EventDateRange>("all");
   const [custom, setCustom] = useState<CriteriaGroup>(emptyCriteria);
-  const [page, setPage] = useState(1);
-  const customKey = useMemo(() => JSON.stringify(custom), [custom]);
-  const signature = `${status}|${searchedQuery}|${range}|${customKey}`;
-  const [seen, setSeen] = useState(signature);
-  if (seen !== signature) {
-    setSeen(signature);
-    setPage(1);
-  }
 
-  const filtered = useMemo(
-    () => filterEvents(events, { status, query: searchedQuery, range, custom }),
-    [events, status, searchedQuery, range, custom],
+  const criteria = useMemo(
+    () =>
+      merge<EventRecord>(
+        merge<EventRecord>(scope, {
+          ...eventCriteria({ status, query: searchedQuery, range, custom }),
+        }),
+        { pagination: { limit: PAGE_SIZE } },
+      ),
+    [scope, status, searchedQuery, range, custom],
   );
-  const visible = useMemo(() => filtered.slice(0, page * PAGE_SIZE), [filtered, page]);
+  const reading = useReading(events, criteria);
 
-  const loadMore = useCallback(() => {
-    setPage((current) => current + 1);
-  }, []);
   const toggleSearch = useCallback(() => {
     setSearching((open) => !open);
   }, []);
 
-  const hasMore = visible.length < filtered.length;
   return useMemo(
     () => ({
       status,
@@ -55,10 +64,13 @@ export function useEventQuery<T extends EventListItem>(events: readonly T[]) {
       setRange,
       custom,
       setCustom,
-      visible,
-      hasMore,
-      loadMore,
+      visible: reading.rows,
+      count: reading.count,
+      hasMore: reading.hasMore,
+      isLoading: reading.status === "loading",
+      loadMore: reading.more,
+      reload: reading.reload,
     }),
-    [status, query, searching, toggleSearch, range, custom, visible, hasMore, loadMore],
+    [status, query, searching, toggleSearch, range, custom, reading],
   );
 }

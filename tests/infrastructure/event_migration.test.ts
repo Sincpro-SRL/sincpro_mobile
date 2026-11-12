@@ -95,7 +95,12 @@ test("a 1.x device's events move into the stored queue: nothing is lost", async 
     await MIGRATIONS.find((one) => one.name === "stored_events")!.migrationFn();
   });
 
-  const records = new Map((await eventStore.recent(100)).map((one) => [one.id, one]));
+  const records = new Map(
+    (await eventStore.search({ pagination: { limit: 100 } })).rows.map((one) => [
+      one.id,
+      one,
+    ]),
+  );
   assert.deepEqual([...records.keys()].sort(), ["a-1", "d-1", "f-1", "p-1", "p-2", "x-1"]);
 
   const pending = records.get("p-1")!;
@@ -122,7 +127,9 @@ test("a 1.x device's events move into the stored queue: nothing is lost", async 
   assert.equal(deadLetter.error, "refused");
   assert.deepEqual(deadLetter.payload, { order_id: "o-9" });
 
-  const order = (await eventStore.recent(100)).reverse().map((one) => one.id);
+  const order = (await eventStore.search({ pagination: { limit: 100 } })).rows
+    .reverse()
+    .map((one) => one.id);
   assert.deepEqual(
     order,
     ["x-1", "f-1", "a-1", "p-1", "p-2", "d-1"],

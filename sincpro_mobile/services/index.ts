@@ -38,22 +38,11 @@ export {
   ClearEvents,
   CommandClearEvents,
 } from "@sincpro/mobile/services/events/clear_events.feature";
-export {
-  DEFAULT_RETENTION,
-  RECENT_EVENTS_LIMIT,
-} from "@sincpro/mobile/services/events/common";
+export { DEFAULT_RETENTION } from "@sincpro/mobile/services/events/common";
 export {
   CommandDeleteEvents,
   DeleteEvents,
 } from "@sincpro/mobile/services/events/delete_events.feature";
-export {
-  CommandListFailedEvents,
-  ListFailedEvents,
-} from "@sincpro/mobile/services/events/list_failed_events.feature";
-export {
-  CommandListRecentEvents,
-  ListRecentEvents,
-} from "@sincpro/mobile/services/events/list_recent_events.feature";
 export {
   CommandPruneEventHistory,
   PruneEventHistory,
@@ -66,6 +55,10 @@ export {
   CommandRetryEvents,
   RetryEvents,
 } from "@sincpro/mobile/services/events/retry_events.feature";
+export {
+  CommandSearchEvents,
+  SearchEvents,
+} from "@sincpro/mobile/services/events/search_events.feature";
 export {
   BLUETOOTH_REQUIRED,
   PRINT_FAILURE_ACTIONS,
@@ -120,6 +113,22 @@ export {
   CommandScanPrinters,
   ScanPrinters,
 } from "@sincpro/mobile/services/printer/scan_printers.feature";
+export {
+  CommandFindEntities,
+  FindEntities,
+} from "@sincpro/mobile/services/reads/find_entities.feature";
+export {
+  CommandGetEntity,
+  GetEntity,
+} from "@sincpro/mobile/services/reads/get_entity.feature";
+export {
+  CommandGetManyEntities,
+  GetManyEntities,
+} from "@sincpro/mobile/services/reads/get_many_entities.feature";
+export {
+  CommandSearchEntities,
+  SearchEntities,
+} from "@sincpro/mobile/services/reads/search_entities.feature";
 export {
   ApplyAppSettings,
   CommandApplyAppSettings,

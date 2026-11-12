@@ -220,6 +220,29 @@ flowchart LR
 A caller that needs the answer does not publish: it executes the use case on its bounded
 context (`xBoundedContext.execute(new Command(...))`), which answers or throws.
 
+### One fact, three shapes
+
+A stored message is not an entity: `stored_events` is the queue's table, behind
+client-framework's `MessageStore` port (`add`, `next`, `save`), so it has columns of its own and
+no `DocumentRepository`. A fact goes through three shapes, each for one reader:
+
+| Shape           | Whose                        | What it is                                                             |
+| --------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| `DomainEvent`   | the aggregate (`record`)     | The fact, as its class: `eventName`, `label`, business fields          |
+| `StoredMessage` | the queue (`storedQueue`)    | The fact in the queue: envelope (flow, cause), payload, delivery state |
+| `EventRecord`   | the screens (`SearchEvents`) | A row to show: its state, attempts, failures, payload and **label**    |
+
+The label is kept when the message is queued (`add`): the one its class gives then, and its key
+as a person searches it (`label_key`: lower case, without accents). So a screen shows and
+filters it in SQL even when the module that names it is no longer active; a message queued
+before labels were kept is labelled by its name (`stored_events_labels`).
+
+What the screens read of the queue is **one** use case, `CommandSearchEvents(criteria)`: a
+`Page<EventRecord>` in SQL, newest first (`seq`), every field a column under the name
+`EventRecord` gives it (`EVENT_COLUMNS`), a condition on `label` read on its key. The failed ones
+are that read with `state = set_aside`. Retrying, resending, deleting and pruning are Commands of
+their own: they change the queue.
+
 ---
 
 ## 6. Cron — the 15-minute split

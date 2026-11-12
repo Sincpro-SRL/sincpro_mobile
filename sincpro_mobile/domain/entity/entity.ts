@@ -157,7 +157,7 @@ export class Entity extends ValueObject implements IEntity {
    * @throws DomainValidationError if REPOSITORY is not defined in subclass
    *
    * @example
-   * const customer = await customerRepo.findById(uuid);
+   * const customer = await customerRepo.get(uuid);
    * // ... some time passes ...
    * const refreshed = await customer.reload();
    */

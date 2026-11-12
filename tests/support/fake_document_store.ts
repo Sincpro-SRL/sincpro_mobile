@@ -1,7 +1,11 @@
+import { DatabaseSync } from "node:sqlite";
+
 import {
   type CompiledCriteria,
-  rowsFor,
+  countStatement,
+  selectStatement,
 } from "../../sincpro_mobile/domain/database/criteria_sql.ts";
+import { type SqlStatement } from "../../sincpro_mobile/domain/database/sql.ts";
 import {
   type ColumnValue,
   type DocumentRow,
@@ -9,15 +13,20 @@ import {
 } from "../../sincpro_mobile/domain/repositories/document_store.ts";
 
 export class FakeDocumentDatabase {
-  private tables = new Map<string, Map<string, DocumentRow>>();
+  private tablesByName = new Map<string, Map<string, DocumentRow>>();
   private depth = 0;
   private tail: Promise<void> = Promise.resolve();
 
+  /** Every table and its rows: what a statement reads, put in SQLite for it. */
+  tables(): [string, Map<string, DocumentRow>][] {
+    return [...this.tablesByName];
+  }
+
   table(name: string): Map<string, DocumentRow> {
-    let rows = this.tables.get(name);
+    let rows = this.tablesByName.get(name);
     if (!rows) {
       rows = new Map();
-      this.tables.set(name, rows);
+      this.tablesByName.set(name, rows);
     }
     return rows;
   }
@@ -34,12 +43,12 @@ export class FakeDocumentDatabase {
     const previous = this.tail;
     this.tail = gate;
     await previous;
-    const backup = cloneTables(this.tables);
+    const backup = cloneTables(this.tablesByName);
     this.depth += 1;
     try {
       return await work();
     } catch (error) {
-      this.tables = backup;
+      this.tablesByName = backup;
       throw error;
     } finally {
       this.depth -= 1;
@@ -110,15 +119,67 @@ export class FakeDocumentStore implements DocumentStore {
     return [...this.database.table(this.table).values()];
   }
 
-  async selectMatching(compiled: CompiledCriteria): Promise<DocumentRow[]> {
-    return rowsFor(compiled, [...this.database.table(this.table).values()], (name) => [
-      ...this.database.table(name).values(),
-    ]);
+  /**
+   * The rows the compiled statement reads, read by SQLite itself: the tables in memory are put in
+   * an in-memory database and the very statement the real store runs is run there, so a test
+   * reads what the phone would.
+   */
+  async selectMatching(
+    compiled: CompiledCriteria,
+    from?: SqlStatement,
+  ): Promise<DocumentRow[]> {
+    const select = selectStatement(compiled, from ?? this.table, "*");
+    return this.run(select).map((row) => ({
+      uuid: String(row.uuid),
+      version: Number(row.version),
+      data: String(row.data),
+      columns: Object.fromEntries(
+        this.columnNames.map((name) => [name, (row[name] ?? null) as ColumnValue]),
+      ),
+    }));
   }
 
-  async countMatching(compiled: CompiledCriteria, ceiling?: number): Promise<number> {
-    const matched = await this.selectMatching({ ...compiled, limit: undefined, offset: 0 });
-    return ceiling === undefined ? matched.length : Math.min(matched.length, ceiling);
+  async countMatching(
+    compiled: CompiledCriteria,
+    ceiling?: number,
+    from?: SqlStatement,
+  ): Promise<number> {
+    const [row] = this.run(countStatement(compiled, from ?? this.table, ceiling));
+    return Number(row?.total ?? 0);
+  }
+
+  private run(statement: SqlStatement): Record<string, unknown>[] {
+    const sqlite = new DatabaseSync(":memory:");
+    this.database.table(this.table);
+    for (const [name, rows] of this.database.tables()) {
+      const extra = [
+        ...new Set([
+          ...(name === this.table ? this.columnNames : []),
+          ...[...rows.values()].flatMap((row) => Object.keys(row.columns)),
+        ]),
+      ];
+      const columns = ["uuid", "version", "data", ...extra];
+      sqlite.exec(`CREATE TABLE ${name} (${columns.join(", ")})`);
+      const insert = sqlite.prepare(
+        `INSERT INTO ${name} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+      );
+      for (const row of rows.values()) {
+        insert.run(
+          row.uuid,
+          row.version,
+          row.data,
+          ...extra.map((one) => row.columns[one] ?? null),
+        );
+      }
+    }
+    try {
+      return sqlite.prepare(statement.text).all(...statement.params) as Record<
+        string,
+        unknown
+      >[];
+    } finally {
+      sqlite.close();
+    }
   }
 
   hasColumn(name: string): boolean {

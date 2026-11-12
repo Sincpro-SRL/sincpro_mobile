@@ -5,15 +5,19 @@ import {
   type Execution,
   newEntityId,
 } from "@sincpro/client-framework";
-import type { Count, CountMode } from "@sincpro/criteria";
+import type { Count, CountMode, Criteria } from "@sincpro/criteria";
 import { criteriaOf, type DocumentCriteria } from "@sincpro/mobile/domain/database/criteria";
 import {
+  aliased,
   compileCriteria,
   type CompiledCriteria,
   compilePage,
+  countCeiling,
+  countOf,
   type CriteriaSqlTarget,
   cursorAfter,
 } from "@sincpro/mobile/domain/database/criteria_sql";
+import { type SqlStatement } from "@sincpro/mobile/domain/database/sql";
 import { isChangeTracked } from "@sincpro/mobile/domain/entity/change_tracking";
 import { assertChecks } from "@sincpro/mobile/domain/entity/checks";
 import { Entity, ERemoteState, RemoteEntity } from "@sincpro/mobile/domain/entity/entity";
@@ -47,7 +51,6 @@ import {
   type HookMoment,
   Hooks,
 } from "@sincpro/mobile/domain/repositories/hooks";
-import { type IRepository } from "@sincpro/mobile/domain/repositories/repository";
 import { DomainAppError, StaleAggregate } from "@sincpro/mobile/exceptions";
 import { eventOutbox } from "@sincpro/mobile/infrastructure/events/outbox";
 import {
@@ -59,7 +62,7 @@ import { SqliteDocumentStore } from "./sqlite_document_store";
 
 type EntityType<T extends Entity> = AnyClass<T>;
 
-interface RepositoryOptions<T extends Entity> {
+export interface RepositoryOptions<T extends Entity> {
   mode?: StoreMode;
   hooks?: Hooks;
   outbox?: Outbox;
@@ -82,18 +85,15 @@ interface Session {
   remembered: Map<string, Remembered>;
 }
 
-/** Past how many a count stops and answers "at least": the backend's ceiling. */
-export const COUNT_CEILING = 10_000;
+/** The alias a statement's rows are read under by `searchSql`. */
+const QUERIED = "queried";
 /** How many values one `IN (…)` binds: far under SQLite's variable limit. */
 const IN_BATCH = 500;
 
 const registry = new Map<Function, DocumentRepository<Entity>>();
 const hookRepos = new Set<DocumentRepository<Entity>>();
 
-export class DocumentRepository<T extends Entity> implements IRepository<
-  T,
-  EntityCollection<T>
-> {
+export class DocumentRepository<T extends Entity> {
   private readonly inflight = new Map<string, T>();
   /** The run this view of the repository saves for (`BIND`): its events continue that flow. */
   private readonly cause: Cause | undefined = undefined;
@@ -184,18 +184,42 @@ export class DocumentRepository<T extends Entity> implements IRepository<
     this.options.outbox?.schedule();
   }
 
-  async findById(uuid: string): Promise<T | null> {
+  /** The document of `uuid`, as every read hydrates it, or `null`. */
+  async get(uuid: string): Promise<T | null> {
     return this.loadById(uuid);
+  }
+
+  /** The documents of `uuids`, in the order asked, one query per 500: the missing are not there. */
+  async browse(uuids: readonly string[]): Promise<EntityCollection<T>> {
+    const found = await this.findIn("uuid", uuids);
+    await this.afterSearch(found);
+    return new EntityCollection(found);
+  }
+
+  /**
+   * Every document the criteria matches, in its order — a read whose size nobody bounded, said
+   * by name. A screen reads a page (`search`); this is for a use case that needs them all.
+   */
+  async fetchAll(criteria: DocumentCriteria<T> = {}): Promise<EntityCollection<T>> {
+    const found = await this.hydrateAll(
+      await this.store.selectMatching(compileCriteria(criteria, this.sqlTarget())),
+    );
+    await this.afterSearch(found);
+    return new EntityCollection(found);
+  }
+
+  /** The first document the criteria matches, in its order or the entity's, or `null`. */
+  async first(criteria: DocumentCriteria<T> = {}): Promise<T | null> {
+    return (await this.search(this.single(criteria))).first() ?? null;
+  }
+
+  /** Whether any document matches the criteria. */
+  async exists(criteria: DocumentCriteria<T> = {}): Promise<boolean> {
+    return (await this.search(this.single(criteria))).isNotEmpty;
   }
 
   findByIdSync(uuid: string): T | null {
     return this.loadByIdSync(uuid);
-  }
-
-  async findByIds(uuids: string[]): Promise<EntityCollection<T>> {
-    const found = await this.findIn("uuid", uuids);
-    await this.afterSearch(found);
-    return new EntityCollection(found);
   }
 
   findByIdsSync(uuids: string[]): EntityCollection<T> {
@@ -204,20 +228,6 @@ export class DocumentRepository<T extends Entity> implements IRepository<
       const one = this.loadByIdSync(uuid);
       if (one) found.push(one);
     }
-    return new EntityCollection(found);
-  }
-
-  async findAll(): Promise<EntityCollection<T>> {
-    const found = await this.readAll();
-    await this.afterSearch(found);
-    return new EntityCollection(found);
-  }
-
-  async findByCriteria(criteria: DocumentCriteria<T>): Promise<EntityCollection<T>> {
-    const found = await this.hydrateAll(
-      await this.store.selectMatching(compileCriteria(criteria, this.sqlTarget())),
-    );
-    await this.afterSearch(found);
     return new EntityCollection(found);
   }
 
@@ -234,17 +244,31 @@ export class DocumentRepository<T extends Entity> implements IRepository<
    * `COUNT_CEILING` (the default), or exact.
    */
   async search(criteria: DocumentCriteria<T> = {}): Promise<EntityCollection<T>> {
-    const page = compilePage(criteria, this.sqlTarget(), this.entity().DEFAULT_ORDER());
-    const rows = await this.store.selectMatching(page.rows);
-    const shown = rows.slice(0, page.limit);
-    const found = await this.hydrateAll(shown);
-    await this.afterSearch(found);
-    const collection = new EntityCollection(found);
-    const last = shown.at(-1);
-    collection.cursor =
-      rows.length > page.limit && page.resumable && last ? cursorAfter(last, page) : null;
-    collection.total = await this.counted(page.filter, page.count);
-    return collection;
+    return this.paged(criteria, this.sqlTarget());
+  }
+
+  /**
+   * A page of the documents a SQL statement answers — a join, a subquery, what a criteria over
+   * this entity cannot say —, read as `search` reads: the criteria filters, orders and pages over
+   * it, the next page by its cursor or by rows, and counted. The statement selects this table's
+   * rows (`uuid`, `version`, `data` and its columns); its values are bound (`sql`).
+   *
+   *     tickets.searchSql(
+   *       sql`SELECT t.* FROM tickets t
+   *           JOIN customers c ON c.uuid = json_extract(t.data, '$.customerId')
+   *           WHERE c.vat = ${vat}`,
+   *       criteria<Ticket>().selection(["state", "=", "open"]).limit(20),
+   *     );
+   */
+  async searchSql(
+    statement: SqlStatement,
+    criteria: DocumentCriteria<T> = {},
+  ): Promise<EntityCollection<T>> {
+    return this.paged(
+      criteria,
+      { ...this.sqlTarget(), table: QUERIED },
+      aliased(statement, QUERIED),
+    );
   }
 
   /** How many the criteria's filter matches, its order and page aside. */
@@ -290,7 +314,7 @@ export class DocumentRepository<T extends Entity> implements IRepository<
       await this.afterSearch(found);
       return new EntityCollection(found);
     }
-    return this.findByCriteria({
+    return this.fetchAll({
       selection: {
         field: "version",
         operator: "!=",
@@ -670,12 +694,50 @@ export class DocumentRepository<T extends Entity> implements IRepository<
     return values.flatMap((value) => byValue.get(value) ?? []);
   }
 
-  private async counted(filter: CompiledCriteria, mode: CountMode): Promise<Count | null> {
+  /**
+   * One page, as `search` and `searchSql` read it:
+   * 1. Compiled in SQL (`compilePage`): the criteria's order, else the entity's
+   *    `DEFAULT_ORDER`, closed by `uuid`; fifty rows unless it says; past its cursor.
+   * 2. One row more than the page is read, to know whether another follows.
+   * 3. The page's rows are hydrated as every read hydrates them, and `after_search` hears them.
+   * Final: the collection, with the cursor of the next page (`null` when it is the last, or the
+   * page skipped rows instead of resuming) and the count its `count` asks.
+   */
+  private async paged(
+    criteria: DocumentCriteria<T>,
+    target: CriteriaSqlTarget,
+    from?: SqlStatement,
+  ): Promise<EntityCollection<T>> {
+    const page = compilePage(criteria, target, { order: this.entity().DEFAULT_ORDER() });
+    const rows = await this.store.selectMatching(page.rows, from);
+    const shown = rows.slice(0, page.limit);
+    const found = await this.hydrateAll(shown);
+    await this.afterSearch(found);
+    const collection = new EntityCollection(found);
+    const last = shown.at(-1);
+    collection.cursor =
+      rows.length > page.limit && page.resumable && last
+        ? cursorAfter(
+            { ...last.columns, uuid: last.uuid, version: last.version, data: last.data },
+            page,
+          )
+        : null;
+    collection.total = await this.counted(page.filter, page.count, from);
+    return collection;
+  }
+
+  /** The criteria as a page of one, uncounted: what `first` and `exists` ask. */
+  private single(criteria: DocumentCriteria<T>): Criteria<T> {
+    return { ...criteriaOf(criteria), pagination: { limit: 1 }, count: "none" };
+  }
+
+  private async counted(
+    filter: CompiledCriteria,
+    mode: CountMode,
+    from?: SqlStatement,
+  ): Promise<Count | null> {
     if (mode === "none") return null;
-    if (mode === "exact")
-      return { value: await this.store.countMatching(filter), exact: true };
-    const seen = await this.store.countMatching(filter, COUNT_CEILING + 1);
-    return { value: Math.min(seen, COUNT_CEILING), exact: seen <= COUNT_CEILING };
+    return countOf(await this.store.countMatching(filter, countCeiling(mode), from), mode);
   }
 
   private async hydrateAll(rows: readonly DocumentRow[]): Promise<T[]> {
@@ -817,7 +879,30 @@ function extendsRemote(type: Function): boolean {
   return type === RemoteEntity || type.prototype instanceof RemoteEntity;
 }
 
-export function sqliteDocuments<T extends Entity>(
+/** A repository of one entity with its own questions: a class extending `DocumentRepository`. */
+export type RepositoryClass<T extends Entity, R extends DocumentRepository<T>> = new (
+  type: EntityType<T>,
+  store: DocumentStore,
+  options: RepositoryOptions<T>,
+) => R;
+
+/**
+ * The repository of `type` over the SQLite table `table`: every read and write of a document,
+ * its hooks, its outbox (`StoreMode.RELAY`) and its promoted columns. `repository` is a class of
+ * one's own extending `DocumentRepository` — where a domain names its questions, over all the
+ * repository already answers:
+ *
+ *     class Tickets extends DocumentRepository<Ticket> {
+ *       open(asked: CriteriaFor<Ticket> = {}) {
+ *         return this.search(criteria<Ticket>().selection(["state", "=", "open"]).merge(asked));
+ *       }
+ *     }
+ *     export const tickets = sqliteDocuments(Ticket, "tickets", { repository: Tickets });
+ */
+export function sqliteDocuments<
+  T extends Entity,
+  R extends DocumentRepository<T> = DocumentRepository<T>,
+>(
   type: EntityType<T>,
   table: string,
   spec: {
@@ -825,8 +910,9 @@ export function sqliteDocuments<T extends Entity>(
     hooks?: Hooks;
     outbox?: Outbox;
     columns?: Record<string, (entity: T) => ColumnValue>;
+    repository?: RepositoryClass<T, R>;
   } = {},
-): DocumentRepository<T> {
+): R {
   const columns = { ...(spec.columns ?? {}) };
   if (extendsRemote(type)) {
     columns.remoteId ??= (entity) => (entity as unknown as RemoteEntity).remoteId ?? null;
@@ -843,7 +929,8 @@ export function sqliteDocuments<T extends Entity>(
     return row;
   };
   const mode = spec.mode ?? StoreMode.LOCAL;
-  return new DocumentRepository(type, new SqliteDocumentStore(table, names, integers), {
+  const Repository = (spec.repository ?? DocumentRepository) as RepositoryClass<T, R>;
+  return new Repository(type, new SqliteDocumentStore(table, names, integers), {
     mode,
     hooks: spec.hooks,
     outbox: spec.outbox ?? (mode === StoreMode.RELAY ? eventOutbox() : undefined),

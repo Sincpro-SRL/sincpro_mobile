@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
+import type { StoredState } from "@sincpro/client-framework";
 import {
   BoundedContext,
   Command,
@@ -16,6 +17,7 @@ import type { PrinterAdapter } from "../../sincpro_mobile/adapters/Printer.adapt
 import { eventStore } from "../../sincpro_mobile/adapters/repositories/sqlite_event_store.ts";
 import { InternetIsDownEvent } from "../../sincpro_mobile/domain/connectivity/events.ts";
 import { newEvent } from "../../sincpro_mobile/domain/events/delivery.ts";
+import type { EventRecord } from "../../sincpro_mobile/domain/events/index.ts";
 import type { Notice, Notifier } from "../../sincpro_mobile/domain/notifier.ts";
 import { PrintImageRequestedEvent } from "../../sincpro_mobile/domain/print/events.ts";
 import MIGRATIONS from "../../sincpro_mobile/entrypoints/db/migrations.ts";
@@ -42,6 +44,15 @@ import {
   CommandPrintImage,
   PrintImage,
 } from "../../sincpro_mobile/services/printer/print_jobs/print_image.feature.ts";
+
+/** The stored messages in `state`, newest first: what the event screens read of it. */
+async function inState(state: StoredState): Promise<EventRecord[]> {
+  const page = await eventStore.search({
+    selection: { field: "state", operator: "=", value: state },
+    pagination: { limit: 500 },
+  });
+  return page.rows;
+}
 
 const heard: string[] = [];
 const failures: unknown[] = [];
@@ -100,7 +111,7 @@ const publish = async (event: DomainEvent) => {
 };
 
 const stateOf = async (value: string) =>
-  (await eventStore.recent(50)).find(
+  (await eventStore.search({ pagination: { limit: 50 } })).rows.find(
     (record) => (record.payload as { value?: string }).value === value,
   )?.state;
 
@@ -160,7 +171,7 @@ test("sent once: a failure is a failed one and never holds the line; the app giv
   await publish(newEvent(OfflineEvent, { value: "after" }));
   assert.equal(await stateOf("refused"), "set_aside");
   assert.equal(await stateOf("after"), "delivered", "a refusal never holds back the rest");
-  const [failed] = await eventStore.inState("set_aside");
+  const [failed] = await inState("set_aside");
   assert.equal(failed?.failures[0]?.kind, "invalid");
   assert.equal(failed?.error, "no customer");
 });
@@ -231,7 +242,7 @@ test("the queue hands an event to the bounded contexts of the active modules onl
   eventDelivery.listen(kernel.subscriberFor(new Set(["SALES"])));
   await publish(newEvent(OrderPaid, { order: "o-2" }));
   assert.deepEqual(heard, ["payment:o-2"]);
-  const [delivered] = await eventStore.inState("delivered");
+  const [delivered] = await inState("delivered");
   assert.equal(delivered?.name, "sales.order.v1.paid");
 });
 
@@ -272,7 +283,7 @@ test("a message from outside: an event is stored in its flow, a Command runs onl
   assert.deepEqual(answered, [], "an event is stored, then delivered");
   await eventDelivery.drain();
   assert.deepEqual(heard, ["payment:o-5"]);
-  const [stored] = await eventStore.inState("delivered");
+  const [stored] = await inState("delivered");
   assert.equal(stored?.correlationId, "0193a000000070008000000000000000");
 
   const [ran] = await eventDelivery.receive(
@@ -307,7 +318,7 @@ test("a use case the queue runs may change who hears; the next event goes to the
   await eventDelivery.drain();
   await eventDelivery.drain();
   assert.deepEqual(heard, ["switch", "payment:o-8"]);
-  assert.equal((await eventStore.inState("pending")).length, 0);
+  assert.equal((await inState("pending")).length, 0);
 });
 
 test("the activity of a delivery is told by the process, from its use case's run", async () => {
@@ -362,7 +373,7 @@ test("a print whose printer is off is a failed one at once, never sent again on 
   const { notices } = printing(() => Promise.reject(new PrinterUnavailable("no answer")));
   const envelope = await eventDelivery.publisher.publish(printRequest("abc"));
   await eventDelivery.drain();
-  const [failed] = await eventStore.inState("set_aside");
+  const [failed] = await inState("set_aside");
   assert.equal(failed?.failures[0]?.kind, "unavailable");
   assert.equal(failed?.attempts, 1);
   assert.deepEqual(
@@ -387,7 +398,7 @@ test("two prints with the printer off are two failed ones at once, the screens t
   } finally {
     stop();
   }
-  const failed = await eventStore.inState("set_aside");
+  const failed = await inState("set_aside");
   assert.deepEqual(
     failed.map((one) => [one.failures[0]?.kind, one.attempts]),
     [
@@ -396,7 +407,7 @@ test("two prints with the printer off are two failed ones at once, the screens t
     ],
     "both prints are failed ones, none waits to be retried",
   );
-  assert.deepEqual(await eventStore.inState("pending"), []);
+  assert.deepEqual(await inState("pending"), []);
   assert.deepEqual(told, ["set_aside", "set_aside"]);
 });
 
@@ -404,9 +415,7 @@ test("a print without its image is invalid and set aside; without a printer, dom
   printing(() => Promise.reject(new PrinterNotSelected("none")));
   await publish(printRequest(""));
   await publish(printRequest("abc"));
-  const kinds = (await eventStore.inState("set_aside"))
-    .map((failed) => failed.failures[0]?.kind)
-    .sort();
+  const kinds = (await inState("set_aside")).map((failed) => failed.failures[0]?.kind).sort();
   assert.deepEqual(kinds, ["domain", "invalid"]);
 });
 

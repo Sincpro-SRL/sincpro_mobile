@@ -88,7 +88,9 @@ async function createStoredMessagesTable(): Promise<void> {
       reached TEXT NOT NULL DEFAULT '[]',
       failures TEXT NOT NULL DEFAULT '[]',
       settled_at TEXT DEFAULT NULL,
-      answer TEXT DEFAULT NULL
+      answer TEXT DEFAULT NULL,
+      label TEXT DEFAULT NULL,
+      label_key TEXT DEFAULT NULL
     );
   `);
   await DBCursor.execAsync(
@@ -204,6 +206,21 @@ async function addMessageColumns(): Promise<void> {
   await addColumnIfMissing(table, "answer", "TEXT DEFAULT NULL");
 }
 
+/**
+ * A stored message keeps the label its class gave it when it was queued — what the screens show
+ * and search, even when the module that names it is not active — and that label as a person
+ * searches it (`label_key`: lower case, without accents). A message queued before is labelled
+ * by its name.
+ */
+async function addLabelColumns(): Promise<void> {
+  const table = DATABASE_TABLES.STORED_EVENTS;
+  await addColumnIfMissing(table, "label", "TEXT DEFAULT NULL");
+  await addColumnIfMissing(table, "label_key", "TEXT DEFAULT NULL");
+  await DBCursor.execAsync(
+    `UPDATE ${table} SET label = name, label_key = lower(name) WHERE label IS NULL`,
+  );
+}
+
 function migration(name: string, migrationFn: () => Promise<void>): IMigration {
   return { name, tables: [name], migrationFn };
 }
@@ -218,6 +235,11 @@ const MIGRATIONS: IMigration[] = [
     name: "stored_events_messages",
     tables: [DATABASE_TABLES.STORED_EVENTS],
     migrationFn: addMessageColumns,
+  },
+  {
+    name: "stored_events_labels",
+    tables: [DATABASE_TABLES.STORED_EVENTS],
+    migrationFn: addLabelColumns,
   },
 ];
 

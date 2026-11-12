@@ -2121,6 +2121,11 @@
   resolved "https://registry.yarnpkg.com/@sincpro/client-framework/-/client-framework-1.8.0.tgz#8bff704c4c07806153ce738a7db7cf014b20067f"
   integrity sha512-V7OjT/yFWksPMgC4SUv5dSI2iWU24yTGUKx3lDMht5Az2bptpOF4bEThBS7aJbbDXnUsKPR+gKkA4HdKUX8EIQ==
 
+"@sincpro/criteria-react@^2.1.0":
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/@sincpro/criteria-react/-/criteria-react-2.1.0.tgz#2bdf22a455fa5a00defcb17a197e2b672e97ead4"
+  integrity sha512-IzhviGe8oNV3tfjP+gIx27+vtMoLh3GskTltepH1bx8nwBubBDU0r130Kj7NzY8alQtdP1ZpwoYvL0eGTrxIuA==
+
 "@sincpro/criteria@^2.1.0":
   version "2.1.0"
   resolved "https://registry.yarnpkg.com/@sincpro/criteria/-/criteria-2.1.0.tgz#9d1d56e78e7bb76f9e15a5a1c3c5684e254860d7"

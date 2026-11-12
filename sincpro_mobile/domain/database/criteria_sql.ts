@@ -1,4 +1,5 @@
 import {
+  type Count,
   type CountMode,
   type Criteria,
   type Expression,
@@ -17,12 +18,15 @@ import {
   periodBounds,
   readCriteriaValue,
 } from "./criteria_clock";
+import { type SqlParam, type SqlStatement } from "./sql";
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const MAX_DEPTH = 8;
 
-export type SqlParam = string | number | null;
-
+/**
+ * What a criteria is compiled against: the table (or a statement's alias) its fields are read
+ * from, which fields are columns — any other is a JSON path of its `data` —, and its relations.
+ */
 export interface CriteriaSqlTarget {
   table: string;
   column(field: string): boolean;
@@ -35,19 +39,7 @@ export interface FieldRef {
   path: string;
 }
 
-export type Predicate =
-  | { op: "true" }
-  | { op: "false" }
-  | { op: "not"; item: Predicate }
-  | { op: "and" | "or"; items: Predicate[] }
-  | { op: "exists"; table: string; link: string; item: Predicate }
-  | {
-      op: "cmp";
-      left: FieldRef;
-      operator: Operator;
-      right: { field: FieldRef } | { value: SqlParam | SqlParam[] };
-    };
-
+/** A criteria as SQL: its filter, its order and its page, the values bound apart. */
 export interface CompiledCriteria {
   whereSql: string;
   params: SqlParam[];
@@ -55,20 +47,12 @@ export interface CompiledCriteria {
   order: { ref: FieldRef; descending: boolean }[];
   limit?: number;
   offset: number;
-  predicate: Predicate;
-}
-
-export interface SqlDocument {
-  uuid: string;
-  version: number;
-  data: string;
-  columns: Record<string, SqlParam>;
 }
 
 /**
- * One page of a document query, as the engine pages: `rows` reads the page (one row more than
- * `limit`, to know whether another follows), `filter` is what a count counts, and `sorts` the
- * ordering a cursor is minted under, tiebreaker included.
+ * One page of a query, as the engine pages: `rows` reads the page (one row more than `limit`,
+ * to know whether another follows), `filter` is what a count counts, and `sorts` the ordering
+ * a cursor is minted under, its identity closing it.
  */
 export interface CompiledPage {
   rows: CompiledCriteria;
@@ -82,6 +66,13 @@ export interface CompiledPage {
 export type { CriteriaClock };
 export { deviceClock };
 
+/** Past how many a count stops and answers "at least": the backend's ceiling. */
+export const COUNT_CEILING = 10_000;
+
+/**
+ * Every row a criteria matches, as SQL — `selection`, `order` and, when it asks, a page by rows.
+ * A grouping is not a list of rows, and a cursor belongs to a page (`compilePage`): both refused.
+ */
 export function compileCriteria<T>(
   asked: DocumentCriteria<T>,
   target: CriteriaSqlTarget,
@@ -96,9 +87,9 @@ export function compileCriteria<T>(
     throw new InvalidCriteria("a document query answers a selection, not a grouping");
   }
   const params: SqlParam[] = [];
-  const compiled = criteria.selection
+  const whereSql = criteria.selection
     ? compileExpression(criteria.selection as Expression, target, params, 0, clock)
-    : { sql: "", predicate: { op: "true" } as Predicate };
+    : "";
   const order = (criteria.order ?? []).map((sort) => ({
     ref: fieldRef(sort.field, target),
     descending: sort.descending === true,
@@ -114,7 +105,7 @@ export function compileCriteria<T>(
     });
   }
   return {
-    whereSql: compiled.sql,
+    whereSql,
     params,
     orderSql: order
       .map((item) => `${sqlOf(target.table, item.ref)} ${item.descending ? "DESC" : "ASC"}`)
@@ -122,30 +113,15 @@ export function compileCriteria<T>(
     order,
     limit: page.limit,
     offset: page.offset,
-    predicate: compiled.predicate,
   };
 }
 
-export function rowsFor(
-  compiled: CompiledCriteria,
-  rows: readonly SqlDocument[],
-  others: (table: string) => readonly SqlDocument[] = () => [],
-): SqlDocument[] {
-  const matched = rows.filter((row) => holds(row, compiled.predicate, others));
-  const ordered =
-    compiled.order.length === 0
-      ? [...matched]
-      : [...matched].sort((left, right) => compareRows(left, right, compiled.order));
-  const start = compiled.offset;
-  const end = compiled.limit === undefined ? undefined : start + compiled.limit;
-  return ordered.slice(start, end);
-}
-
 /**
- * The page a criteria asks of a document collection, compiled as the engine pages it.
+ * The page a criteria asks, compiled as the engine pages it.
  *
- * 1. The order is the criteria's, else `defaultOrder` (the entity's), closed by `uuid` in the
- *    direction of the first sort unless it already names it.
+ * 1. The order is the criteria's, else `paged.order` (the entity's), closed by its identity
+ *    (`uuid` unless `paged.identity` names another unique column) in the direction of the first
+ *    sort unless it already names it.
  * 2. The page is `limit` rows (fifty unless the criteria says), after `rows` skipped or past
  *    the row a `token` names. A token minted under another ordering is refused.
  * 3. Past a token is a keyset over the sorts: equal on the sorts before, beyond on this one, in
@@ -155,11 +131,11 @@ export function rowsFor(
 export function compilePage<T>(
   asked: DocumentCriteria<T>,
   target: CriteriaSqlTarget,
-  defaultOrder: readonly Sort[],
+  paged: { order: readonly Sort[]; identity?: string },
   clock: CriteriaClock = deviceClock(),
 ): CompiledPage {
   const criteria = criteriaOf(asked) as Criteria;
-  const sorts = orderingOf(criteria.order ?? [], defaultOrder);
+  const sorts = orderingOf(criteria.order ?? [], paged.order, paged.identity ?? "uuid");
   const filter = compileCriteria(
     { selection: criteria.selection, order: sorts, grouping: criteria.grouping },
     target,
@@ -179,9 +155,6 @@ export function compilePage<T>(
       ...filter,
       whereSql: after ? joinedWhere(filter.whereSql, after.sql) : filter.whereSql,
       params: after ? [...filter.params, ...after.params] : filter.params,
-      predicate: after
-        ? { op: "and", items: [filter.predicate, after.predicate] }
-        : filter.predicate,
       limit: limit + 1,
       offset,
     },
@@ -193,20 +166,94 @@ export function compilePage<T>(
   };
 }
 
-/** The token the page after `row` resumes from, under the page's ordering. */
-export function cursorAfter(row: SqlDocument, page: CompiledPage): string {
+/** A statement read as a table under `alias`: what a criteria filters, orders and pages. */
+export function aliased(source: SqlStatement, alias: string): SqlStatement {
+  assertName(alias, "alias");
+  return { text: `(${source.text}) AS ${alias}`, params: source.params };
+}
+
+/** The statement that reads `compiled` from `from`: a table, or a statement `aliased`. */
+export function selectStatement(
+  compiled: CompiledCriteria,
+  from: string | SqlStatement,
+  selected = "*",
+): SqlStatement {
+  const source = typeof from === "string" ? { text: from, params: [] } : from;
+  const params: SqlParam[] = [...source.params, ...compiled.params];
+  let text = `SELECT ${selected} FROM ${source.text}`;
+  if (compiled.whereSql) text += ` WHERE ${compiled.whereSql}`;
+  if (compiled.orderSql) text += ` ORDER BY ${compiled.orderSql}`;
+  if (compiled.limit !== undefined) {
+    text += " LIMIT ?";
+    params.push(compiled.limit);
+  } else if (compiled.offset > 0) {
+    text += " LIMIT -1";
+  }
+  if (compiled.offset > 0) {
+    text += " OFFSET ?";
+    params.push(compiled.offset);
+  }
+  return { text, params };
+}
+
+/**
+ * The statement that counts what `compiled` filters, its order and page aside; it stops at
+ * `ceiling` rows when given. It answers one row, `total`.
+ */
+export function countStatement(
+  compiled: CompiledCriteria,
+  from: string | SqlStatement,
+  ceiling?: number,
+): SqlStatement {
+  const source = typeof from === "string" ? { text: from, params: [] } : from;
+  const params: SqlParam[] = [...source.params, ...compiled.params];
+  let counted = `SELECT 1 FROM ${source.text}`;
+  if (compiled.whereSql) counted += ` WHERE ${compiled.whereSql}`;
+  if (ceiling !== undefined) {
+    counted += " LIMIT ?";
+    params.push(ceiling);
+  }
+  return { text: `SELECT COUNT(*) AS total FROM (${counted})`, params };
+}
+
+/** How many rows a count reads at most: every one when exact, one past the ceiling when capped. */
+export function countCeiling(mode: "capped" | "exact"): number | undefined {
+  return mode === "exact" ? undefined : COUNT_CEILING + 1;
+}
+
+/** What a count answers for the rows it saw: past the ceiling it is "at least" the ceiling. */
+export function countOf(seen: number, mode: "capped" | "exact"): Count {
+  if (mode === "exact") return { value: seen, exact: true };
+  return { value: Math.min(seen, COUNT_CEILING), exact: seen <= COUNT_CEILING };
+}
+
+/**
+ * The token the page after `row` resumes from, under the page's ordering: each sort's value as
+ * the row holds it — a column by its name, a JSON field from its `data`.
+ */
+export function cursorAfter(
+  row: Readonly<Record<string, unknown>>,
+  page: CompiledPage,
+): string {
   const keys: Record<string, unknown> = {};
   page.filter.order.forEach((item, index) => {
-    keys[page.sorts[index].field] = readField(row, item.ref);
+    keys[page.sorts[index].field] =
+      item.ref.kind === "column"
+        ? (row[item.ref.name] ?? null)
+        : readJson(String(row.data ?? "{}"), item.ref.path);
   });
   return mintCursor(keys, page.sorts);
 }
 
-function orderingOf(asked: readonly Sort[], defaultOrder: readonly Sort[]): Sort[] {
+function orderingOf(
+  asked: readonly Sort[],
+  defaultOrder: readonly Sort[],
+  identity: string,
+): Sort[] {
   const sorts = asked.length > 0 ? [...asked] : [...defaultOrder];
-  if (sorts.length === 0) return [{ field: "uuid", descending: true }];
-  if (sorts.some((sort) => sort.field === "uuid")) return sorts;
-  return [...sorts, { field: "uuid", descending: sorts[0].descending === true }];
+  if (sorts.length === 0) return [{ field: identity, descending: true }];
+  if (sorts.some((sort) => sort.field === identity)) return sorts;
+  return [...sorts, { field: identity, descending: sorts[0].descending === true }];
 }
 
 function wholeNumber(value: number, label: string): number {
@@ -224,41 +271,27 @@ function keysetPast(
   filter: CompiledCriteria,
   keys: readonly unknown[],
   table: string,
-): { sql: string; params: SqlParam[]; predicate: Predicate } {
+): { sql: string; params: SqlParam[] } {
   if (keys.length !== filter.order.length) {
     throw new InvalidCriteria("this cursor does not carry a key for every sort");
   }
   const params: SqlParam[] = [];
-  const clauses: string[] = [];
-  const items: Predicate[] = [];
-  filter.order.forEach((sort, index) => {
+  const clauses = filter.order.map((sort, index) => {
     const parts: string[] = [];
-    const held: Predicate[] = [];
     for (let before = 0; before < index; before++) {
-      const tie = equalTo(filter.order[before].ref, keyParam(keys[before]), table, params);
-      parts.push(tie.sql);
-      held.push(tie.predicate);
+      parts.push(equalTo(filter.order[before].ref, keyParam(keys[before]), table, params));
     }
-    const beyond = beyondKey(sort, keyParam(keys[index]), table, params);
-    parts.push(beyond.sql);
-    held.push(beyond.predicate);
-    clauses.push(`(${parts.join(" AND ")})`);
-    items.push({ op: "and", items: held });
+    parts.push(beyondKey(sort, keyParam(keys[index]), table, params));
+    return `(${parts.join(" AND ")})`;
   });
-  return { sql: `(${clauses.join(" OR ")})`, params, predicate: { op: "or", items } };
+  return { sql: `(${clauses.join(" OR ")})`, params };
 }
 
-function equalTo(
-  ref: FieldRef,
-  key: SqlParam,
-  table: string,
-  params: SqlParam[],
-): { sql: string; predicate: Predicate } {
+function equalTo(ref: FieldRef, key: SqlParam, table: string, params: SqlParam[]): string {
   const expr = sqlOf(table, ref);
-  const predicate: Predicate = { op: "cmp", left: ref, operator: "=", right: { value: key } };
-  if (key === null) return { sql: `${expr} IS NULL`, predicate };
+  if (key === null) return `${expr} IS NULL`;
   params.push(key);
-  return { sql: `${expr} = ?`, predicate };
+  return `${expr} = ?`;
 }
 
 function beyondKey(
@@ -266,26 +299,12 @@ function beyondKey(
   key: SqlParam,
   table: string,
   params: SqlParam[],
-): { sql: string; predicate: Predicate } {
+): string {
   const expr = sqlOf(table, sort.ref);
-  const isNull: Predicate = {
-    op: "cmp",
-    left: sort.ref,
-    operator: "=",
-    right: { value: null },
-  };
-  if (!sort.descending && key === null) {
-    return { sql: `${expr} IS NOT NULL`, predicate: { op: "not", item: isNull } };
-  }
-  if (sort.descending && key === null) return { sql: "(0)", predicate: { op: "false" } };
+  if (!sort.descending && key === null) return `${expr} IS NOT NULL`;
+  if (sort.descending && key === null) return "(0)";
   params.push(key);
-  const operator = sort.descending ? "<" : ">";
-  const past: Predicate = { op: "cmp", left: sort.ref, operator, right: { value: key } };
-  if (!sort.descending) return { sql: `${expr} > ?`, predicate: past };
-  return {
-    sql: `(${expr} < ? OR ${expr} IS NULL)`,
-    predicate: { op: "or", items: [past, isNull] },
-  };
+  return sort.descending ? `(${expr} < ? OR ${expr} IS NULL)` : `${expr} > ?`;
 }
 
 function keyParam(value: unknown): SqlParam {
@@ -302,20 +321,19 @@ function compileExpression(
   params: SqlParam[],
   depth: number,
   clock: CriteriaClock,
-): { sql: string; predicate: Predicate } {
+): string {
   if ("through" in expression && "selection" in expression) {
     return compileThrough(expression, target, params, depth, clock);
   }
-  if ("all" in expression)
-    return compileGroup("and", "AND", expression.all, target, params, depth, clock);
-  if ("any" in expression)
-    return compileGroup("or", "OR", expression.any, target, params, depth, clock);
+  if ("all" in expression) {
+    return compileGroup("AND", expression.all, target, params, depth, clock);
+  }
+  if ("any" in expression) {
+    return compileGroup("OR", expression.any, target, params, depth, clock);
+  }
   if ("negate" in expression) {
     const inner = compileExpression(expression.negate, target, params, depth, clock);
-    return {
-      sql: `NOT ((${inner.sql || "1"}) IS TRUE)`,
-      predicate: { op: "not", item: inner.predicate },
-    };
+    return `NOT ((${inner || "1"}) IS TRUE)`;
   }
   if (!("field" in expression) || !isOperator(expression.operator)) {
     throw new InvalidCriteria("a criteria condition needs a field and an operator");
@@ -331,23 +349,16 @@ function compileExpression(
 }
 
 function compileGroup(
-  op: "and" | "or",
-  sqlOp: "AND" | "OR",
+  joiner: "AND" | "OR",
   parts: Expression[],
   target: CriteriaSqlTarget,
   params: SqlParam[],
   depth: number,
   clock: CriteriaClock,
-): { sql: string; predicate: Predicate } {
-  if (parts.length === 0) {
-    const open = op === "and";
-    return { sql: open ? "(1)" : "(0)", predicate: { op: open ? "true" : "false" } };
-  }
+): string {
+  if (parts.length === 0) return joiner === "AND" ? "(1)" : "(0)";
   const compiled = parts.map((part) => compileExpression(part, target, params, depth, clock));
-  return {
-    sql: `(${compiled.map((part) => part.sql).join(` ${sqlOp} `)})`,
-    predicate: { op, items: compiled.map((part) => part.predicate) },
-  };
+  return `(${compiled.join(` ${joiner} `)})`;
 }
 
 function compileThrough(
@@ -356,7 +367,7 @@ function compileThrough(
   params: SqlParam[],
   depth: number,
   clock: CriteriaClock,
-): { sql: string; predicate: Predicate } {
+): string {
   if (depth >= MAX_DEPTH) {
     throw new InvalidCriteria("a criteria crosses too many relations");
   }
@@ -367,18 +378,11 @@ function compileThrough(
   const inner = compileExpression(expression.selection, child, params, depth + 1, clock);
   const link = `json_extract(${parent.table}.data, '$.${expression.through}')`;
   const each = `json_each(${parent.table}.data, '$.${expression.through}')`;
-  return {
-    sql:
-      `EXISTS (SELECT 1 FROM ${child.table} WHERE (` +
-      `${child.table}.uuid = ${link} OR ${child.table}.uuid IN (SELECT value FROM ${each}))` +
-      ` AND (${inner.sql || "1"}))`,
-    predicate: {
-      op: "exists",
-      table: child.table,
-      link: expression.through,
-      item: inner.predicate,
-    },
-  };
+  return (
+    `EXISTS (SELECT 1 FROM ${child.table} WHERE (` +
+    `${child.table}.uuid = ${link} OR ${child.table}.uuid IN (SELECT value FROM ${each}))` +
+    ` AND (${inner || "1"}))`
+  );
 }
 
 function compileCondition(
@@ -388,15 +392,11 @@ function compileCondition(
   target: CriteriaSqlTarget,
   params: SqlParam[],
   clock: CriteriaClock,
-): { sql: string; predicate: Predicate } {
-  const left = fieldRef(field, target);
-  const expr = sqlOf(target.table, left);
+): string {
+  const expr = sqlOf(target.table, fieldRef(field, target));
   if (isFieldValue(value)) {
-    const right = fieldRef(value.name, target);
-    return {
-      sql: compare(expr, operator, sqlOf(target.table, right), params, undefined, true),
-      predicate: { op: "cmp", left, operator, right: { field: right } },
-    };
+    const right = sqlOf(target.table, fieldRef(value.name, target));
+    return compare(expr, operator, right, params, undefined, true);
   }
   if (isPeriodValue(value)) {
     if (operator !== "between") {
@@ -407,16 +407,10 @@ function compileCondition(
     const [start, end] = periodBounds(value, clock);
     const lower = compileCondition(field, ">=", start, target, params, clock);
     const upper = compileCondition(field, "<", end, target, params, clock);
-    return {
-      sql: `(${lower.sql} AND ${upper.sql})`,
-      predicate: { op: "and", items: [lower.predicate, upper.predicate] },
-    };
+    return `(${lower} AND ${upper})`;
   }
   const bound = literal(operator, readCriteriaValue(value, clock, field));
-  return {
-    sql: compare(expr, operator, "?", params, bound, false),
-    predicate: { op: "cmp", left, operator, right: { value: bound } },
-  };
+  return compare(expr, operator, "?", params, bound, false);
 }
 
 function compare(
@@ -623,57 +617,6 @@ function assertName(name: string, label: string): void {
   if (!IDENTIFIER.test(name)) throw new InvalidCriteria(`invalid ${label} '${name}'`);
 }
 
-function holds(
-  row: SqlDocument,
-  predicate: Predicate,
-  others: (table: string) => readonly SqlDocument[],
-): boolean {
-  switch (predicate.op) {
-    case "true":
-      return true;
-    case "false":
-      return false;
-    case "not":
-      return !holds(row, predicate.item, others);
-    case "and":
-      return predicate.items.every((item) => holds(row, item, others));
-    case "or":
-      return predicate.items.some((item) => holds(row, item, others));
-    case "exists": {
-      const ids = linkedIds(row, predicate.link);
-      if (ids.length === 0) return false;
-      return others(predicate.table).some(
-        (child) => ids.includes(child.uuid) && holds(child, predicate.item, others),
-      );
-    }
-    case "cmp":
-      return compareValues(
-        readField(row, predicate.left),
-        predicate.operator,
-        "field" in predicate.right
-          ? readField(row, predicate.right.field)
-          : predicate.right.value,
-      );
-  }
-}
-
-function linkedIds(row: SqlDocument, field: string): string[] {
-  const value = readJson(row.data, `$.${field}`);
-  if (typeof value === "string") return [value];
-  if (Array.isArray(value))
-    return value.filter((item): item is string => typeof item === "string");
-  return [];
-}
-
-function readField(row: SqlDocument, ref: FieldRef): unknown {
-  if (ref.kind === "column") {
-    if (ref.name === "uuid") return row.uuid;
-    if (ref.name === "version") return row.version;
-    return row.columns[ref.name] ?? null;
-  }
-  return readJson(row.data, ref.path);
-}
-
 function readJson(data: string, path: string): unknown {
   const segments = path.startsWith("$.") ? path.slice(2).split(".") : [];
   let current: unknown = JSON.parse(data);
@@ -682,108 +625,4 @@ function readJson(data: string, path: string): unknown {
     current = (current as Record<string, unknown>)[segment];
   }
   return current === undefined ? null : current;
-}
-
-function compareValues(left: unknown, operator: Operator, right: unknown): boolean {
-  if (operator === "=" && Array.isArray(right) && right.length === 0) {
-    return left == null || (Array.isArray(left) && left.length === 0);
-  }
-  if (operator === "!=" && Array.isArray(right) && right.length === 0) {
-    return left != null && !(Array.isArray(left) && left.length === 0);
-  }
-  if (operator === "=" && right === null) return left == null;
-  if (operator === "!=" && right === null) return left != null;
-  switch (operator) {
-    case "=":
-      return same(left, right);
-    case "!=":
-      return !same(left, right);
-    case ">":
-    case ">=":
-    case "<":
-    case "<=":
-      return ordered(left, right, operator);
-    case "between": {
-      if (!Array.isArray(right) || right.length !== 2) return false;
-      return ordered(left, right[0], ">=") && ordered(left, right[1], "<=");
-    }
-    case "in":
-      return Array.isArray(right) && right.some((item) => same(left, item));
-    case "not in":
-      return Array.isArray(right) && !right.some((item) => same(left, item));
-    case "is null":
-      return right === 0 || right === false ? left != null : left == null;
-    case "like":
-      return (
-        left != null &&
-        String(scalar(left)).toLowerCase().includes(String(right).toLowerCase())
-      );
-    case "starts with":
-      return (
-        left != null &&
-        String(scalar(left)).toLowerCase().startsWith(String(right).toLowerCase())
-      );
-    case "contains":
-      return quoted(left, String(right));
-    case "not contains":
-      return left == null || !quoted(left, String(right));
-    default:
-      return false;
-  }
-}
-
-function quoted(value: unknown, needle: string): boolean {
-  const mark = `"${needle}"`;
-  if (typeof value === "string") return value.includes(mark);
-  if (value == null) return false;
-  return JSON.stringify(value).includes(mark);
-}
-
-function same(left: unknown, right: unknown): boolean {
-  return scalar(left) === scalar(right);
-}
-
-function ordered(left: unknown, right: unknown, operator: "<" | "<=" | ">" | ">="): boolean {
-  if (scalar(left) === null || scalar(right) === null) return false;
-  const compared = compareUnknown(left, right);
-  if (operator === "<") return compared < 0;
-  if (operator === "<=") return compared <= 0;
-  if (operator === ">") return compared > 0;
-  return compared >= 0;
-}
-
-function compareRows(
-  left: SqlDocument,
-  right: SqlDocument,
-  order: { ref: FieldRef; descending: boolean }[],
-): number {
-  for (const item of order) {
-    const compared = compareUnknown(readField(left, item.ref), readField(right, item.ref));
-    if (compared === 0) continue;
-    return item.descending ? -compared : compared;
-  }
-  return 0;
-}
-
-function compareUnknown(left: unknown, right: unknown): number {
-  const a = scalar(left);
-  const b = scalar(right);
-  if (a === null && b === null) return 0;
-  if (a === null) return -1;
-  if (b === null) return 1;
-  if (typeof a === "number" && typeof b === "number") return a - b;
-  const as = String(a);
-  const bs = String(b);
-  if (as < bs) return -1;
-  if (as > bs) return 1;
-  return 0;
-}
-
-function scalar(value: unknown): SqlParam {
-  if (value == null) return null;
-  if (typeof value === "boolean") return value ? 1 : 0;
-  if (typeof value === "number") return Number.isNaN(value) ? null : value;
-  if (typeof value === "string") return value;
-  if (value instanceof Date) return value.toISOString();
-  return null;
 }
