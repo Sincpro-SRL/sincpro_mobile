@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
-import { type Criteria, InvalidCriteria, resumingFrom } from "@sincpro/criteria";
+import { type Criteria, criteria, InvalidCriteria, resumingFrom } from "@sincpro/criteria";
 
 import { sqliteDocuments } from "../../sincpro_mobile/adapters/repositories/document.repository.ts";
 import { COUNT_CEILING } from "../../sincpro_mobile/domain/database/criteria_sql.ts";
@@ -297,4 +297,19 @@ test("findByRemoteIds and findByRemoteState group what they find in the order as
     ["a", "c"],
   );
   assert.equal(one?.sku, "b");
+});
+
+test("a reading counts once: its first page; a page that resumes counts only when asked", async () => {
+  await saved(Array.from({ length: 7 }, (_, index) => ({ number: index })));
+  const asked = criteria<Ticket>().order("number").limit(3);
+
+  const first = await tickets.search(asked);
+  const resumed = await tickets.search(asked.cursor(first.cursor));
+  const skipped = await tickets.search(asked.offset(3));
+  const always = await tickets.search(asked.counting("exact").cursor(first.cursor));
+
+  assert.deepEqual(first.total, { value: 7, exact: true });
+  assert.equal(resumed.total, null, "a Reading keeps what the first page counted");
+  assert.equal(skipped.total, null);
+  assert.deepEqual(always.total, { value: 7, exact: true });
 });

@@ -49,7 +49,7 @@ criteria<Ticket>().selection(
   ["code", "starts with", "T-"],
   ["state", "in", ["open", "waiting"]],
   ["total", "between", [100, 500]],
-  ["createdAt", "between", dynamic.period("this_month")], // >= inicio AND < fin, en la zona del teléfono
+  ["createdAt", "between", dynamic.period("this_month")], // >= inicio AND < fin, en la zona de la app
 );
 
 // Una relación (@relation) se cruza con EXISTS.
@@ -71,13 +71,15 @@ el builder es la forma que se lee mejor y la que tipa. Cada lectura acepta los d
 Por defecto se pagina por **cursor** (keyset): estable aunque entren filas nuevas, y eficiente
 en cualquier página. El offset existe para quien lo pida.
 
-| Se pide                                    | Se obtiene                                                        |
-| ------------------------------------------ | ----------------------------------------------------------------- |
-| Nada                                       | La primera página de 50, con `cursor` si hay más                  |
-| `.limit(20)`                               | Páginas de 20                                                     |
-| `.cursor(page.cursor)` o `resumingFrom(…)` | La página siguiente. `Reading` / `useReading` lo hacen solos      |
-| `.offset(40)`                              | Salta 40 y no devuelve cursor: quien cuenta filas sabe cuál sigue |
-| `.counting("none" \| "capped" \| "exact")` | Sin conteo, hasta 10 000 (el default) o exacto                    |
+| Se pide                                    | Se obtiene                                                                                                     |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| Nada                                       | La primera página de 50, con `cursor` si hay más                                                               |
+| `.limit(20)`                               | Páginas de 20                                                                                                  |
+| `.cursor(page.cursor)` o `resumingFrom(…)` | La página siguiente. `Reading` / `useReading` lo hacen solos                                                   |
+| `.offset(40)`                              | Salta 40 y no devuelve cursor: quien cuenta filas sabe cuál sigue                                              |
+| Sin `counting`                             | Cuenta la primera página (hasta 10 000); la que sigue o salta filas no cuenta: el `Reading` conserva el conteo |
+| `.counting("capped" \| "exact")`           | Cuenta **cada** página, hasta 10 000 o exacto                                                                  |
+| `.counting("none")`                        | No cuenta nunca: la página más barata                                                                          |
 
 El orden es el del criteria, o el de la entidad (`DEFAULT_ORDER`), y siempre lo cierra su
 identidad (`uuid`) en la dirección del primer orden: dos filas nunca empatan. Un cursor de otro
@@ -89,6 +91,21 @@ const tickets = resource<Ticket>((asked) =>
 );
 const { rows, hasMore, more } = useReading(tickets, criteria<Ticket>().limit(20));
 ```
+
+### Fechas y zona horaria
+
+`today`, `now` y un `period` se calculan en la zona horaria que la app instaló en client-framework
+(`installTimeZone("America/La_Paz")`: la de la empresa o la del usuario), y en la de la plataforma
+si no instaló ninguna. Los días de los filtros de una pantalla empiezan a la medianoche de esa
+misma zona. Una zona propia de cada ejecución (la de su contexto) llega con
+Sincpro-SRL/sincpro_client_framework#46.
+
+### Dos formas de combinar un criteria
+
+| Se combina                                                       | Ley                                                                                                                                                                     |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lo que pide quien llama sobre lo que la entidad trae por defecto | `replacedBy(defaults, asked)`: lo que nombra quien llama **reemplaza** (orden, página, conteo, specification); su filtro se suma (AND). Es el `replaced_by` del backend |
+| El alcance de un caso de uso con lo que pide quien llama         | `merge(scope, asked)`: el alcance **solo recorta**; quien llama no lo puede agrandar                                                                                    |
 
 ## La entidad dice cómo se lee
 

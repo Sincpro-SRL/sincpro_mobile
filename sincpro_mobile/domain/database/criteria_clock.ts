@@ -1,3 +1,4 @@
+import { timeZoneNow } from "@sincpro/client-framework";
 import { InvalidCriteria, type Value } from "@sincpro/criteria";
 import { dateTimeFormat } from "@sincpro/mobile/tools/utils/intl";
 
@@ -26,11 +27,13 @@ export interface CriteriaClock {
   timeZone: string;
 }
 
+/**
+ * The clock a criteria is read on: now, in the time zone the app installed
+ * (`installTimeZone` of client-framework — a company's, a user's), the platform's when it
+ * installed none. `today` and a `period` are cut on that wall clock, not the phone's.
+ */
 export function deviceClock(now: Date = new Date()): CriteriaClock {
-  return {
-    now,
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-  };
+  return { now, timeZone: timeZoneNow() };
 }
 
 export function readCriteriaValue(value: Value, clock: CriteriaClock, field = ""): Value {
