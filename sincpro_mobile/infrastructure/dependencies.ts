@@ -18,7 +18,9 @@ import {
   type SqliteEventStore,
 } from "@sincpro/mobile/adapters/repositories/sqlite_event_store";
 import type { Notifier } from "@sincpro/mobile/domain/notifier";
+import type { AppSettings } from "@sincpro/mobile/domain/settings";
 import { orchestrator } from "@sincpro/mobile/framework/orchestrator";
+import { appSettings } from "@sincpro/mobile/infrastructure/app_settings";
 import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 import { deviceNotifier } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
@@ -37,6 +39,8 @@ export type EventDelivery = { drain(): Promise<void> };
 export interface CommonDependencies {
   domains: DomainSwitch;
   settingsStore: SettingsStore;
+  /** What the app runs with — time zone, language, colors —: loaded again when a setting is saved. */
+  appSettings: AppSettings;
   notifier: Notifier;
   /** Bound to each run: what a use case queues joins its flow and its trace. */
   publisher: Publisher;
@@ -58,6 +62,7 @@ export function registerDependencies(
 ): BoundedContext<CommonDependencies> {
   boundedContext.addDependency("domains", orchestrator);
   boundedContext.addDependency("settingsStore", SettingsRepository);
+  boundedContext.addDependency("appSettings", appSettings);
   boundedContext.addDependency("notifier", deviceNotifier);
   boundedContext.addDependency("publisher", new Publisher(eventDelivery));
   boundedContext.addDependency("printer", printerAdapter);

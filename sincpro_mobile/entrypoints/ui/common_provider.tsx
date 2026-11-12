@@ -1,8 +1,10 @@
 import { logger, type LogLayer } from "@sincpro/client-framework";
 import { GeoAdapter } from "@sincpro/mobile/adapters/Geo.adapter";
-import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
+import { EAppSetting } from "@sincpro/mobile/domain/settings";
+import { appSettings } from "@sincpro/mobile/infrastructure/app_settings";
 import { Debug } from "@sincpro/mobile/infrastructure/debug";
 import { errorAttributes, getEnabledLayers } from "@sincpro/mobile/infrastructure/logger";
+import { CommandApplyAppSettings, commonBoundedContext } from "@sincpro/mobile/services";
 import { withCleanup } from "@sincpro/mobile/tools/utils/async";
 import type { ThemeTokens } from "@sincpro/mobile-ui/theme";
 import { DEFAULT_DARK_THEME, DEFAULT_THEME, setActiveTheme } from "@sincpro/mobile-ui/theme";
@@ -15,6 +17,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { Appearance, AppState } from "react-native";
 
@@ -28,10 +31,6 @@ export interface TimezoneLocale {
   timezone: string;
   locale: string;
 }
-
-const TIMEZONE_SETTING_KEY = "app.timezone";
-const LOCALE_SETTING_KEY = "app.locale";
-const COLOR_SCHEME_SETTING_KEY = "app.color_scheme";
 
 interface ICommonContext {
   debugMode: boolean;
@@ -61,31 +60,44 @@ interface CommonProviderProps {
   darkTheme?: ThemeTokens;
 }
 
+/** Saves settings and applies them at once (`CommandApplyAppSettings`); a failure is logged. */
+async function applySettings(
+  settings: { key: EAppSetting; value: unknown }[],
+): Promise<void> {
+  try {
+    await commonBoundedContext.execute(new CommandApplyAppSettings(settings));
+  } catch (error) {
+    logger.warn("The settings could not be saved", errorAttributes(error));
+  }
+}
+
+/**
+ * What every screen reads of the app: its debug switch, its time zone, language and colors, and
+ * the location permission. The settings were loaded by the kernel's bootstrap before this
+ * mounts (`appSettings`, `Debug.hydrate`), so they are read as they are — no default shown first
+ * and replaced a moment later — and followed when they change.
+ */
 export function CommonProvider({ children, lightTheme, darkTheme }: CommonProviderProps) {
-  const [debugMode, setDebugMode] = useState(false);
-  const [debugModeLoaded, setDebugModeLoaded] = useState(false);
+  const [debugMode, setDebugMode] = useState(() => Debug.isEnabled());
+  const debugModeLoaded = true;
   const [logLayers, setLogLayers] = useState(getEnabledLayers);
+  const settings = useSyncExternalStore(appSettings.subscribe, appSettings.snapshot);
 
   const [hasGeoPermission, setHasGeoPermission] = useState(false);
   const [geoIsLoading, setGeoIsLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
-  const [locale, setLocale] = useState<string | null>(null);
-  const [timezone, setTimezone] = useState<string | null>(null);
-  const [colorScheme, setColorSchemeState] = useState<ColorSchemeChoice>("system");
+  const locale = settings.locale;
+  const timezone = settings.timeZone;
+  const colorScheme = settings.colorScheme;
 
-  useEffect(() => {
-    async function loadDebug() {
-      const snapshot = await Debug.hydrate();
-      setDebugMode(snapshot.enabled);
-      setLogLayers(snapshot.layers);
-      setDebugModeLoaded(true);
-    }
-    loadDebug();
-    return Debug.subscribe(() => {
-      setDebugMode(Debug.isEnabled());
-      setLogLayers(Debug.layers.get());
-    });
-  }, []);
+  useEffect(
+    () =>
+      Debug.subscribe(() => {
+        setDebugMode(Debug.isEnabled());
+        setLogLayers(Debug.layers.get());
+      }),
+    [],
+  );
 
   const toggleDebugMode = useCallback(async () => {
     await Debug.setEnabledPersist(!debugMode);
@@ -136,22 +148,16 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
   }, []);
 
   const updateTimezone = useCallback(async (tz: TimezoneLocale) => {
-    try {
-      await SettingsRepository.saveOneSetting(TIMEZONE_SETTING_KEY, tz.timezone);
-      await SettingsRepository.saveOneSetting(LOCALE_SETTING_KEY, tz.locale);
-      setTimezone(tz.timezone);
-      setLocale(tz.locale);
-    } catch (error) {
-      logger.warn("Failed to save the time zone", errorAttributes(error));
-    }
+    await applySettings([
+      { key: EAppSetting.TIME_ZONE, value: tz.timezone },
+      { key: EAppSetting.LOCALE, value: tz.locale },
+    ]);
   }, []);
 
   const scheme = useRef<ColorSchemeFollower | null>(null);
 
   const setColorScheme = useCallback(async (choice: ColorSchemeChoice) => {
-    await SettingsRepository.saveOneSetting(COLOR_SCHEME_SETTING_KEY, choice);
-    setColorSchemeState(choice);
-    scheme.current?.choose(choice);
+    await applySettings([{ key: EAppSetting.COLOR_SCHEME, value: choice }]);
   }, []);
 
   // Returning to the foreground re-reads the permission quietly: no loading
@@ -178,40 +184,16 @@ export function CommonProvider({ children, lightTheme, darkTheme }: CommonProvid
       ),
     );
     scheme.current = follower;
-    let active = true;
-    SettingsRepository.getSettingByName(COLOR_SCHEME_SETTING_KEY).then(
-      (saved) => {
-        if (!active) return;
-        const choice =
-          saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
-        setColorSchemeState(choice);
-        follower.choose(choice);
-      },
-      (error: unknown) =>
-        logger.warn("Failed to load the color scheme", errorAttributes(error)),
-    );
+    follower.choose(appSettings.snapshot().colorScheme);
     return () => {
-      active = false;
       follower.stop();
       scheme.current = null;
     };
   }, [lightTheme, darkTheme]);
 
   useEffect(() => {
-    async function loadTimezoneAndLocale() {
-      try {
-        const [timezoneResult, localeResult] = await Promise.all([
-          SettingsRepository.getSettingByName(TIMEZONE_SETTING_KEY),
-          SettingsRepository.getSettingByName(LOCALE_SETTING_KEY),
-        ]);
-        setTimezone(timezoneResult);
-        setLocale(localeResult);
-      } catch (error) {
-        logger.warn("Failed to load timezone/locale", errorAttributes(error));
-      }
-    }
-    loadTimezoneAndLocale();
-  }, []);
+    scheme.current?.choose(colorScheme);
+  }, [colorScheme]);
 
   const value = useMemo<ICommonContext>(
     () => ({

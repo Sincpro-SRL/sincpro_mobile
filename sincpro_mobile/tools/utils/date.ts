@@ -1,12 +1,12 @@
-import { dayOf, isDay } from "@sincpro/client-framework";
+import { dayOf, isDay, timeZoneNow } from "@sincpro/client-framework";
 import { dateTimeFormat } from "@sincpro/mobile/tools/utils/intl";
 import dayjs from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
 import { getLocales } from "expo-localization";
 
-const DEFAULT_TIMEZONE = "America/Costa_Rica";
-const DEFAULT_LOCALE = "es-CR";
+/** The language a date is written in when neither the caller nor the phone says one. */
+const FALLBACK_LOCALE = "es";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -25,7 +25,8 @@ interface FormatDateOptions {
  * 2. Si `input` incluye componente de tiempo (ISO completo o Date) => se convierte a la zona destino
  *    y se muestra fecha + hora (HH:MM) salvo que se fuerce lo contrario mediante `options.showTime`.
  * 3. Cuando `options.showTime` es `true` o `false` se sobre‑escribe la auto‑detección.
- * 4. Si `timezone` es null/undefined o inválido se retorna la cadena "Error de formateo".
+ * 4. Si `timezone` es null/undefined se usa la zona que la app instaló (`timeZoneNow()`); si es
+ *    inválido se retorna la cadena "Error de formateo".
  *
  * Localización:
  * - Usa el primer locale del dispositivo (`expo-localization`) como predeterminado.
@@ -51,7 +52,7 @@ interface FormatDateOptions {
  * ```
  *
  * @param input      Fecha (string ISO, 'YYYY-MM-DD' o instancia Date)
- * @param timezone   Zona horaria IANA (ej: 'America/Costa_Rica', 'Asia/Tokyo'). Si es null/undefined usa Costa Rica
+ * @param timezone   Zona horaria IANA (ej: 'America/Costa_Rica', 'Asia/Tokyo'). Si es null/undefined usa la zona que la app instaló (`timeZoneNow()`)
  * @param options    Opcional: locale forzado y/o bandera para mostrar hora
  * @returns          Cadena localizada o "Error de formateo" si no se puede procesar
  */
@@ -60,11 +61,8 @@ export function formatDate(
   timezone: string | null | undefined,
   options?: FormatDateOptions,
 ): string {
-  // Usar timezone por defecto si no se proporciona
-  const effectiveTimezone = timezone || DEFAULT_TIMEZONE;
-
-  const fallbackLocale = DEFAULT_LOCALE.split("-")[0]; // "es" from "es-CR"
-  const deviceLocale = getLocales()?.[0]?.languageTag ?? fallbackLocale;
+  const effectiveTimezone = timezone || timeZoneNow();
+  const deviceLocale = getLocales()?.[0]?.languageTag ?? FALLBACK_LOCALE;
   const usedLocale = options?.locale ?? deviceLocale;
 
   try {
@@ -102,29 +100,29 @@ export function formatDate(
 }
 
 /**
- * Formatea una fecha usando automáticamente el timezone por defecto (Costa Rica).
- * Útil para casos donde no se tiene acceso al timezone del usuario.
+ * Formatea una fecha en la zona horaria que la app instaló (`timeZoneNow()`): la guardada en
+ * los ajustes, o la de la plataforma si no hay una.
  *
  * @param input      Fecha (string ISO, 'YYYY-MM-DD' o instancia Date)
  * @param options    Opcional: locale forzado y/o bandera para mostrar hora
- * @returns          Cadena localizada en timezone de Costa Rica
+ * @returns          Cadena localizada en la zona de la app
  */
 export function formatDateWithDefaultTimezone(
   input: string | Date,
   options?: FormatDateOptions,
 ): string {
-  return formatDate(input, DEFAULT_TIMEZONE, options);
+  return formatDate(input, timeZoneNow(), options);
 }
 
 /**
  * Obtiene la fecha actual en formato YYYY-MM-DD en el timezone especificado.
  * Útil para crear fechas de programación que respeten el timezone del usuario.
  *
- * @param timezone Zona horaria IANA. Si es null/undefined usa Costa Rica
+ * @param timezone Zona horaria IANA. Si es null/undefined usa la zona que la app instaló (`timeZoneNow()`)
  * @returns Fecha actual en formato YYYY-MM-DD en el timezone especificado
  */
 export function getCurrentDateInTimezone(timezone?: string | null): string {
-  const effectiveTimezone = timezone || DEFAULT_TIMEZONE;
+  const effectiveTimezone = timezone || timeZoneNow();
   try {
     return dayOf(new Date().toISOString(), effectiveTimezone) ?? dayjs().format("YYYY-MM-DD");
   } catch (error) {
@@ -137,11 +135,11 @@ export function getCurrentDateInTimezone(timezone?: string | null): string {
  * Obtiene la fecha y hora actual en formato ISO en el timezone especificado.
  * Útil para timestamps que necesiten reflejar el timezone del usuario.
  *
- * @param timezone Zona horaria IANA. Si es null/undefined usa Costa Rica
+ * @param timezone Zona horaria IANA. Si es null/undefined usa la zona que la app instaló (`timeZoneNow()`)
  * @returns Fecha actual en formato ISO en el timezone especificado
  */
 export function getCurrentDateTimeInTimezone(timezone?: string | null): string {
-  const effectiveTimezone = timezone || DEFAULT_TIMEZONE;
+  const effectiveTimezone = timezone || timeZoneNow();
   try {
     return dayjs().tz(effectiveTimezone).toISOString();
   } catch (error) {

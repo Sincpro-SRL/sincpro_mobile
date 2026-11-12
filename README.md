@@ -718,11 +718,29 @@ function StatusBar() {
 | `debugMode`              | `boolean`                       | Developer debug toggle (persisted)       |
 | `colorScheme`            | `"light" \| "dark" \| "system"` | Current color scheme (persisted)         |
 | `setColorScheme(scheme)` | function                        | Switches theme + persists preference     |
-| `timezone`               | `string \| null`                | Persisted timezone setting               |
-| `updateTimezone(tz)`     | function                        | Updates and persists                     |
+| `timezone`               | `string \| null`                | The app's time zone (`null`: platform's) |
+| `locale`                 | `string \| null`                | The app's language (`null`: phone's)     |
+| `updateTimezone(tz)`     | function                        | Saves and installs zone + language       |
 | `hasGeoPermission`       | `boolean`                       | Current geo permission state             |
 | `requestGeoPermission()` | `async () => boolean`           | Requests location permission             |
 | `checkGeoPermission()`   | `async () => void`              | Rechecks without prompting               |
+
+### ✅ App settings — time zone, language, colors
+
+The kernel's bootstrap reads the app's settings once, before any screen or background task runs (`appSettings.load()`), and **installs** the saved time zone in client-framework (`installTimeZone`). From then on every date the app reads or writes follows it: `timeZoneNow()`, `formatDate(input, null)`, `getCurrentDateInTimezone()`, the `today`/`period` of a criteria (`deviceClock`) and the days a screen filters by. With no zone saved — or one that is not a zone — it is the platform's.
+
+A change goes through one use case, saved and applied at once (no restart):
+
+```ts
+await commonBoundedContext.execute(
+  new CommandApplyAppSettings([
+    { key: EAppSetting.TIME_ZONE, value: "America/La_Paz" },
+    { key: EAppSetting.LOCALE, value: "es-BO" },
+  ]),
+);
+```
+
+`useCommon()` reads the same state synchronously (`timezone`, `locale`, `colorScheme`) — no default shown first and replaced a moment later — and its `updateTimezone` / `setColorScheme` run that command.
 
 ### ✅ Domain Switcher
 
