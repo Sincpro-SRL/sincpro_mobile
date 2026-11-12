@@ -1,13 +1,13 @@
 import type { LogLayer } from "@sincpro/client-framework";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
 import {
-  DEFAULT_ENABLED_LAYERS,
+  defaultEnabledLayers,
   getEnabledLayers,
-  isConsoleDebug,
+  isDebugLogging,
   isLayerEnabled,
   LOG_LAYERS,
   resetEnabledLayers,
-  setConsoleDebug,
+  setDebugLogging,
   setEnabledLayers,
   setLayerEnabled,
   subscribeLoggerConfig,
@@ -32,22 +32,22 @@ async function persistLayers(): Promise<void> {
  * Runtime debug surface for hosts and screens.
  *
  * Two levels:
- * 1. Master switch — INFO/DEBUG console output (`setEnabled`).
- * 2. Per-layer mask — which layers may speak when the master is on (`layers.setEnabled`,
- *    `layers.set`, …): infrastructure, adapter, bounded context, application
- *    service, feature.
+ * 1. Master switch — debugging (`setEnabled`): every line speaks, on the console of a debug build
+ *    and to Loki, instead of what the app ships normally (`observability.logs`).
+ * 2. Per-layer mask — which layers speak while debugging (`layers.setEnabled`, `layers.set`, …):
+ *    infrastructure, adapter, bounded context, event handler, application service, feature.
  *
- * ERROR/WARN always print. Loki INFO also respects the layer mask.
+ * WARN and ERROR always speak. Spans are never filtered.
  */
 export const Debug = {
-  isEnabled: isConsoleDebug,
+  isEnabled: isDebugLogging,
 
   setEnabled(enabled: boolean): void {
-    setConsoleDebug(enabled);
+    setDebugLogging(enabled);
   },
 
   async setEnabledPersist(enabled: boolean): Promise<void> {
-    setConsoleDebug(enabled);
+    setDebugLogging(enabled);
     await SettingsRepository.saveOneSetting(DEBUG_MODE_SETTING_KEY, enabled);
   },
 
@@ -65,9 +65,9 @@ export const Debug = {
     ]);
     // Only a switch someone saved wins; never saved, the level the app was built with stays
     // (`observability.logs.level`, `EXPO_PUBLIC_LOG_LEVEL`).
-    if (typeof mode === "boolean") setConsoleDebug(mode);
+    if (typeof mode === "boolean") setDebugLogging(mode);
     if (isLayerMap(layers)) setEnabledLayers(layers);
-    return { enabled: isConsoleDebug(), layers: getEnabledLayers() };
+    return { enabled: isDebugLogging(), layers: getEnabledLayers() };
   },
 
   subscribe: subscribeLoggerConfig,
@@ -75,7 +75,7 @@ export const Debug = {
   layers: {
     all: LOG_LAYERS,
 
-    defaults: (): Record<LogLayer, boolean> => ({ ...DEFAULT_ENABLED_LAYERS }),
+    defaults: defaultEnabledLayers,
 
     get: getEnabledLayers,
 
@@ -109,7 +109,7 @@ export const Debug = {
       await persistLayers();
     },
 
-    /** Back to the packaged quiet defaults (adapters off). */
+    /** Back to the debug filter's layers (the app's `logs.debug`; every layer by default). */
     reset(): void {
       resetEnabledLayers();
     },

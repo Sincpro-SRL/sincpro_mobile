@@ -458,7 +458,22 @@ The delivery hears `InternetIsDownEvent` / `InternetIsUpEvent` (`UIEventBus`): o
 
 ### ✅ Telemetry & Observability (OpenTelemetry + Loki)
 
-Distributed tracing and structured logs, **offline-first**, built on the OpenTelemetry SDK. Spans buffer to SQLite and ship to any OTLP/HTTP collector (Grafana Alloy, Tempo, Jaeger); logs ship to Loki. Telemetry is **opt-in** — pass a `telemetry` config to `createApp`.
+Distributed tracing and structured logs, **offline-first**, built on the OpenTelemetry SDK. Spans and log lines buffer to SQLite and ship in batches — spans to any OTLP/HTTP collector (Grafana Alloy, Tempo, Jaeger), log lines to Loki. Telemetry is **opt-in** — pass a `telemetry` config to `createApp`.
+
+**Which log lines speak** is the app's to say (`observability.logs`), one rule for the console and Loki — client-framework's `LogFilter`:
+
+```ts
+observability: {
+  logs: {
+    level: "info",                                     // what speaks normally (production)
+    layers: { adapter: false, infrastructure: false }, // INFO/DEBUG kept quiet by layer
+    boundedContexts: { common: false },                // and by bounded context
+    debug: {},                                         // a debug build or the switch: everything
+  },
+}
+```
+
+WARN and ERROR always speak. **Spans are never filtered**: a quiet line still has its span in Tempo. A debug build starts debugging (the console prints it) unless `level` is `warn`; a release build ships what speaks normally until the person turns the switch on (`Debug.setEnabled`), and the layers the person turns off on the debug screen stay quiet while debugging.
 
 ```tsx
 await createApp({
@@ -1088,7 +1103,7 @@ flowchart TB
         worker["TelemetryFlushWorker<br/>signal · InternetIsUp · bg cron"]
         flush["FlushTelemetry.run()"]
         conn["ConnectivityState"]
-        loki["LokiClient<br/>push (opportunistic) · deliver (batch)"]
+        loki["LokiClient<br/>deliver (batch)"]
         otlp["OtlpClient"]
     end
 
@@ -1096,7 +1111,7 @@ flowchart TB
     lokiSrv[["Loki"]]
 
     app --> tracing
-    app -->|logger.push| loki
+    app -->|shipLog: what speaks| logRepo
     tracing --> provider
     tracing -.->|active context| ctx
     provider --> proc
@@ -1104,7 +1119,7 @@ flowchart TB
     exporter --> spanRepo
     spanRepo --> spansTbl
     exporter -->|onEnqueued / store-first| signal
-    loki -->|on failure| logRepo
+    logRepo -->|onEnqueued| signal
     logRepo --> logsTbl
 
     signal --> flush
@@ -1124,7 +1139,7 @@ flowchart TB
 
 Telemetry is delivered by a single `FlushTelemetry` use case that drains **both** queues. Three independent triggers funnel into it; **none is required**, so the framework never depends on the host app's connectivity cron or its event bus:
 
-1. **Production signal (always on, primary).** Producing telemetry schedules a _debounced_ in-memory flush (`TelemetrySignal`, ~3 s). A burst of spans collapses into one delivery attempt. Spans are persisted to SQLite first, _then_ the signal fires — **store-first**, so a crash mid-send never loses data and batches stay efficient.
+1. **Production signal (always on, primary).** Producing telemetry schedules a _debounced_ in-memory flush (`TelemetrySignal`, ~3 s). A burst of spans and log lines collapses into one delivery attempt. Spans and log lines are persisted to SQLite first, _then_ the signal fires — **store-first**, so a crash mid-send never loses data, a line never goes out alone (one request carries many), and an offline phone pays one SQLite insert per line. A batch Loki refuses (401, 429, 5xx) stays queued; a refusal of the credentials is told once on the console.
 2. **Reconnect events (opt-in).** If the app emits `InternetIsUp/Down`, reconnecting drains the backlog immediately.
 3. **Background cron (opt-in).** A long-interval (≥15 min → real OS background task) safety net for whatever the other two missed.
 

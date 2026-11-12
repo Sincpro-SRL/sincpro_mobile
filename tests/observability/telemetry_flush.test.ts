@@ -223,7 +223,11 @@ test("runLogFlushJob: skips execution while skipTicksRemaining > 0", async () =>
       deliverCalled = true;
     },
   };
-  const state: LogFlushJobState = { consecutiveFailures: 1, skipTicksRemaining: 3 };
+  const state: LogFlushJobState = {
+    consecutiveFailures: 1,
+    skipTicksRemaining: 3,
+    toldRefused: false,
+  };
 
   await runLogFlushJob(client, queue, state);
 
@@ -233,7 +237,11 @@ test("runLogFlushJob: skips execution while skipTicksRemaining > 0", async () =>
 
 test("runLogFlushJob: resets consecutiveFailures to 0 after successful delivery", async () => {
   const { queue } = makeStore(5);
-  const state: LogFlushJobState = { consecutiveFailures: 4, skipTicksRemaining: 0 };
+  const state: LogFlushJobState = {
+    consecutiveFailures: 4,
+    skipTicksRemaining: 0,
+    toldRefused: false,
+  };
 
   await runLogFlushJob(successClient(), queue, state);
 
@@ -241,11 +249,45 @@ test("runLogFlushJob: resets consecutiveFailures to 0 after successful delivery"
 });
 
 test("runLogFlushJob: backoff is capped at 32 skip ticks regardless of failure count", async () => {
-  const state: LogFlushJobState = { consecutiveFailures: 100, skipTicksRemaining: 0 };
+  const state: LogFlushJobState = {
+    consecutiveFailures: 100,
+    skipTicksRemaining: 0,
+    toldRefused: false,
+  };
   const { queue } = makeStore(5);
   const { client } = failingClient();
 
   await runLogFlushJob(client, queue, state);
 
   assert.equal(state.skipTicksRemaining, 32, "backoff never exceeds 32 ticks");
+});
+
+// ---------------------------------------------------------------------------
+// A batch Loki refuses
+// ---------------------------------------------------------------------------
+
+test("runLogFlushJob: a refusal of the credentials keeps the lines and is told once", async () => {
+  const { LokiRefused } =
+    await import("../../sincpro_mobile/infrastructure/telemetry/logging/loki_client.ts");
+  const { rows, queue } = makeStore(3);
+  const state = createLogFlushJobState();
+  const refusing = {
+    deliver: async () => {
+      throw new LokiRefused(401);
+    },
+  };
+  const warned: unknown[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => void warned.push(args[0]);
+  try {
+    const first = await runLogFlushJob(refusing, queue, state);
+    state.skipTicksRemaining = 0;
+    await runLogFlushJob(refusing, queue, state);
+    assert.equal(first.failed, true);
+    assert.equal(rows.length, 3, "nothing is lost: the lines wait for Loki to accept them");
+    assert.equal(warned.length, 1, "told once, never a loop");
+    assert.match(String(warned[0]), /HTTP 401/);
+  } finally {
+    console.warn = original;
+  }
 });

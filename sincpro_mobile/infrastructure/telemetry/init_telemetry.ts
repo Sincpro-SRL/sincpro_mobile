@@ -4,7 +4,8 @@ import { _registerBuffers } from "./buffer_registry";
 import { ConnectivityState } from "./connectivity_state";
 import { FlushTelemetry } from "./flush_telemetry";
 import { LogQueueRepository } from "./logging/log_queue_repository";
-import { _resetLokiClient, getLokiClient, initLokiClient } from "./logging/loki_registry";
+import { LokiClient } from "./logging/loki_client";
+import { _resetLogShipping, initLogShipping } from "./logging/loki_registry";
 import { TelemetryFlushWorker } from "./telemetry_flush_worker";
 import { TelemetrySignal } from "./telemetry_signal";
 import { OtlpClient } from "./tracing/otlp_client";
@@ -60,16 +61,9 @@ export async function initTelemetry(
   const connectivity = new ConnectivityState();
   const timeoutMs = config.flush?.sendTimeoutMs;
 
-  // Logs — opportunistic push (with fallback to SQLite) + batch drain on flush.
-  let logQueue: LogQueueRepository | null = null;
-  if (config.loki) {
-    logQueue = new LogQueueRepository(DBCursor);
-    initLokiClient(config.loki, logQueue, timeoutMs);
-  } else {
-    // Drop a stale client from a previous init that had Loki configured.
-    _resetLokiClient();
-  }
-  const logClient = config.loki ? getLokiClient() : null;
+  // Logs — stored first, then sent in batches by the flush, as spans are.
+  const logQueue = config.loki ? new LogQueueRepository(DBCursor) : null;
+  const logClient = config.loki ? new LokiClient(config.loki, timeoutMs) : null;
 
   // Spans — always buffered to SQLite; OTLP client only when a destination exists.
   // Head sampling (default on) drops whole traces at ingest once the buffer is
@@ -97,6 +91,10 @@ export async function initTelemetry(
   const signal = new TelemetrySignal(() => {
     flush.run().catch(() => {});
   }, config.flush?.debounceMs);
+
+  // Every line is stored, then the same signal schedules one batch.
+  if (logQueue) initLogShipping(logQueue, () => signal.notify());
+  else _resetLogShipping();
 
   // Register the TracerProvider; persist spans (and fire the signal) only when
   // an OTLP destination is configured.

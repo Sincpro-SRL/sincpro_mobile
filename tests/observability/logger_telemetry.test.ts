@@ -15,275 +15,198 @@ import {
 } from "@sincpro/client-framework";
 import { memoryTracer } from "@sincpro/client-framework/testing";
 
-import { configureLogger, mobileLogger } from "../../sincpro_mobile/infrastructure/logger.ts";
-import { LokiClient } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_client.ts";
 import {
-  _resetLokiClient as _resetTelemetry,
-  initLokiClient as initTelemetry,
+  configureLogger,
+  mobileLogger,
+  setDebugLogging,
+  setLayerEnabled,
+} from "../../sincpro_mobile/infrastructure/logger.ts";
+import type { LogQueueRepository } from "../../sincpro_mobile/infrastructure/telemetry/logging/log_queue_repository.ts";
+import {
+  _resetLogShipping,
+  initLogShipping,
 } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_registry.ts";
 
 // ---------------------------------------------------------------------------
-// Minimal fetch mock — captures Loki push bodies
+// What the logger ships: every line it lets speak is stored for Loki (`shipLog`)
 // ---------------------------------------------------------------------------
 
-interface PushedLine {
-  ts: string;
+interface ShippedLine {
+  level: string;
   line: string;
-}
-interface PushedStream {
-  stream: Record<string, string>;
-  values: [string, string][];
-}
-
-function mockLokiFetch(): {
-  streams(): PushedStream[];
-  lines(): PushedLine[];
-  restore(): void;
-} {
-  const bodies: { streams: PushedStream[] }[] = [];
-  const original = global.fetch;
-  global.fetch = async (_input, init) => {
-    bodies.push(JSON.parse((init?.body as string) ?? "{}"));
-    return new Response(null, { status: 204 });
-  };
-  return {
-    streams() {
-      return bodies.flatMap((b) => b.streams);
-    },
-    lines() {
-      return bodies
-        .flatMap((b) => b.streams)
-        .flatMap((s) => s.values.map(([ts, line]) => ({ ts, line })));
-    },
-    restore() {
-      global.fetch = original;
-    },
-  };
 }
 
 // Flush all pending queueMicrotask callbacks
 async function flushMicrotasks() {
-  await new Promise<void>((resolve) => queueMicrotask(resolve));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
-// ---------------------------------------------------------------------------
-// Test-level setup — real LokiClient with mock fetch, no queue (online path)
-// ---------------------------------------------------------------------------
-
-function setup() {
-  const mock = mockLokiFetch();
-  const client = new LokiClient(
-    { endpoint: "http://loki.test", labels: { app: "test-mobile" } },
-    undefined, // no queue — tests the online push path
-  );
-  return { mock, client };
-}
-
-// ---------------------------------------------------------------------------
-// shouldLogRemote behaviour — tested indirectly through BaseLogger.
-// We call logger methods after initTelemetry so getLokiClient() is non-null.
-// ---------------------------------------------------------------------------
-
-// Helper: set up a real LokiClient via initTelemetry so the logger singleton
-// picks it up. Captures what gets pushed.
-function setupViaInit(): {
-  streams(): PushedStream[];
-  lines(): PushedLine[];
+/**
+ * The app's logger with Loki on, capturing what it stores to ship — production (the defaults)
+ * unless `debugging`.
+ */
+function setupViaInit(debugging = false): {
+  lines(): ShippedLine[];
   teardown(): void;
 } {
-  const mock = mockLokiFetch();
-  initTelemetry({ endpoint: "http://loki.test", labels: { app: "test-mobile" } });
+  const shipped: ShippedLine[] = [];
+  initLogShipping(
+    {
+      enqueue: async (level: string, line: string) => void shipped.push({ level, line }),
+    } as unknown as LogQueueRepository,
+    () => undefined,
+  );
+  configureLogger({ production: {}, debug: {} });
+  setDebugLogging(debugging);
   configureProcess({ logger: { engine: mobileLogger } });
   return {
-    streams: mock.streams.bind(mock),
-    lines: mock.lines.bind(mock),
+    lines: () => [...shipped],
     teardown() {
-      mock.restore();
-      _resetTelemetry();
+      setDebugLogging(false);
+      configureLogger({ production: {}, debug: {} });
+      _resetLogShipping();
     },
   };
 }
 
-// ---------------------------------------------------------------------------
-// Context prefix in Loki message
-// ---------------------------------------------------------------------------
-
-test("logger: context prefix '[USE_CASES]' appears in Loki push when context is not GLOBAL", async () => {
-  const { client } = setup();
-  const { mock, restore } = (() => {
-    const m = mockLokiFetch();
-    return { mock: m, restore: m.restore.bind(m) };
-  })();
-
-  // Push directly via LokiClient to verify prefix logic is independent of logger
-  // (the prefix is added by BaseLogger.pushRemote)
-  client.push("info", "[USE_CASES] order synced");
-  await flushMicrotasks();
-
-  const lines = mock.lines();
-  assert.ok(lines.length > 0, "at least one line pushed");
-  assert.ok(
-    lines.some((l) => l.line.includes("[USE_CASES]")),
-    `expected '[USE_CASES]' in line, got: ${JSON.stringify(lines.map((l) => l.line))}`,
+/** A use case of `name` that writes `message` at `level`. */
+async function speakFrom(name: string, level: "debug" | "info", message: string) {
+  class CommandSpeak extends Command<void> {}
+  const boundedContext = new BoundedContext(name);
+  boundedContext.feature(CommandSpeak)(
+    class Speak extends Feature<CommandSpeak, void> {
+      execute(): void {
+        this.logger[level](message);
+      }
+    },
   );
+  await boundedContext.execute(new CommandSpeak());
+}
 
-  restore();
-});
-
-test("logger: GLOBAL context produces no prefix in Loki message", async () => {
-  const { client } = setup();
-  const { mock, restore } = (() => {
-    const m = mockLokiFetch();
-    return { mock: m, restore: m.restore.bind(m) };
-  })();
-
-  client.push("info", "global message without prefix");
-  await flushMicrotasks();
-
-  const lines = mock.lines();
-  assert.ok(lines.length > 0);
-  assert.ok(
-    lines.every((l) => !l.line.startsWith("[")),
-    `GLOBAL context should produce no '[...]' prefix, got: ${JSON.stringify(lines.map((l) => l.line))}`,
-  );
-
-  restore();
-});
+const has = (lines: ShippedLine[], text: string) => lines.some((l) => l.line.includes(text));
 
 // ---------------------------------------------------------------------------
-// Loki's policy: ERROR/WARN from any layer, INFO from enabled layers, DEBUG never —
-// whatever the console shows. Tested through the framework's layer loggers.
+// Production — what the app ships normally
 // ---------------------------------------------------------------------------
 
-test("logger: error from a disabled layer (adapter) still reaches Loki", async () => {
-  // The adapter layer is off by default; ERROR must reach Loki regardless.
+test("logger: an error or a warning from a quiet layer (adapter) still ships", async () => {
   const { teardown, lines } = setupViaInit();
-  loggerAdapter.error("Odoo API returned 503");
-  await flushMicrotasks();
-
-  const pushed = lines();
-  assert.ok(
-    pushed.some((l) => l.line.includes("Odoo API returned 503")),
-    `ERROR from disabled context must reach Loki. Got: ${JSON.stringify(pushed.map((l) => l.line))}`,
-  );
-
-  teardown();
-});
-
-test("logger: warn from a disabled layer (adapter) still reaches Loki", async () => {
-  const { teardown, lines } = setupViaInit();
-  loggerAdapter.warn("slow query detected");
-  await flushMicrotasks();
-
-  const pushed = lines();
-  assert.ok(
-    pushed.some((l) => l.line.includes("slow query detected")),
-    `WARN from disabled context must reach Loki. Got: ${JSON.stringify(pushed.map((l) => l.line))}`,
-  );
-
-  teardown();
-});
-
-test("logger: debug reaches Loki only when the host asks for it, from enabled layers", async () => {
-  const { teardown, lines } = setupViaInit();
-  configureLogger({ loki: "debug" });
   try {
-    logger.debug("cart recomputed");
-    loggerAdapter.debug("raw adapter chatter");
+    loggerAdapter.error("Odoo API returned 503");
+    loggerAdapter.warn("slow query detected");
     await flushMicrotasks();
-    const pushed = lines().map((l) => l.line);
-    assert.ok(
-      pushed.some((line) => line.includes("cart recomputed")),
-      JSON.stringify(pushed),
-    );
-    assert.ok(
-      !pushed.some((line) => line.includes("raw adapter chatter")),
-      "a disabled layer stays out",
-    );
+    assert.ok(has(lines(), "Odoo API returned 503"), JSON.stringify(lines()));
+    assert.ok(has(lines(), "slow query detected"), JSON.stringify(lines()));
   } finally {
-    configureLogger({ loki: "info" });
     teardown();
   }
 });
 
-test("logger: at loki 'warn', info stays out and problems still go", async () => {
+test("logger: in production the app's own lines ship; common's, adapter's and infrastructure's do not", async () => {
   const { teardown, lines } = setupViaInit();
-  configureLogger({ loki: "warn" });
   try {
-    logger.info("order synced quietly");
+    await speakFrom("sales", "info", "order synced");
+    await speakFrom("common", "info", "network is up");
+    loggerAdapter.info("fetching routes");
+    logger.info("database ready");
+    await flushMicrotasks();
+    const shipped = lines();
+    assert.ok(has(shipped, "order synced"), JSON.stringify(shipped));
+    assert.ok(!has(shipped, "network is up"), "common is quiet");
+    assert.ok(!has(shipped, "fetching routes"), "adapter is quiet");
+    assert.ok(!has(shipped, "database ready"), "infrastructure is quiet");
+  } finally {
+    teardown();
+  }
+});
+
+test("logger: in production debug ships only when the app's level says so", async () => {
+  const { teardown, lines } = setupViaInit();
+  try {
+    await speakFrom("sales", "debug", "cart recomputed");
+    await flushMicrotasks();
+    assert.ok(!has(lines(), "cart recomputed"), "info by default");
+
+    configureLogger({ production: { level: "debug" } });
+    await speakFrom("sales", "debug", "cart recomputed again");
+    await flushMicrotasks();
+    assert.ok(has(lines(), "cart recomputed again"), JSON.stringify(lines()));
+  } finally {
+    teardown();
+  }
+});
+
+test("logger: at level 'warn', info stays out and problems still go", async () => {
+  const { teardown, lines } = setupViaInit();
+  try {
+    configureLogger({ production: { level: "warn" } });
+    await speakFrom("sales", "info", "order synced quietly");
     logger.warn("slow sync");
     await flushMicrotasks();
-    const pushed = lines().map((l) => l.line);
-    assert.ok(
-      !pushed.some((line) => line.includes("order synced quietly")),
-      JSON.stringify(pushed),
-    );
-    assert.ok(
-      pushed.some((line) => line.includes("slow sync")),
-      JSON.stringify(pushed),
-    );
+    assert.ok(!has(lines(), "order synced quietly"), JSON.stringify(lines()));
+    assert.ok(has(lines(), "slow sync"), JSON.stringify(lines()));
   } finally {
-    configureLogger({ loki: "info" });
     teardown();
   }
 });
 
-test("logger: by default debug never reaches Loki, whatever the layer", async () => {
+test("logger: the app names what is quiet — a bounded context, a layer", async () => {
   const { teardown, lines } = setupViaInit();
-  logger.debug("verbose debug trace");
-  await flushMicrotasks();
-
-  const pushed = lines();
-  assert.equal(
-    pushed.filter((l) => l.line.includes("verbose debug trace")).length,
-    0,
-    "DEBUG must never reach Loki",
-  );
-
-  teardown();
+  try {
+    configureLogger({
+      production: {
+        boundedContexts: { sales: false, common: true },
+        layers: { adapter: true },
+      },
+    });
+    await speakFrom("sales", "info", "sales line");
+    await speakFrom("common", "info", "common line");
+    loggerAdapter.info("adapter line");
+    await flushMicrotasks();
+    assert.ok(!has(lines(), "sales line"));
+    assert.ok(has(lines(), "common line"));
+    assert.ok(has(lines(), "adapter line"));
+  } finally {
+    teardown();
+  }
 });
 
-test("logger: info from an enabled layer (infrastructure) reaches Loki", async () => {
-  const { teardown, lines } = setupViaInit();
-  logger.info("order ACM-001 synced");
-  await flushMicrotasks();
+// ---------------------------------------------------------------------------
+// Debugging — a debug build, or the person's switch
+// ---------------------------------------------------------------------------
 
-  const pushed = lines();
-  assert.ok(
-    pushed.some((l) => l.line.includes("order ACM-001 synced")),
-    `INFO from enabled context must reach Loki. Got: ${JSON.stringify(pushed.map((l) => l.line))}`,
-  );
-
-  teardown();
-});
-
-test("logger: info from a disabled layer (adapter) does NOT reach Loki", async () => {
-  const { teardown, lines } = setupViaInit();
-  loggerAdapter.info("fetching routes");
-  await flushMicrotasks();
-
-  const pushed = lines();
-  assert.equal(
-    pushed.filter((l) => l.line.includes("fetching routes")).length,
-    0,
-    "INFO from disabled context must not reach Loki (too noisy)",
-  );
-
-  teardown();
+test("logger: debugging, every line speaks but the layers the person turns off", async () => {
+  const { teardown, lines } = setupViaInit(true);
+  try {
+    await speakFrom("common", "debug", "network checked");
+    loggerAdapter.info("fetching routes");
+    logger.debug("database ready");
+    setLayerEnabled("adapter", false);
+    loggerAdapter.info("adapter turned off");
+    await flushMicrotasks();
+    const shipped = lines();
+    assert.ok(has(shipped, "network checked"), JSON.stringify(shipped));
+    assert.ok(has(shipped, "fetching routes"));
+    assert.ok(has(shipped, "database ready"));
+    assert.ok(!has(shipped, "adapter turned off"), "the person turned adapters off");
+  } finally {
+    setLayerEnabled("adapter", true);
+    teardown();
+  }
 });
 
 test("logger: the layer prefixes the Loki line of an adapter error", async () => {
   const { teardown, lines } = setupViaInit();
-  loggerAdapter.error("connection refused");
-  await flushMicrotasks();
-
-  const pushed = lines();
-  assert.ok(
-    pushed.some((l) => l.line.startsWith("[adapter] connection refused")),
-    `Expected '[adapter]' prefix in Loki line. Got: ${JSON.stringify(pushed.map((l) => l.line))}`,
-  );
-
-  teardown();
+  try {
+    loggerAdapter.error("connection refused");
+    await flushMicrotasks();
+    assert.ok(
+      lines().some((l) => l.line.startsWith("[adapter] connection refused")),
+      JSON.stringify(lines()),
+    );
+  } finally {
+    teardown();
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -303,7 +226,7 @@ class CapturingExporter implements SpanExporter {
 }
 
 test("logger: Loki message lleva trace_id y span_id cuando hay un span activo", async () => {
-  const { teardown, lines } = setupViaInit();
+  const { teardown, lines } = setupViaInit(true);
 
   // Instala un TracerProvider en memoria (no SQLite)
   const exporter = new CapturingExporter();
@@ -358,7 +281,7 @@ test("logger: Loki message lleva trace_id y span_id cuando hay un span activo", 
 });
 
 test("logger: Loki message NO lleva trace_id cuando no hay span activo", async () => {
-  const { teardown, lines } = setupViaInit();
+  const { teardown, lines } = setupViaInit(true);
 
   const { _resetContextManager } =
     await import("../../sincpro_mobile/infrastructure/context_manager/index.ts");
@@ -396,7 +319,7 @@ class Quote extends Feature<CommandQuote, number> {
 }
 
 test("logger: a line inside a use case carries its layer, use case and the run's trace", async () => {
-  const { teardown, lines } = setupViaInit();
+  const { teardown, lines } = setupViaInit(true);
   const tracer = memoryTracer();
   configureProcess({ tracer, logger: { engine: mobileLogger } });
   const salesBoundedContext = new BoundedContext("sales");

@@ -1,4 +1,5 @@
 import type { LogEntry } from "./log_queue_repository";
+import { LokiRefused } from "./loki_client";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -30,10 +31,26 @@ const MAX_SKIP_TICKS = 32;
 export interface LogFlushJobState {
   consecutiveFailures: number;
   skipTicksRemaining: number;
+  /** Whether a refusal of Loki's credentials (401/403) was told on the console already. */
+  toldRefused: boolean;
 }
 
 export function createLogFlushJobState(): LogFlushJobState {
-  return { consecutiveFailures: 0, skipTicksRemaining: 0 };
+  return { consecutiveFailures: 0, skipTicksRemaining: 0, toldRefused: false };
+}
+
+/**
+ * A refusal of the credentials is told once, on the console — never through the logger, whose
+ * line would be shipped to the Loki that refuses it. The lines stay queued for when it accepts.
+ */
+function tellRefused(error: unknown, state: LogFlushJobState): void {
+  if (!(error instanceof LokiRefused) || state.toldRefused) return;
+  if (error.status !== 401 && error.status !== 403) return;
+  state.toldRefused = true;
+  console.warn(
+    `Loki refused the logs (HTTP ${error.status}): check observability.logs.headers. ` +
+      "The lines stay queued until it accepts them.",
+  );
 }
 
 /** Outcome of one flush run — lets callers update connectivity state. */
@@ -94,8 +111,9 @@ export async function runLogFlushJob(
 
     try {
       await client.deliver(entries);
-    } catch {
-      // Loki is unavailable — keep entries in queue and back off.
+    } catch (error) {
+      // Loki is unavailable or refused them — keep entries in queue and back off.
+      tellRefused(error, state);
       state.consecutiveFailures += 1;
       // 1st fail → skip 1 tick (retry in 2 min)
       // 2nd fail → skip 2 ticks (retry in 3 min)  …capped at 32

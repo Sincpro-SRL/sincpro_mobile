@@ -1,12 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type {
+  LogEntry,
+  LogQueueRepository,
+} from "../../sincpro_mobile/infrastructure/telemetry/logging/log_queue_repository.ts";
 import { LokiClient } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_client.ts";
 import {
-  _resetLokiClient as _resetTelemetry,
-  getLokiClient,
-  initLokiClient as initTelemetry,
+  _resetLogShipping,
+  initLogShipping,
+  shipLog,
+  shipsLogs,
 } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_registry.ts";
+
+let seq = 0;
+
+/** One line as the log queue keeps it, written now. */
+function entry(level: string, message: string): LogEntry {
+  return {
+    id: ++seq,
+    level,
+    message,
+    created_at: new Date().toISOString().replace("T", " ").replace("Z", ""),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -39,52 +56,65 @@ function mockFetch(): { calls: FetchCall[]; restore: () => void } {
   };
 }
 
-function failingFetch(): { restore: () => void } {
-  const original = global.fetch;
-  global.fetch = async () => {
-    throw new Error("network error");
-  };
-  return {
-    restore: () => {
-      global.fetch = original;
-    },
-  };
-}
-
 // ---------------------------------------------------------------------------
-// config — initTelemetry / getLokiClient
+// Shipping — a line is stored, then the flush is told; never sent alone
 // ---------------------------------------------------------------------------
 
-test("getLokiClient: returns null before initTelemetry is called", () => {
-  _resetTelemetry();
-  assert.equal(getLokiClient(), null);
+test("shipLog: nothing is shipped before telemetry starts", () => {
+  _resetLogShipping();
+  assert.equal(shipsLogs(), false);
+  assert.doesNotThrow(() => shipLog("info", "before start"));
 });
 
-test("initTelemetry: getLokiClient returns a LokiClient after init", () => {
-  _resetTelemetry();
-  initTelemetry({
-    endpoint: "http://loki.test",
-    labels: { app: "test-app", env: "test" },
-  });
-  assert.ok(getLokiClient() instanceof LokiClient);
-  _resetTelemetry();
+test("shipLog: a line is stored first, then the flush is told — no request of its own", async () => {
+  const stored: [string, string][] = [];
+  let told = 0;
+  const mock = mockFetch();
+  try {
+    initLogShipping(
+      {
+        enqueue: async (level: string, line: string) => void stored.push([level, line]),
+      } as unknown as LogQueueRepository,
+      () => {
+        told += 1;
+      },
+    );
+    assert.equal(shipsLogs(), true);
+    shipLog("info", "order synced");
+    shipLog("debug", "user login");
+    await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual(stored, [
+      ["info", "order synced"],
+      ["debug", "user login"],
+    ]);
+    assert.equal(told, 2, "the debounced signal collapses them into one batch");
+    assert.equal(mock.calls.length, 0, "no line goes out by itself");
+  } finally {
+    mock.restore();
+    _resetLogShipping();
+  }
 });
 
-test("initTelemetry: second call replaces the client (last config wins)", () => {
-  _resetTelemetry();
-  initTelemetry({ endpoint: "http://loki-a.test", labels: { app: "a" } });
-  const first = getLokiClient();
-  initTelemetry({ endpoint: "http://loki-b.test", labels: { app: "b" } });
-  const second = getLokiClient();
-  assert.notEqual(first, second);
-  _resetTelemetry();
+test("shipLog: a queue that fails never throws into the use case", async () => {
+  initLogShipping(
+    {
+      enqueue: async () => Promise.reject(new Error("disk full")),
+    } as unknown as LogQueueRepository,
+    () => undefined,
+  );
+  try {
+    assert.doesNotThrow(() => shipLog("warn", "offline message"));
+    await new Promise((r) => setTimeout(r, 10));
+  } finally {
+    _resetLogShipping();
+  }
 });
 
 // ---------------------------------------------------------------------------
-// LokiClient — push
+// LokiClient — deliver
 // ---------------------------------------------------------------------------
 
-test("LokiClient.push: sends correct payload to Loki endpoint", async () => {
+test("LokiClient.deliver: sends correct payload to Loki endpoint", async () => {
   const mock = mockFetch();
   try {
     const client = new LokiClient({
@@ -92,10 +122,7 @@ test("LokiClient.push: sends correct payload to Loki endpoint", async () => {
       labels: { app: "sincpro-mobile", env: "staging", tenant: "acme" },
     });
 
-    client.push("info", "order synced successfully");
-
-    // push is fire-and-forget — wait one microtask tick for the fetch to enqueue
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("info", "order synced successfully")]);
 
     assert.equal(mock.calls.length, 1);
 
@@ -123,12 +150,11 @@ test("LokiClient.push: sends correct payload to Loki endpoint", async () => {
   }
 });
 
-test("LokiClient.push: level label is included in stream labels", async () => {
+test("LokiClient.deliver: level label is included in stream labels", async () => {
   const mock = mockFetch();
   try {
     const client = new LokiClient({ endpoint: "http://loki.test", labels: { app: "app" } });
-    client.push("error", "something failed");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("error", "something failed")]);
 
     const body = mock.calls[0].body as { streams: { stream: Record<string, string> }[] };
     assert.equal(body.streams[0].stream.level, "error");
@@ -137,7 +163,7 @@ test("LokiClient.push: level label is included in stream labels", async () => {
   }
 });
 
-test("LokiClient.push: basic auth sends correct Authorization header", async () => {
+test("LokiClient.deliver: basic auth sends correct Authorization header", async () => {
   const mock = mockFetch();
   try {
     const client = new LokiClient({
@@ -145,8 +171,7 @@ test("LokiClient.push: basic auth sends correct Authorization header", async () 
       labels: { app: "app" },
       auth: { type: "basic", username: "tenant-123", password: "supersecret" },
     });
-    client.push("info", "msg");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("info", "msg")]);
 
     const authHeader = mock.calls[0].headers["Authorization"];
     const expected = `Basic ${btoa("tenant-123:supersecret")}`;
@@ -156,7 +181,7 @@ test("LokiClient.push: basic auth sends correct Authorization header", async () 
   }
 });
 
-test("LokiClient.push: bearer auth sends correct Authorization header", async () => {
+test("LokiClient.deliver: bearer auth sends correct Authorization header", async () => {
   const mock = mockFetch();
   try {
     const client = new LokiClient({
@@ -164,8 +189,7 @@ test("LokiClient.push: bearer auth sends correct Authorization header", async ()
       labels: { app: "app" },
       auth: { type: "bearer", token: "my-api-token" },
     });
-    client.push("info", "msg");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("info", "msg")]);
 
     assert.equal(mock.calls[0].headers["Authorization"], "Bearer my-api-token");
   } finally {
@@ -173,28 +197,14 @@ test("LokiClient.push: bearer auth sends correct Authorization header", async ()
   }
 });
 
-test("LokiClient.push: no auth header when auth is omitted", async () => {
+test("LokiClient.deliver: no auth header when auth is omitted", async () => {
   const mock = mockFetch();
   try {
     const client = new LokiClient({ endpoint: "http://loki.test", labels: { app: "app" } });
-    client.push("info", "msg");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("info", "msg")]);
 
     assert.equal(mock.calls[0].headers["Authorization"], undefined);
   } finally {
     mock.restore();
-  }
-});
-
-test("LokiClient.push: network failure does not throw", async () => {
-  const { restore } = failingFetch();
-  try {
-    const client = new LokiClient({ endpoint: "http://loki.test", labels: { app: "app" } });
-    // Must not throw synchronously or reject
-    assert.doesNotThrow(() => client.push("warn", "offline message"));
-    await new Promise((r) => setTimeout(r, 10));
-    // still no throw after the async failure resolves
-  } finally {
-    restore();
   }
 });

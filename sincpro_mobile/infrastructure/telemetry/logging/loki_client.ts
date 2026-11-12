@@ -1,76 +1,30 @@
 import { DEFAULT_SEND_TIMEOUT_MS, fetchWithTimeout } from "../fetch_with_timeout";
 import type { LokiConfig } from "../types";
-import type { LogEntry, LogQueueRepository } from "./log_queue_repository";
+import type { LogEntry } from "./log_queue_repository";
 
-// ---------------------------------------------------------------------------
-// Monotonic nanosecond timestamp
-// Loki rejects duplicate timestamps within the same stream (HTTP 400).
-// If two push() calls happen in the same millisecond they'd produce identical
-// ns values — the counter guarantees strict monotonicity.
-// ---------------------------------------------------------------------------
-let _lastMs = 0;
-let _nsSeq = 0;
-
-/** @internal — exposed for compliance testing only */
-export function _nowNs(): string {
-  const ms = Date.now();
-  if (ms === _lastMs) {
-    _nsSeq += 1;
-  } else {
-    _lastMs = ms;
-    _nsSeq = 0;
+/** Loki answered, and refused: its HTTP status says why (401/403: its credentials). */
+export class LokiRefused extends Error {
+  constructor(readonly status: number) {
+    super(`Loki refused the logs: HTTP ${status}`);
+    this.name = "LokiRefused";
   }
-  // BigInt required: ms * 1_000_000 ≈ 1.78e18 in 2026, which exceeds Number.MAX_SAFE_INTEGER
-  // (~9e15). Float64 granularity at that magnitude is ~512, so the _nsSeq offset would be
-  // invisible — producing duplicate timestamps that Loki rejects with HTTP 400.
-  return String(BigInt(ms) * 1_000_000n + BigInt(_nsSeq));
 }
 
 /**
- * HTTP client for Loki's push API (`POST /loki/api/v1/push`).
+ * HTTP client for Loki's push API (`POST /loki/api/v1/push`): `deliver()` sends a batch of the
+ * lines the log queue kept.
  *
- * `push()` is fire-and-forget: on failure it enqueues to the outbox (if provided) so the
- * flush cron can retry. `deliver()` is the awaitable batch-send used by the flush cron.
+ * Context: a line is never sent alone — it is stored first (`shipLog`) and sent in a batch with
+ * the ones around it, as spans are: one request for many lines, and an offline phone pays
+ * nothing per line. A batch Loki does not accept throws, so the flush keeps it for the next.
  */
 export class LokiClient {
   private readonly config: LokiConfig;
-  private readonly queue: LogQueueRepository | null;
   private readonly timeoutMs: number;
 
-  constructor(
-    config: LokiConfig,
-    queue?: LogQueueRepository,
-    timeoutMs = DEFAULT_SEND_TIMEOUT_MS,
-  ) {
+  constructor(config: LokiConfig, timeoutMs = DEFAULT_SEND_TIMEOUT_MS) {
     this.config = config;
-    this.queue = queue ?? null;
     this.timeoutMs = timeoutMs;
-  }
-
-  push(level: string, message: string): void {
-    const body = JSON.stringify({
-      streams: [
-        {
-          stream: { ...this.config.labels, level },
-          values: [[_nowNs(), message]],
-        },
-      ],
-    });
-
-    fetchWithTimeout(
-      `${this.config.endpoint}/loki/api/v1/push`,
-      {
-        method: "POST",
-        headers: this.requestHeaders(),
-        body,
-      },
-      this.timeoutMs,
-    ).catch(() => {
-      const q = this.queue;
-      if (q) {
-        queueMicrotask(() => q.enqueue(level, message).catch(() => {}));
-      }
-    });
   }
 
   /**
@@ -106,9 +60,7 @@ export class LokiClient {
       this.timeoutMs,
     );
 
-    if (!res.ok) {
-      throw new Error(`Loki batch delivery failed: HTTP ${res.status}`);
-    }
+    if (!res.ok) throw new LokiRefused(res.status);
   }
 
   /**

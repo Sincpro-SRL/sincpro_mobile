@@ -17,14 +17,15 @@ import MIGRATIONS, {
 } from "../../sincpro_mobile/entrypoints/db/migrations.ts";
 import { Debug } from "../../sincpro_mobile/infrastructure/debug.ts";
 import {
-  isConsoleDebug,
+  isDebugLogging,
   lokiLine,
   mobileLogger,
-  setConsoleDebug,
+  setDebugLogging,
 } from "../../sincpro_mobile/infrastructure/logger.ts";
+import { LogQueueRepository } from "../../sincpro_mobile/infrastructure/telemetry/logging/log_queue_repository.ts";
 import {
-  _resetLokiClient,
-  initLokiClient,
+  _resetLogShipping,
+  initLogShipping,
 } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_registry.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
@@ -72,13 +73,13 @@ test("a Loki line says who and, for an unexpected failure, what, where and its s
 
 test("the debug switch someone saved wins; never saved, the level the app was built with stays", async () => {
   await MIGRATIONS.find((one) => one.name === DATABASE_TABLES.SETTINGS)!.migrationFn();
-  setConsoleDebug(true); // EXPO_PUBLIC_LOG_LEVEL=debug
+  setDebugLogging(true); // EXPO_PUBLIC_LOG_LEVEL=debug
   await Debug.hydrate();
-  assert.equal(isConsoleDebug(), true, "nothing saved: the .env's level stays");
+  assert.equal(isDebugLogging(), true, "nothing saved: the .env's level stays");
 
   await SettingsRepository.saveOneSetting("app.debug_mode", false);
   await Debug.hydrate();
-  assert.equal(isConsoleDebug(), false, "the person turned it off");
+  assert.equal(isDebugLogging(), false, "the person turned it off");
 });
 
 test("shipping starts right after the migrations, before the queue, the crons and the hooks run anything", () => {
@@ -107,7 +108,13 @@ test("Loki down or no network never fails a use case or the line that tells it",
   globalThis.fetch = async () => {
     throw new TypeError("Network request failed");
   };
-  initLokiClient({ endpoint: "http://loki.down", labels: { app: "test" } });
+  // The queue itself failing too: a line is lost, never the use case.
+  initLogShipping(
+    {
+      enqueue: async () => Promise.reject(new Error("disk full")),
+    } as unknown as LogQueueRepository,
+    () => undefined,
+  );
   configureProcess({ logger: { engine: mobileLogger } });
   try {
     class CommandProbe extends Command<string> {}
@@ -125,6 +132,6 @@ test("Loki down or no network never fails a use case or the line that tells it",
     await new Promise((resolve) => setTimeout(resolve, 20));
   } finally {
     globalThis.fetch = original;
-    _resetLokiClient();
+    _resetLogShipping();
   }
 });
