@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { processIdentity } from "@sincpro/client-framework";
+
 import {
   instrumentObservability,
   processObservability,
@@ -42,6 +44,27 @@ test("one option instruments everything, each signal saying who sent it", () => 
     version: app.version,
   });
   assert.equal(processObservability(), observability, "the background flush reads the same");
+  assert.deepEqual(
+    processIdentity(),
+    {
+      release: app.release,
+      serviceName: app.name,
+      serviceVersion: app.version,
+    },
+    "client-framework puts the release on every span, line and report — no tenant on an open app",
+  );
+  assert.equal(telemetry?.resourceAttributes?.tenant, undefined);
+});
+
+test("a deployment that serves a tenant says it on the traces, the labels and every signal", () => {
+  const { telemetry } = instrumentObservability({
+    tenant: "acme",
+    traces: { endpoint: "https://otlp.test" },
+    logs: { endpoint: "https://loki.test" },
+  });
+  assert.equal(processIdentity()?.tenant, "acme");
+  assert.equal(telemetry?.resourceAttributes?.tenant, "acme");
+  assert.equal(telemetry?.loki?.labels.tenant, "acme");
 });
 
 test("without an endpoint nothing is shipped, and without a client nothing is reported", () => {

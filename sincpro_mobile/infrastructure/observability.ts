@@ -1,4 +1,9 @@
-import { configureProcess, type ErrorReporter } from "@sincpro/client-framework";
+import {
+  configureProcess,
+  type ErrorReporter,
+  type ProcessIdentity,
+  processIdentity,
+} from "@sincpro/client-framework";
 import { openTelemetryTracer } from "@sincpro/client-framework/opentelemetry";
 import { type ExceptionClient, sentryReporter } from "@sincpro/client-framework/sentry";
 import * as Application from "expo-application";
@@ -35,6 +40,11 @@ export type AppIdentity = {
 export type ObservabilityConfig = {
   /** `production`, `preview`, `development`. Default: development in a debug build. */
   environment?: string;
+  /**
+   * The tenant the deployment serves, when it serves one — almost never on a phone, where the
+   * app is open to whoever installs it. A run's own tenant comes from its context (`tenant`).
+   */
+  tenant?: string;
   /** Traces, to an OTLP collector (`https://otlp.sincpro.dev`; `/v1/traces` is added). */
   traces?: { endpoint: string; headers?: Record<string, string> };
   /**
@@ -79,8 +89,10 @@ function debugBuild(): boolean {
  * 1. Who is running, read from the app (`appIdentity`).
  * 2. Its log lines: the console's mode and level, and what Loki receives.
  * 3. Its unexpected failures: the app's client, wrapped as the process's reporter.
- * 4. The process: spans through OpenTelemetry's global tracer — the provider `initTelemetry`
- *    registers, buffered in SQLite and shipped over OTLP —, lines through `mobileLogger`.
+ * 4. The process (client-framework's `configureProcess`): who is running — its release and its
+ *    tenant, on every span, line and report —, spans through OpenTelemetry's global tracer — the
+ *    provider `initTelemetry` registers, buffered in SQLite and shipped over OTLP —, lines
+ *    through `mobileLogger`.
  * Final: the telemetry config, started after the migrations so its tables exist.
  */
 export function instrumentObservability(config: ObservabilityConfig = {}): Observability {
@@ -89,11 +101,12 @@ export function instrumentObservability(config: ObservabilityConfig = {}): Obser
   const client = config.errors?.(app);
   const reporter = client ? sentryReporter(client) : undefined;
   configureProcess({
+    identity: { release: app.release, ...(config.tenant ? { tenant: config.tenant } : {}) },
     tracer: openTelemetryTracer(getTracer(TRACER_SCOPE)),
     logger: { engine: mobileLogger },
     ...(reporter ? { reporter } : {}),
   });
-  current = { app, telemetry: telemetryOf(app, config), reporter };
+  current = { app, telemetry: telemetryOf(app, processIdentity(), config), reporter };
   return current;
 }
 
@@ -133,19 +146,28 @@ function configureLogs(logs: ObservabilityConfig["logs"]): void {
   if (debugBuild()) setConsoleDebug(level !== "warn");
 }
 
-/** Traces and log lines, each saying who sent it; nothing without an endpoint. */
+/**
+ * Traces and log lines, each saying who sent it with client-framework's identity — the same
+ * `release`, `service.name`, `service.version` and `tenant` its spans, lines and reports carry —
+ * and what only the phone knows: its build, its store id, its OS. Nothing without an endpoint.
+ */
 function telemetryOf(
   app: AppIdentity,
+  identity: ProcessIdentity | undefined,
   config: ObservabilityConfig,
 ): TelemetryConfig | undefined {
   const { traces, logs } = config;
   if (!traces && !logs?.endpoint) return undefined;
+  const serviceName = identity?.serviceName ?? app.name;
+  const serviceVersion = identity?.serviceVersion ?? app.version;
+  const tenant = identity?.tenant;
   return {
-    serviceName: app.name,
-    serviceVersion: app.version,
+    serviceName,
+    serviceVersion,
     deploymentEnvironment: app.environment,
     resourceAttributes: {
-      release: app.release,
+      release: identity?.release ?? app.release,
+      ...(tenant ? { tenant } : {}),
       "app.id": app.id,
       "app.build": app.build,
       "os.type": Platform?.OS ?? "unknown",
@@ -157,10 +179,11 @@ function telemetryOf(
           loki: {
             endpoint: logs.endpoint,
             labels: {
-              app: app.name,
-              service_name: app.name,
+              app: serviceName,
+              service_name: serviceName,
               env: app.environment,
-              version: app.version,
+              version: serviceVersion,
+              ...(tenant ? { tenant } : {}),
             },
             headers: logs.headers,
           },
