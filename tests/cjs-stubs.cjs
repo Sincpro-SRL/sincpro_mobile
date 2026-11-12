@@ -18,6 +18,8 @@ const STUBS = {
   "expo-crypto": path.join(STUBS_DIR, "expo-crypto.cjs"),
   "expo-modules-core": path.join(STUBS_DIR, "__empty__.cjs"),
   "expo-sqlite": path.join(STUBS_DIR, "expo-sqlite.cjs"),
+  "expo-application": path.join(STUBS_DIR, "__empty__.cjs"),
+  "expo-constants": path.join(STUBS_DIR, "__empty__.cjs"),
   "expo-network": path.join(STUBS_DIR, "__empty__.cjs"),
   "expo-localization": path.join(STUBS_DIR, "expo-localization.cjs"),
   "expo-linking": path.join(STUBS_DIR, "__empty__.cjs"),

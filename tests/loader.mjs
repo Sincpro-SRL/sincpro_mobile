@@ -28,6 +28,8 @@ const STUBBED = new Set([
 
 /** Modules that should silently resolve to an empty stub (no stub file needed) */
 const EMPTY_STUBS = new Set([
+  "expo-application",
+  "expo-constants",
   "expo-network",
   "expo-linking",
   "expo-location",

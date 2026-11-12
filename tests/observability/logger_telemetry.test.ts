@@ -15,7 +15,7 @@ import {
 } from "@sincpro/client-framework";
 import { memoryTracer } from "@sincpro/client-framework/testing";
 
-import { mobileLogger } from "../../sincpro_mobile/infrastructure/logger.ts";
+import { configureLogger, mobileLogger } from "../../sincpro_mobile/infrastructure/logger.ts";
 import { LokiClient } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_client.ts";
 import {
   _resetLokiClient as _resetTelemetry,
@@ -184,7 +184,51 @@ test("logger: warn from a disabled layer (adapter) still reaches Loki", async ()
   teardown();
 });
 
-test("logger: debug never reaches Loki, whatever the layer", async () => {
+test("logger: debug reaches Loki only when the host asks for it, from enabled layers", async () => {
+  const { teardown, lines } = setupViaInit();
+  configureLogger({ loki: "debug" });
+  try {
+    logger.debug("cart recomputed");
+    loggerAdapter.debug("raw adapter chatter");
+    await flushMicrotasks();
+    const pushed = lines().map((l) => l.line);
+    assert.ok(
+      pushed.some((line) => line.includes("cart recomputed")),
+      JSON.stringify(pushed),
+    );
+    assert.ok(
+      !pushed.some((line) => line.includes("raw adapter chatter")),
+      "a disabled layer stays out",
+    );
+  } finally {
+    configureLogger({ loki: "info" });
+    teardown();
+  }
+});
+
+test("logger: at loki 'warn', info stays out and problems still go", async () => {
+  const { teardown, lines } = setupViaInit();
+  configureLogger({ loki: "warn" });
+  try {
+    logger.info("order synced quietly");
+    logger.warn("slow sync");
+    await flushMicrotasks();
+    const pushed = lines().map((l) => l.line);
+    assert.ok(
+      !pushed.some((line) => line.includes("order synced quietly")),
+      JSON.stringify(pushed),
+    );
+    assert.ok(
+      pushed.some((line) => line.includes("slow sync")),
+      JSON.stringify(pushed),
+    );
+  } finally {
+    configureLogger({ loki: "info" });
+    teardown();
+  }
+});
+
+test("logger: by default debug never reaches Loki, whatever the layer", async () => {
   const { teardown, lines } = setupViaInit();
   logger.debug("verbose debug trace");
   await flushMicrotasks();

@@ -21,7 +21,8 @@ import { activeTraceLabel } from "./telemetry/tracing/active_span";
  * - The console is the framework's engine (`consoleLogger`): silent in production, WARN and
  *   ERROR always printed in development, INFO and DEBUG only while the in-app debug switch is on
  *   and the line's layer is enabled.
- * - Loki receives ERROR and WARN always, INFO only from enabled layers, DEBUG never — whatever
+ * - Loki receives ERROR and WARN always and, from enabled layers, what its level asks for —
+ *   INFO by default, DEBUG when the host asks (`configureLogger({ loki: "debug" })`) —, whatever
  *   the console shows: production incidents must be observable.
  *
  * The engine reads the policy on every line, so a debug switch never reconfigures the process.
@@ -54,12 +55,20 @@ export type LoggerPolicy = {
   level?: Extract<LogLevel, "debug" | "info">;
   /** Layers whose INFO/DEBUG may speak; WARN/ERROR are never hidden. */
   layers?: Partial<Record<LogLayer, boolean>>;
+  /**
+   * The lowest level Loki receives: `info` (the default), `debug` to ship everything, `warn` to
+   * ship only problems. WARN and ERROR always go; INFO and DEBUG only from enabled layers.
+   */
+  loki?: Extract<LogLevel, "debug" | "info" | "warn">;
 };
+
+const RANK: Readonly<Record<LogLevel, number>> = { debug: 0, info: 1, warn: 2, error: 3 };
 
 const MAX_LINE = 2048;
 
 let mode: "development" | "production" = "development";
 let level: "debug" | "info" = "info";
+let lokiLevel: "debug" | "info" | "warn" = "info";
 let consoleDebug = false;
 const enabledLayers: Record<LogLayer, boolean> = { ...DEFAULT_ENABLED_LAYERS };
 
@@ -102,11 +111,10 @@ export function lokiLine(record: LogRecord): string {
   return kept + trace;
 }
 
-/** Loki's policy: ERROR and WARN always, INFO from enabled layers, DEBUG never. */
+/** Loki's policy: ERROR and WARN always; INFO and DEBUG from enabled layers, at its level. */
 function shipsToLoki(record: LogRecord): boolean {
   if (record.level === "error" || record.level === "warn") return true;
-  if (record.level === "info") return enabledLayers[record.layer];
-  return false;
+  return RANK[record.level] >= RANK[lokiLevel] && enabledLayers[record.layer];
 }
 
 const lokiEngine: Logger = {
@@ -132,6 +140,7 @@ export const mobileLogger: Logger = combineLoggers(
 export function configureLogger(policy: LoggerPolicy): void {
   if (policy.mode !== undefined) mode = policy.mode;
   if (policy.level !== undefined) level = policy.level;
+  if (policy.loki !== undefined) lokiLevel = policy.loki;
   if (policy.layers) patchLayers(policy.layers);
   changed();
 }

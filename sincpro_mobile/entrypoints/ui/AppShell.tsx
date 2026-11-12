@@ -1,10 +1,10 @@
-import { type ErrorReporter, logger } from "@sincpro/client-framework";
+import { logger } from "@sincpro/client-framework";
 import { defineBackgroundCrons } from "@sincpro/mobile/framework/background";
 import { createKernel, startApp } from "@sincpro/mobile/framework/createApp";
 import type { DomainModule } from "@sincpro/mobile/framework/domain_module";
 import type { Kernel } from "@sincpro/mobile/framework/kernel";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
-import type { TelemetryConfig } from "@sincpro/mobile/infrastructure/telemetry";
+import type { ObservabilityConfig } from "@sincpro/mobile/infrastructure/observability";
 import { onceUntilFailure } from "@sincpro/mobile/tools/utils/once";
 import { DeviceNotices } from "@sincpro/mobile/ui/activity";
 import { type BrandingConfig, setBranding } from "@sincpro/mobile-ui/branding";
@@ -133,16 +133,16 @@ export interface AppShellConfig {
    */
   providers?: ProviderComponent[];
   /**
-   * Opt-in log and trace shipping. Omit it and nothing is sent to Loki or OTLP.
-   * Started after migrations, so the telemetry tables exist.
+   * Everything observability, in one place — the app gives its values, the framework
+   * instruments the rest:
+   * - `traces`: the OTLP collector;
+   * - `logs`: their `level` (`debug`, `info`, `warn`) for the console and Loki, and Loki;
+   * - `errors`: its GlitchTip (Sentry) client, built with who is running;
+   * - `environment`.
+   * Every trace, line and report says who sent it, read from the app (`appIdentity`): its slug,
+   * version, native build and release (`<slug>:<version>`). Omit it and nothing is shipped.
    */
-  telemetry?: TelemetryConfig;
-  /**
-   * Where an unexpected failure of a use case is reported: `sentryReporter(Sentry)` over the
-   * client the app initialized (GlitchTip speaks Sentry). Expected ones — a printer off, a
-   * refusal — are never reported. Omit it and nothing is.
-   */
-  reporter?: ErrorReporter;
+  observability?: ObservabilityConfig;
   /** Light theme tokens. Defaults to the DS base theme if omitted. */
   theme?: ThemeTokens;
   /** Dark theme tokens. When provided, the system color-scheme toggle activates it. */
@@ -192,8 +192,11 @@ export function defineAppShell(config: AppShellConfig): AppShellDefinition {
   if (config.brandFont?.families) configureFonts(familiesToRoles(config.brandFont.families));
   SplashScreen.preventAutoHideAsync().catch(() => {});
 
-  const kernel = createKernel({ domains: config.domains, reporter: config.reporter });
-  defineBackgroundCrons(kernel, { telemetry: config.telemetry });
+  const kernel = createKernel({
+    domains: config.domains,
+    observability: config.observability,
+  });
+  defineBackgroundCrons(kernel);
   const domains = config.domains.map(({ key, name }) => ({ key, name }));
 
   return {
@@ -205,10 +208,7 @@ export function defineAppShell(config: AppShellConfig): AppShellDefinition {
     // icon is blank. On iOS ICON_FONTS is empty: icons are SF Symbols.
     fontFiles: { ...ICON_FONTS, ...config.brandFont?.files },
     start: onceUntilFailure(async () => {
-      await startApp(kernel, {
-        telemetry: config.telemetry,
-        eventRetentionDays: config.eventRetentionDays,
-      });
+      await startApp(kernel, { eventRetentionDays: config.eventRetentionDays });
     }),
   };
 }

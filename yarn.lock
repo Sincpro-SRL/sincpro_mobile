@@ -2116,10 +2116,10 @@
   resolved "https://registry.yarnpkg.com/@sinclair/typebox/-/typebox-0.27.10.tgz#beefe675f1853f73676aecc915b2bd2ac98c4fc6"
   integrity sha512-MTBk/3jGLNB2tVxv6uLlFh1iu64iYOQ2PbdOSK3NW8JZsmlaOh2q6sdtKowBhfw8QFLmYNzTW4/oK4uATIi6ZA==
 
-"@sincpro/client-framework@^1.4.0":
-  version "1.4.0"
-  resolved "https://registry.yarnpkg.com/@sincpro/client-framework/-/client-framework-1.4.0.tgz#a069c990cf7f78a1095aec3bb9279e37ecf1697a"
-  integrity sha512-SOhLR0rWw1xFajKNrFZNfHnSXl8WxxLt23MkhUzF9JvZuWjSbI4G4VWPD0sy0O0GCVsmsNqCUphDUaFye5FhoQ==
+"@sincpro/client-framework@^1.5.0":
+  version "1.5.0"
+  resolved "https://registry.yarnpkg.com/@sincpro/client-framework/-/client-framework-1.5.0.tgz#359f0742afe2888291864dff7242156e14a46bcd"
+  integrity sha512-3dU1oluFh7R4A+nbdntQ1w0hks5KFVRMdqdgeKE1XLwdc7S3ywygUy0jv7ZAvPIxPKHmDGneoUnGmDGyMxGc1w==
 
 "@sincpro/criteria@^2.1.0":
   version "2.1.0"
@@ -4281,6 +4281,11 @@ etag@~1.8.1:
   version "1.8.1"
   resolved "https://registry.yarnpkg.com/etag/-/etag-1.8.1.tgz#41ae2eeb65efa62268aebfea83ac7d79299b0887"
   integrity sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==
+
+expo-application@~58.1.2:
+  version "58.1.2"
+  resolved "https://registry.yarnpkg.com/expo-application/-/expo-application-58.1.2.tgz#6ce5f512bbaaa912e83d02efa821bf557ba79c92"
+  integrity sha512-WYFdNHGaxe/j69oYREhK0cKsKYszuIuz399WXYCP+M1grfO+FCWB/RbuMgaXJsLWlzqhNjA/zLgfJ+33FwrQvw==
 
 expo-asset@~58.0.20:
   version "58.0.20"
