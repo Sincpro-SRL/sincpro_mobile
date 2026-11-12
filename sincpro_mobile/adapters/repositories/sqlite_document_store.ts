@@ -120,18 +120,24 @@ export class SqliteDocumentStore implements DocumentStore {
     return rows.map((row) => toDocument(row, this.columnNames));
   }
 
-  hasColumn(name: string): boolean {
-    return this.columnNames.includes(name);
+  async countMatching(compiled: CompiledCriteria, ceiling?: number): Promise<number> {
+    await this.ensure();
+    const params: ColumnValue[] = [...compiled.params];
+    let counted = `SELECT 1 FROM ${this.table}`;
+    if (compiled.whereSql) counted += ` WHERE ${compiled.whereSql}`;
+    if (ceiling !== undefined) {
+      counted += " LIMIT ?";
+      params.push(ceiling);
+    }
+    const row = await DBCursor.getFirstAsync<{ total: number }>(
+      `SELECT COUNT(*) AS total FROM (${counted})`,
+      ...params,
+    );
+    return Number(row?.total ?? 0);
   }
 
-  async selectBy(column: string, value: ColumnValue): Promise<DocumentRow[]> {
-    this.assertColumn(column);
-    await this.ensure();
-    const rows = await DBCursor.getAllAsync<Record<string, ColumnValue>>(
-      `SELECT ${this.selected()} FROM ${this.table} WHERE ${column} = ?`,
-      value,
-    );
-    return rows.map((row) => toDocument(row, this.columnNames));
+  hasColumn(name: string): boolean {
+    return this.columnNames.includes(name);
   }
 
   selectBySync(column: string, value: ColumnValue): DocumentRow[] {

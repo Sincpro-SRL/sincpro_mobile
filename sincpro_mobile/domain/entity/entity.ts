@@ -1,4 +1,6 @@
 import { type DomainEvent, logger } from "@sincpro/client-framework";
+import type { Criteria, Sort } from "@sincpro/criteria";
+import { TEXT } from "@sincpro/mobile/domain/database/criteria";
 import {
   type EventRecord,
   type EventValues,
@@ -76,6 +78,44 @@ export class Entity extends ValueObject implements IEntity {
   protected constructor() {
     super();
   }
+
+  /**
+   * The field `Get` and `GetMany` find a record by: its `uuid` unless the entity names a
+   * natural key (`number`, `remoteId`) — a scalar field of its own.
+   */
+  static DEFAULT_GET_ID(): string {
+    return "uuid";
+  }
+
+  /**
+   * The order of a page when its criteria names none. Newest first unless overridden: a `uuid`
+   * is a UUID v7, ordered by when it was made. `uuid` closes any order as its tiebreaker.
+   */
+  static DEFAULT_ORDER(): Sort[] {
+    return [{ field: "uuid", descending: true }];
+  }
+
+  /** The field shown beside the identity: what a select lists and a reference carries. */
+  static DEFAULT_DISPLAY(): string {
+    return "name";
+  }
+
+  /**
+   * How a text a person typed finds records: a criteria whose filter holds `TEXT` where the
+   * text goes, read by `LiteralSearch`. Containment on the display field unless overridden;
+   * `null` when nothing is searched.
+   *
+   *     return { selection: { any: [
+   *       { field: "number", operator: "starts with", value: TEXT },
+   *       { field: "title", operator: "like", value: TEXT },
+   *     ] } };
+   */
+  static DEFAULT_LITERAL_SEARCH(): Criteria | null {
+    const display = this.DEFAULT_DISPLAY();
+    if (!display) return null;
+    return { selection: { field: display, operator: "like", value: TEXT } };
+  }
+
   static obj<T>(data?: Partial<T>): T {
     const instance = new (this as any)();
 

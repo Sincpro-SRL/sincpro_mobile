@@ -5,10 +5,14 @@ import {
   type Execution,
   newEntityId,
 } from "@sincpro/client-framework";
-import { type DocumentCriteria } from "@sincpro/mobile/domain/database/criteria";
+import type { Count, CountMode } from "@sincpro/criteria";
+import { criteriaOf, type DocumentCriteria } from "@sincpro/mobile/domain/database/criteria";
 import {
   compileCriteria,
+  type CompiledCriteria,
+  compilePage,
   type CriteriaSqlTarget,
+  cursorAfter,
 } from "@sincpro/mobile/domain/database/criteria_sql";
 import { isChangeTracked } from "@sincpro/mobile/domain/entity/change_tracking";
 import { assertChecks } from "@sincpro/mobile/domain/entity/checks";
@@ -78,6 +82,11 @@ interface Session {
   remembered: Map<string, Remembered>;
 }
 
+/** Past how many a count stops and answers "at least": the backend's ceiling. */
+export const COUNT_CEILING = 10_000;
+/** How many values one `IN (…)` binds: far under SQLite's variable limit. */
+const IN_BATCH = 500;
+
 const registry = new Map<Function, DocumentRepository<Entity>>();
 const hookRepos = new Set<DocumentRepository<Entity>>();
 
@@ -103,6 +112,13 @@ export class DocumentRepository<T extends Entity> implements IRepository<
   static reset(): void {
     registry.clear();
     hookRepos.clear();
+  }
+
+  /** The document repository registered for `type`: the one `sqliteDocuments(type, …)` made. */
+  static of<T extends Entity>(type: AnyClass<T>): DocumentRepository<T> {
+    const found = registry.get(type);
+    if (!found) throw new DomainAppError(`no document repository for ${type.name}`);
+    return found as unknown as DocumentRepository<T>;
   }
 
   async save(
@@ -177,11 +193,7 @@ export class DocumentRepository<T extends Entity> implements IRepository<
   }
 
   async findByIds(uuids: string[]): Promise<EntityCollection<T>> {
-    const found: T[] = [];
-    for (const uuid of uuids) {
-      const one = await this.loadById(uuid);
-      if (one) found.push(one);
-    }
+    const found = await this.findIn("uuid", uuids);
     await this.afterSearch(found);
     return new EntityCollection(found);
   }
@@ -202,15 +214,48 @@ export class DocumentRepository<T extends Entity> implements IRepository<
   }
 
   async findByCriteria(criteria: DocumentCriteria<T>): Promise<EntityCollection<T>> {
-    const rows = await this.store.selectMatching(compileCriteria(criteria, this.sqlTarget()));
-    const found: T[] = [];
-    for (const row of rows) found.push(await this.hydrate(row));
+    const found = await this.hydrateAll(
+      await this.store.selectMatching(compileCriteria(criteria, this.sqlTarget())),
+    );
     await this.afterSearch(found);
     return new EntityCollection(found);
   }
 
+  /**
+   * One page of what the criteria matches — what a screen reads, as the backend's
+   * `repository.search`: never the whole table.
+   *
+   * 1. The page is compiled in SQL (`compilePage`): the criteria's order, else the entity's
+   *    `DEFAULT_ORDER`, closed by `uuid`; fifty rows unless it says; past its cursor.
+   * 2. One row more than the page is read, to know whether another follows.
+   * 3. The page's rows are hydrated as every read hydrates them, and `after_search` hears them.
+   * Final: the collection, with the cursor of the next page (`null` when it is the last, or the
+   * page skipped rows instead of resuming) and the count its `count` asks: none, up to
+   * `COUNT_CEILING` (the default), or exact.
+   */
+  async search(criteria: DocumentCriteria<T> = {}): Promise<EntityCollection<T>> {
+    const page = compilePage(criteria, this.sqlTarget(), this.entity().DEFAULT_ORDER());
+    const rows = await this.store.selectMatching(page.rows);
+    const shown = rows.slice(0, page.limit);
+    const found = await this.hydrateAll(shown);
+    await this.afterSearch(found);
+    const collection = new EntityCollection(found);
+    const last = shown.at(-1);
+    collection.cursor =
+      rows.length > page.limit && page.resumable && last ? cursorAfter(last, page) : null;
+    collection.total = await this.counted(page.filter, page.count);
+    return collection;
+  }
+
+  /** How many the criteria's filter matches, its order and page aside. */
+  async count(criteria: DocumentCriteria<T> = {}): Promise<Count> {
+    const asked = criteriaOf(criteria);
+    const filter = compileCriteria({ selection: asked.selection }, this.sqlTarget());
+    return (await this.counted(filter, asked.count === "exact" ? "exact" : "capped"))!;
+  }
+
   async findByRemoteId(remoteId: number): Promise<T | null> {
-    const found = await this.findByColumn("remoteId", remoteId);
+    const found = await this.findIn("remoteId", [remoteId]);
     return found[0] ?? null;
   }
 
@@ -224,9 +269,7 @@ export class DocumentRepository<T extends Entity> implements IRepository<
   }
 
   async findByRemoteIds(remoteIds: number[]): Promise<EntityCollection<T>> {
-    const found: T[] = [];
-    for (const remoteId of remoteIds)
-      found.push(...(await this.findByColumn("remoteId", remoteId)));
+    const found = await this.findIn("remoteId", remoteIds);
     await this.afterSearch(found);
     return new EntityCollection(found);
   }
@@ -234,9 +277,7 @@ export class DocumentRepository<T extends Entity> implements IRepository<
   async findByRemoteState(
     state: ERemoteState | ERemoteState[],
   ): Promise<EntityCollection<T>> {
-    const states = Array.isArray(state) ? state : [state];
-    const found: T[] = [];
-    for (const one of states) found.push(...(await this.findByColumn("remoteState", one)));
+    const found = await this.findIn("remoteState", Array.isArray(state) ? state : [state]);
     await this.afterSearch(found);
     return new EntityCollection(found);
   }
@@ -605,25 +646,50 @@ export class DocumentRepository<T extends Entity> implements IRepository<
     return value ?? null;
   }
 
-  private async findByColumn(column: string, value: ColumnValue): Promise<T[]> {
-    if (this.store.hasColumn(column)) {
-      const rows = await this.store.selectBy(column, value);
-      const found: T[] = [];
-      for (const row of rows) found.push(await this.hydrate(row));
-      return found;
+  /**
+   * The documents whose `field` holds one of `values`, grouped in the order the values were
+   * asked: one query per `IN_BATCH` values, on the column when the store has it, else on the
+   * document's JSON.
+   */
+  private async findIn(field: string, values: readonly ColumnValue[]): Promise<T[]> {
+    const asked = [...new Set(values)];
+    const byValue = new Map<ColumnValue, T[]>();
+    for (let start = 0; start < asked.length; start += IN_BATCH) {
+      const batch = asked.slice(start, start + IN_BATCH);
+      const rows = await this.store.selectMatching(
+        compileCriteria(
+          { selection: { field, operator: "in", value: batch } } as DocumentCriteria<T>,
+          this.sqlTarget(),
+        ),
+      );
+      for (const entity of await this.hydrateAll(rows)) {
+        const value = (entity as unknown as Record<string, ColumnValue>)[field];
+        byValue.set(value, [...(byValue.get(value) ?? []), entity]);
+      }
     }
+    return values.flatMap((value) => byValue.get(value) ?? []);
+  }
+
+  private async counted(filter: CompiledCriteria, mode: CountMode): Promise<Count | null> {
+    if (mode === "none") return null;
+    if (mode === "exact")
+      return { value: await this.store.countMatching(filter), exact: true };
+    const seen = await this.store.countMatching(filter, COUNT_CEILING + 1);
+    return { value: Math.min(seen, COUNT_CEILING), exact: seen <= COUNT_CEILING };
+  }
+
+  private async hydrateAll(rows: readonly DocumentRow[]): Promise<T[]> {
     const found: T[] = [];
-    for (const item of await this.readAll()) {
-      if ((item as unknown as Record<string, unknown>)[column] === value) found.push(item);
-    }
+    for (const row of rows) found.push(await this.hydrate(row));
     return found;
   }
 
   private async readAll(): Promise<T[]> {
-    const rows = await this.store.list();
-    const found: T[] = [];
-    for (const row of rows) found.push(await this.hydrate(row));
-    return found;
+    return this.hydrateAll(await this.store.list());
+  }
+
+  private entity(): typeof Entity {
+    return this.type as unknown as typeof Entity;
   }
 
   private async afterSearch(records: readonly T[]): Promise<void> {
@@ -665,9 +731,7 @@ export class DocumentRepository<T extends Entity> implements IRepository<
   }
 
   private repositoryFor(type: Function): DocumentRepository<Entity> {
-    const found = registry.get(type);
-    if (!found) throw new DomainAppError(`no document repository for ${type.name}`);
-    return found;
+    return DocumentRepository.of(type as AnyClass<Entity>);
   }
 
   private openSession(options?: { deliver?: boolean }): Session {

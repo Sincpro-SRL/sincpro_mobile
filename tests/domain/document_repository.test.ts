@@ -798,3 +798,40 @@ test("findByCriteria keeps a promoted column and a JSON field in one question", 
     ["Posted"],
   );
 });
+
+test("search pages any document store the same way: the keyset holds in memory too", async () => {
+  DocumentRepository.reset();
+  const database = new FakeDocumentDatabase();
+  const repository = notes(database);
+  const titles = ["b", "", "a", "b", "", "c", "a"];
+  const made = titles.map((title) => Note.make({ title: title || undefined, name: title }));
+  for (const note of made) {
+    if (!note.name) delete (note as { title?: string }).title;
+  }
+  await repository.save(made);
+  const expected = [...made]
+    .sort((left, right) => {
+      const a = left.title ?? null;
+      const b = right.title ?? null;
+      if (a !== b) return a === null ? -1 : b === null ? 1 : a < b ? -1 : 1;
+      return left.uuid < right.uuid ? -1 : 1;
+    })
+    .map((note) => note.uuid);
+
+  const seen: string[] = [];
+  let page = await repository.search({
+    order: [{ field: "title" }],
+    pagination: { limit: 2 },
+  });
+  seen.push(...page.toArray().map((note) => note.uuid));
+  while (page.cursor !== null) {
+    page = await repository.search({
+      order: [{ field: "title" }],
+      pagination: { limit: 2, strategy: { token: page.cursor } },
+    });
+    seen.push(...page.toArray().map((note) => note.uuid));
+  }
+
+  assert.deepEqual(seen, expected);
+  assert.deepEqual(page.total, { value: titles.length, exact: true });
+});

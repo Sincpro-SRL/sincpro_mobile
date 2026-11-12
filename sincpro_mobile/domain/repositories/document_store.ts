@@ -25,8 +25,9 @@ export interface DocumentStore {
   remove(uuid: string): Promise<void>;
   list(): Promise<DocumentRow[]>;
   selectMatching(compiled: CompiledCriteria): Promise<DocumentRow[]>;
+  /** How many rows `compiled` filters, its order and page aside; at most `ceiling` when given. */
+  countMatching(compiled: CompiledCriteria, ceiling?: number): Promise<number>;
   hasColumn(name: string): boolean;
-  selectBy(column: string, value: ColumnValue): Promise<DocumentRow[]>;
   selectBySync?(column: string, value: ColumnValue): DocumentRow[];
   inTransaction(): boolean;
   transaction<T>(work: () => Promise<T>): Promise<T>;

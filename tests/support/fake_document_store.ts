@@ -116,12 +116,13 @@ export class FakeDocumentStore implements DocumentStore {
     ]);
   }
 
-  hasColumn(name: string): boolean {
-    return this.columnNames.includes(name);
+  async countMatching(compiled: CompiledCriteria, ceiling?: number): Promise<number> {
+    const matched = await this.selectMatching({ ...compiled, limit: undefined, offset: 0 });
+    return ceiling === undefined ? matched.length : Math.min(matched.length, ceiling);
   }
 
-  async selectBy(column: string, value: ColumnValue): Promise<DocumentRow[]> {
-    return this.selectBySync(column, value);
+  hasColumn(name: string): boolean {
+    return this.columnNames.includes(name);
   }
 
   selectBySync(column: string, value: ColumnValue): DocumentRow[] {
