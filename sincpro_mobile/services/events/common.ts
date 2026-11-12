@@ -5,6 +5,9 @@ import type { Retention } from "@sincpro/mobile/domain/events";
  * store and the queue is written in the use case.
  */
 
+/** @deprecated The event screens read pages (`CommandSearchEvents`); kept while the apps move. */
+export const RECENT_EVENTS_LIMIT = 500;
+
 /** How long a stored message is kept, by how it ended: delivered 7 days, failed until a person acts. */
 export const DEFAULT_RETENTION: {
   readonly delivered: Retention;

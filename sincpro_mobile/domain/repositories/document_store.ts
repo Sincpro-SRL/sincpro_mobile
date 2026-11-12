@@ -1,5 +1,6 @@
 import type { StoredMessage } from "@sincpro/client-framework";
 import { type CompiledCriteria } from "@sincpro/mobile/domain/database/criteria_sql";
+import { type SqlStatement } from "@sincpro/mobile/domain/database/sql";
 
 export enum StoreMode {
   LOCAL = "local",
@@ -24,9 +25,14 @@ export interface DocumentStore {
   upsert(row: DocumentRow): Promise<void>;
   remove(uuid: string): Promise<void>;
   list(): Promise<DocumentRow[]>;
-  selectMatching(compiled: CompiledCriteria): Promise<DocumentRow[]>;
+  /** The documents `compiled` reads — from this table, or from a statement `aliased` as it names. */
+  selectMatching(compiled: CompiledCriteria, from?: SqlStatement): Promise<DocumentRow[]>;
   /** How many rows `compiled` filters, its order and page aside; at most `ceiling` when given. */
-  countMatching(compiled: CompiledCriteria, ceiling?: number): Promise<number>;
+  countMatching(
+    compiled: CompiledCriteria,
+    ceiling?: number,
+    from?: SqlStatement,
+  ): Promise<number>;
   hasColumn(name: string): boolean;
   selectBySync?(column: string, value: ColumnValue): DocumentRow[];
   inTransaction(): boolean;

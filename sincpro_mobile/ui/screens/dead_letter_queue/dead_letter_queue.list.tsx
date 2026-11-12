@@ -27,6 +27,11 @@ export interface DeadLetterQueueListProps {
    * by default. The app decides: `{ selection: { field: "name", operator: "=", value: … } }`.
    */
   scope?: Criteria<EventRecord>;
+  /**
+   * @deprecated Pass `scope`: a predicate cannot be read in SQL, so it only filters the rows
+   * already loaded, page by page. Kept while the apps move; it goes in the next major.
+   */
+  select?: (event: EventRecord) => boolean;
   /** What a row and its sheet call the event; its label by default. */
   eventTitle?: (event: EventRecord) => string;
   /** What the app shows of an event in its sheet, such as the image of a print. */
@@ -40,6 +45,7 @@ export default function DeadLetterQueueList({
   name = "Eventos fallidos",
   description = "Eventos que no pudieron ser procesados",
   scope,
+  select,
   eventTitle,
   renderDetail,
   showTechnical = true,
@@ -47,6 +53,10 @@ export default function DeadLetterQueueList({
   const failed = useMemo(() => (scope ? merge<EventRecord>(FAILED, scope) : FAILED), [scope]);
   const list = useEventQuery(failed);
   const { reload } = list;
+  const listed = useMemo(
+    () => (select ? list.visible.filter(select) : list.visible),
+    [list.visible, select],
+  );
   const [selected, setSelected] = useState<EventRecord | null>(null);
   const [open, setOpen] = useState(false);
   const later = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -84,7 +94,7 @@ export default function DeadLetterQueueList({
       description={description}
       hasMore={list.hasMore}
       isLoading={list.isLoading}
-      items={list.visible}
+      items={listed}
       name={name}
       onBack={onBack}
       onLoadMore={list.loadMore}

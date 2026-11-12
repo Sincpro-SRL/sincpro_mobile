@@ -7,6 +7,7 @@ import {
   type ColumnDefinition,
   missingColumns,
 } from "@sincpro/mobile/domain/database/migration_plan";
+import { type SqlStatement } from "@sincpro/mobile/domain/database/sql";
 import {
   type ColumnValue,
   type DocumentRow,
@@ -104,17 +105,30 @@ export class SqliteDocumentStore implements DocumentStore {
     return rows.map((row) => toDocument(row, this.columnNames));
   }
 
-  async selectMatching(compiled: CompiledCriteria): Promise<DocumentRow[]> {
+  async selectMatching(
+    compiled: CompiledCriteria,
+    from?: SqlStatement,
+  ): Promise<DocumentRow[]> {
     await this.ensure();
-    const { sql, params } = selectStatement(compiled, this.table, this.selected());
-    const rows = await DBCursor.getAllAsync<Record<string, ColumnValue>>(sql, ...params);
+    const select = selectStatement(compiled, from ?? this.table, this.selected());
+    const rows = await DBCursor.getAllAsync<Record<string, ColumnValue>>(
+      select.text,
+      ...select.params,
+    );
     return rows.map((row) => toDocument(row, this.columnNames));
   }
 
-  async countMatching(compiled: CompiledCriteria, ceiling?: number): Promise<number> {
+  async countMatching(
+    compiled: CompiledCriteria,
+    ceiling?: number,
+    from?: SqlStatement,
+  ): Promise<number> {
     await this.ensure();
-    const { sql, params } = countStatement(compiled, this.table, ceiling);
-    const row = await DBCursor.getFirstAsync<{ total: number }>(sql, ...params);
+    const counting = countStatement(compiled, from ?? this.table, ceiling);
+    const row = await DBCursor.getFirstAsync<{ total: number }>(
+      counting.text,
+      ...counting.params,
+    );
     return Number(row?.total ?? 0);
   }
 

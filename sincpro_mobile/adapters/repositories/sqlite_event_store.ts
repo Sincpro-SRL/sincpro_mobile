@@ -9,26 +9,20 @@ import type {
 import {
   conditionsOf,
   type Criteria,
+  type CriteriaFor,
   type Expression,
   InvalidCriteria,
   type Page,
+  plain,
   type Value,
 } from "@sincpro/criteria";
-import {
-  type CompiledCriteria,
-  compilePage,
-  countCeiling,
-  countOf,
-  countStatement,
-  type CriteriaSqlTarget,
-  cursorAfter,
-  selectStatement,
-  type SqlParam,
-} from "@sincpro/mobile/domain/database/criteria_sql";
+import { type CriteriaSqlTarget } from "@sincpro/mobile/domain/database/criteria_sql";
+import { type SqlParam } from "@sincpro/mobile/domain/database/sql";
 import { type EventRecord, labelOf, textOf } from "@sincpro/mobile/domain/events";
 import { ECommonRepository } from "@sincpro/mobile/domain/repositories/catalog";
 import { DATABASE_TABLES } from "@sincpro/mobile/entrypoints/db/migrations";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
+import { pagedQuery } from "@sincpro/mobile/infrastructure/database/paged_query";
 
 type EventRow = {
   id: string;
@@ -221,31 +215,21 @@ export class SqliteEventStore implements MessageStore {
    * 3. Newest first (`seq`) unless the criteria orders it; fifty unless it says; past its cursor.
    * Final: the page, the next page's cursor and the count its `count` asks.
    */
-  async search(asked: Criteria<EventRecord> = {}): Promise<Page<EventRecord>> {
-    const selection = asked.selection as Expression | undefined;
+  async search(asked: CriteriaFor<EventRecord> = {}): Promise<Page<EventRecord>> {
+    const written = plain(asked) as Criteria;
     const criteria: Criteria = {
-      ...(asked as Criteria),
-      selection: selection && keyed(selection),
+      ...written,
+      selection: written.selection && keyed(written.selection as Expression),
     };
     assertEventFields(criteria);
-    const page = compilePage(criteria, EVENTS_TARGET, {
+    const read = await pagedQuery<ViewRow>(viewOf(this.table), criteria, {
+      target: EVENTS_TARGET,
       order: [{ field: "seq", descending: true }],
       identity: "seq",
     });
-    const { sql, params } = selectStatement(page.rows, viewOf(this.table));
-    const rows = await DBCursor.getAllAsync<ViewRow>(sql, ...params);
-    const shown = rows.slice(0, page.limit);
-    const last = shown.at(-1);
     return {
-      rows: shown.map((row) => this.record(row)),
-      cursor:
-        rows.length > page.limit && page.resumable && last
-          ? cursorAfter({ uuid: "", version: 0, data: "{}", columns: last }, page)
-          : null,
-      count:
-        page.count === "none"
-          ? null
-          : countOf(await this.counted(page.filter, page.count), page.count),
+      ...read,
+      rows: read.rows.map((row) => this.record(row)),
       meta: null,
       dropped: [],
     };
@@ -353,12 +337,6 @@ export class SqliteEventStore implements MessageStore {
           `SELECT COUNT(*) AS count FROM ${this.table}`,
         );
     return row?.count ?? 0;
-  }
-
-  private async counted(filter: CompiledCriteria, mode: "capped" | "exact"): Promise<number> {
-    const { sql, params } = countStatement(filter, viewOf(this.table), countCeiling(mode));
-    const row = await DBCursor.getFirstAsync<{ total: number }>(sql, ...params);
-    return Number(row?.total ?? 0);
   }
 
   private labelOf(name: string): string {

@@ -1,16 +1,17 @@
 import { type Command, Feature } from "@sincpro/client-framework";
 import {
   type Criteria,
-  formatOrder,
+  type CriteriaFor,
   matching,
   merge,
-  type Meta,
   type Page,
+  plain,
 } from "@sincpro/criteria";
 import { DocumentRepository } from "@sincpro/mobile/adapters/repositories/document.repository";
 import type { Entity } from "@sincpro/mobile/domain/entity/entity";
 import type { EntityCollection } from "@sincpro/mobile/domain/entity/entity_collection";
 import type { AnyClass } from "@sincpro/mobile/domain/entity/relations";
+import { metaOf } from "@sincpro/mobile/domain/reads/meta";
 import {
   type Found,
   GetManyQuery,
@@ -44,27 +45,20 @@ function byKeys(asked: Criteria, field: string, keys: readonly ReadKey[]): Crite
   });
 }
 
-/** What a page of the collection is to a screen: the shape every source answers (`Page`). */
-function pageOf<T extends Entity>(collection: EntityCollection<T>): Page<T> {
+/**
+ * What a page of the collection is to a screen: the shape every source answers (`Page`), with
+ * the model of its entity (`metaOf`).
+ */
+function pageOf<T extends Entity>(
+  collection: EntityCollection<T>,
+  entity: typeof Entity,
+): Page<T> {
   return {
     rows: collection.toArray(),
     cursor: collection.cursor,
     count: collection.total,
-    meta: null,
+    meta: metaOf(entity),
     dropped: [],
-  };
-}
-
-/** What `matching` reads of the entity: its identity, key, order, display and search. */
-function readsMetaOf(entity: typeof Entity): Meta {
-  return {
-    aggregate: entity.name,
-    identity: "uuid",
-    default_order: formatOrder(entity.DEFAULT_ORDER()),
-    fields: {},
-    display: entity.DEFAULT_DISPLAY(),
-    get_id: entity.DEFAULT_GET_ID(),
-    search: entity.DEFAULT_LITERAL_SEARCH() as Record<string, unknown> | null,
   };
 }
 
@@ -118,7 +112,7 @@ export abstract class EntityReads<Q extends ReadQuery<any>> extends Feature<
    */
   protected async get(
     query: GetQuery<EntityOf<Q>>,
-    scope: Criteria = {},
+    scope: CriteriaFor<EntityOf<Q>> = {},
   ): Promise<EntityOf<Q>> {
     const entity = this.entityOf(query);
     const found = await this.readsFrom(entity).search(
@@ -139,7 +133,7 @@ export abstract class EntityReads<Q extends ReadQuery<any>> extends Feature<
    */
   protected async getMany(
     query: GetManyQuery<EntityOf<Q>>,
-    scope: Criteria = {},
+    scope: CriteriaFor<EntityOf<Q>> = {},
   ): Promise<Found<EntityOf<Q>>> {
     const entity = this.entityOf(query);
     const keys = [...new Set(query.ids)];
@@ -167,31 +161,28 @@ export abstract class EntityReads<Q extends ReadQuery<any>> extends Feature<
    */
   protected async literalSearch(
     query: LiteralSearchQuery<EntityOf<Q>>,
-    scope: Criteria = {},
+    scope: CriteriaFor<EntityOf<Q>> = {},
   ): Promise<Page<EntityOf<Q>>> {
     const entity = this.entityOf(query);
-    const asked = merge(
-      matching(readsMetaOf(entity), query.text),
-      query.criteria as Criteria,
-    );
-    const page = await this.readsFrom(entity).search(merge(scope, asked));
+    const asked = merge(matching(metaOf(entity), query.text), query.criteria as Criteria);
+    const page = await this.readsFrom(entity).search(merge(plain(scope) as Criteria, asked));
     this.span.set({ "reads.entity": entity.name, "reads.rows": page.length });
-    return pageOf(page);
+    return pageOf(page, entity);
   }
 
   /** The page the criteria asks, within the scope: records, the next page's cursor, the count. */
   protected async search(
     query: SearchQuery<EntityOf<Q>>,
-    scope: Criteria = {},
+    scope: CriteriaFor<EntityOf<Q>> = {},
   ): Promise<Page<EntityOf<Q>>> {
     const entity = this.entityOf(query);
     const page = await this.readsFrom(entity).search(this.within(scope, query.criteria));
     this.span.set({ "reads.entity": entity.name, "reads.rows": page.length });
-    return pageOf(page);
+    return pageOf(page, entity);
   }
 
-  private within(scope: Criteria, asked: Criteria<EntityOf<Q>>): Criteria {
-    return merge(scope, asked as Criteria);
+  private within(scope: CriteriaFor<EntityOf<Q>>, asked: Criteria<EntityOf<Q>>): Criteria {
+    return merge(plain(scope) as Criteria, asked as Criteria);
   }
 
   /** The entity the query asks about: its own (`new CommandSearchEntities(Ticket)`), or its class's (`Search(Ticket)`). */

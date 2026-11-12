@@ -312,10 +312,9 @@ import {
 } from "@sincpro/mobile";
 
 const failed = await commonBoundedContext.execute(
-  new CommandSearchEvents({
-    selection: { field: "state", operator: "=", value: "set_aside" },
-    pagination: { limit: 25 },
-  }),
+  new CommandSearchEvents(
+    criteria<EventRecord>().selection(["state", "=", "set_aside"]).limit(25),
+  ),
 ); // Page<EventRecord>: rows, cursor, count
 const retried = await commonBoundedContext.execute(new CommandRetryEvents(failed.rows)); // how many went back
 await commonBoundedContext.execute(new CommandDeleteEvents([failed.rows[0]]));
@@ -331,9 +330,9 @@ first. The event, failed-event and table screens load more with `useReading`
 ```tsx
 // The failed-events screen lists what the app scopes, read in SQL with its filters:
 <DeadLetterQueueList
-  scope={{
-    selection: { field: "name", operator: "=", value: PrintImageRequestedEvent.eventName },
-  }}
+  scope={
+    criteria<EventRecord>().selection(["name", "=", PrintImageRequestedEvent.eventName]).value
+  }
 />
 ```
 
@@ -398,8 +397,17 @@ import {
 } from "@sincpro/mobile";
 
 const page = await commonBoundedContext.execute(
-  new CommandSearchEntities(Ticket, { pagination: { limit: 20 } }),
-); // Page<Ticket>: rows, cursor (keyset, SQL), count
+  new CommandSearchEntities(
+    Ticket,
+    criteria<Ticket>()
+      .selection(
+        ["state", "=", "open"],
+        selection.any(["priority", ">", 2], ["total", ">", 100]),
+      )
+      .order("-number")
+      .limit(20),
+  ),
+); // Page<Ticket>: rows, cursor (keyset, SQL), count, meta
 const ticket = await commonBoundedContext.execute(new CommandGetEntity(Ticket, id));
 const options = await commonBoundedContext.execute(new CommandFindEntities(Ticket, typed));
 ```
@@ -409,9 +417,12 @@ name in the module's traces: `class CommandSearchOpenTickets extends Search(Tick
 an `EntityReads` Feature that overrides `search` and calls `super.search(query, scope)`.
 
 `DocumentRepository.search(criteria)` answers the page underneath: the entity's order closed by
-`uuid`, fifty rows unless asked, a cursor in `@sincpro/criteria`'s token format and a count that
-is `none`, capped at 10 000 (the default) or `exact`. See
-[docs/architecture-aggregate.md](docs/architecture-aggregate.md#leer).
+`uuid`, fifty rows unless asked, a cursor (keyset) by default and an offset when asked, and a
+count that is `none`, capped at 10 000 (the default) or `exact`. A repository of one's own
+(`sqliteDocuments(Ticket, "tickets", { repository: Tickets })`) names the domain's questions;
+what a criteria cannot say is written in SQL with the `sql` tag — every value bound — and still
+read as a page (`searchSql`, `queryPage`). The guide, with what to use for each read, is
+[docs/reads.md](docs/reads.md).
 
 ### ✅ Remote Entity Sync
 

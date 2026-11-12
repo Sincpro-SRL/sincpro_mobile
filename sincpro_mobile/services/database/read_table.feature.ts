@@ -1,15 +1,18 @@
 import { Command } from "@sincpro/client-framework";
-import type { Criteria, Page } from "@sincpro/criteria";
+import { type Criteria, type CriteriaFor, type Page, plain } from "@sincpro/criteria";
 import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
 
 export class CommandReadTable extends Command<Page<Record<string, unknown>>> {
+  readonly criteria: Criteria;
+
   constructor(
     readonly tableName: string,
-    readonly criteria: Criteria = {},
+    criteria: CriteriaFor<Record<string, unknown>> = {},
     /** What the person typed: looked for in the table's identities and its document. */
     readonly text = "",
   ) {
     super();
+    this.criteria = plain(criteria);
   }
 }
 

@@ -172,7 +172,12 @@ test("Search answers a page as a remote one: rows, cursor, count, in the entity'
   assert.deepEqual(numbers(page), [0, 1]);
   assert.notEqual(page.cursor, null);
   assert.deepEqual(page.count, { value: 5, exact: true });
-  assert.equal(page.meta, null);
+  assert.equal(page.meta?.identity, "uuid");
+  assert.equal(page.meta?.display, "title");
+  assert.equal(page.meta?.default_order, "number");
+  assert.equal(page.meta?.fields.number?.type, "integer");
+  assert.equal(page.meta?.fields.title?.type, "text");
+  assert.ok(page.meta?.fields.title?.ops.includes("like"), "a screen knows how to filter it");
   assert.deepEqual(page.dropped, []);
   assert.ok(tracer.spans.some((span) => span.name === "tickets/SearchTickets"));
 });

@@ -1,5 +1,5 @@
 import { Command } from "@sincpro/client-framework";
-import type { Criteria, Page } from "@sincpro/criteria";
+import { type Criteria, type CriteriaFor, type Page, plain } from "@sincpro/criteria";
 import type { Entity } from "@sincpro/mobile/domain/entity/entity";
 import type { AnyClass } from "@sincpro/mobile/domain/entity/relations";
 
@@ -30,21 +30,27 @@ export interface Found<T> {
 
 /** One record by its key (`DEFAULT_GET_ID`): the entity, or `AggregateNotFound`. */
 export abstract class GetQuery<T extends Entity> extends Command<T> {
+  readonly criteria: Criteria<T>;
+
   constructor(
     readonly id: ReadKey,
-    readonly criteria: Criteria<T> = {},
+    criteria: CriteriaFor<T> = {},
   ) {
     super();
+    this.criteria = plain(criteria);
   }
 }
 
 /** Several records by their keys, in the order asked: not a page, every key is answered. */
 export abstract class GetManyQuery<T extends Entity> extends Command<Found<T>> {
+  readonly criteria: Criteria<T>;
+
   constructor(
     readonly ids: readonly ReadKey[],
-    readonly criteria: Criteria<T> = {},
+    criteria: CriteriaFor<T> = {},
   ) {
     super();
+    this.criteria = plain(criteria);
   }
 }
 
@@ -53,18 +59,24 @@ export abstract class GetManyQuery<T extends Entity> extends Command<Found<T>> {
  * short page in the entity's order; a blank text is its first page.
  */
 export abstract class LiteralSearchQuery<T extends Entity> extends Command<Page<T>> {
+  readonly criteria: Criteria<T>;
+
   constructor(
     readonly text: string = "",
-    readonly criteria: Criteria<T> = {},
+    criteria: CriteriaFor<T> = {},
   ) {
     super();
+    this.criteria = plain(criteria);
   }
 }
 
 /** A page by criteria: its records, the cursor of the next page and how many match. */
 export abstract class SearchQuery<T extends Entity> extends Command<Page<T>> {
-  constructor(readonly criteria: Criteria<T> = {}) {
+  readonly criteria: Criteria<T>;
+
+  constructor(criteria: CriteriaFor<T> = {}) {
     super();
+    this.criteria = plain(criteria);
   }
 }
 
@@ -79,24 +91,24 @@ export type ReadsEntity<T extends Entity> = { readonly entity: AnyClass<T> };
 
 export type GetOf<T extends Entity> = (abstract new (
   id: ReadKey,
-  criteria?: Criteria<T>,
+  criteria?: CriteriaFor<T>,
 ) => GetQuery<T>) &
   ReadsEntity<T>;
 
 export type GetManyOf<T extends Entity> = (abstract new (
   ids: readonly ReadKey[],
-  criteria?: Criteria<T>,
+  criteria?: CriteriaFor<T>,
 ) => GetManyQuery<T>) &
   ReadsEntity<T>;
 
 export type LiteralSearchOf<T extends Entity> = (abstract new (
   text?: string,
-  criteria?: Criteria<T>,
+  criteria?: CriteriaFor<T>,
 ) => LiteralSearchQuery<T>) &
   ReadsEntity<T>;
 
 export type SearchOf<T extends Entity> = (abstract new (
-  criteria?: Criteria<T>,
+  criteria?: CriteriaFor<T>,
 ) => SearchQuery<T>) &
   ReadsEntity<T>;
 

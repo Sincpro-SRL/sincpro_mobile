@@ -1,11 +1,14 @@
 import { Command } from "@sincpro/client-framework";
-import type { Criteria, Page } from "@sincpro/criteria";
+import { type Criteria, type CriteriaFor, type Page, plain } from "@sincpro/criteria";
 import type { EventRecord } from "@sincpro/mobile/domain/events";
 import { commonBoundedContext, Feature } from "@sincpro/mobile/infrastructure/framework";
 
 export class CommandSearchEvents extends Command<Page<EventRecord>> {
-  constructor(readonly criteria: Criteria<EventRecord> = {}) {
+  readonly criteria: Criteria<EventRecord>;
+
+  constructor(criteria: CriteriaFor<EventRecord> = {}) {
     super();
+    this.criteria = plain(criteria);
   }
 }
 

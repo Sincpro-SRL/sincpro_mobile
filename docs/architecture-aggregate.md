@@ -112,7 +112,9 @@ Si `after_save` lanza, la transacción deshace la fila del padre y la de los hij
 
 ## Leer
 
-`findById` hidrata y corre `after_read`. `findByIds`, `findAll` y `findByCriteria` hidratan cada fila (`after_read`) y después corren `after_search` una vez con la página. `findByCriteria` traduce el criteria a SQL en ese momento: una columna declarada se compara por su nombre, y cualquier otro campo con `json_extract` sobre `data`. `today` es la fecha del reloj en su zona y `now` el mismo instante en UTC; los dos se leen una vez al compilar. Un `period` con `between` es `>= inicio AND < fin`. Una relación cruza con `EXISTS`. La colección que ya está en memoria sigue filtrando con el motor de `@sincpro/criteria`. `remoteId`, `remoteState` y `ackedVersion` salen por columna cuando el store las tiene: `sqliteDocuments` las declara si la entidad es `RemoteEntity`.
+Qué usar para cada lectura, cómo escribir un criteria con el builder y cómo paginar está en [reads.md](reads.md). Acá, cómo lo hace el repositorio.
+
+`get` hidrata y corre `after_read`. `browse`, `search`, `fetchAll` y `searchSql` hidratan cada fila (`after_read`) y después corren `after_search` una vez con la página. `findById`, `findByIds`, `findAll` y `findByCriteria` siguen, deprecados: son `get`, `browse` y `fetchAll`. El criteria se traduce el criteria a SQL en ese momento: una columna declarada se compara por su nombre, y cualquier otro campo con `json_extract` sobre `data`. `today` es la fecha del reloj en su zona y `now` el mismo instante en UTC; los dos se leen una vez al compilar. Un `period` con `between` es `>= inicio AND < fin`. Una relación cruza con `EXISTS`. La colección que ya está en memoria sigue filtrando con el motor de `@sincpro/criteria`. `remoteId`, `remoteState` y `ackedVersion` salen por columna cuando el store las tiene: `sqliteDocuments` las declara si la entidad es `RemoteEntity`.
 
 La hidratación de una `@relation` lee los ids del documento y carga esas filas en el repositorio del hijo. Un JSON viejo que todavía trae el hijo embebido también se acepta. Después anota los ids que el padre tenía y, si el agregado sigue cambios, toma el snapshot. Un `after_read` que rellena un campo entra en ese snapshot: no sale como `entity.updated` en el próximo guardado.
 
@@ -130,14 +132,12 @@ La hidratación de una `@relation` lee los ids del documento y carga esas filas 
 Devuelve una `EntityCollection` con `cursor` (`null` en la última página) y `total`. `count(criteria)` responde solo el conteo del filtro.
 
 ```ts
-const page = await tickets.search({
-  selection: { field: "state", operator: "=", value: "open" },
-  pagination: { limit: 20 },
-});
+const asked = criteria<Ticket>().selection(["state", "=", "open"]).limit(20);
+const page = await tickets.search(asked);
 page.toArray();
 page.cursor;
 page.total; // { value: 134, exact: true }
-const next = await tickets.search(resumingFrom(criteria, page.cursor));
+const next = await tickets.search(asked.cursor(page.cursor));
 ```
 
 ### Cómo se lee una entidad

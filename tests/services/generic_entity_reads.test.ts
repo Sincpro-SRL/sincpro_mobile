@@ -7,7 +7,7 @@ import {
   type MemoryTracer,
   memoryTracer,
 } from "@sincpro/client-framework/testing";
-import { resource } from "@sincpro/criteria";
+import { criteria, resource, selection } from "@sincpro/criteria";
 
 import { sqliteDocuments } from "../../sincpro_mobile/adapters/repositories/document.repository.ts";
 import { Entity } from "../../sincpro_mobile/domain/entity/entity.ts";
@@ -110,5 +110,24 @@ test("a screen's Reading walks the generic Search like any source", async () => 
   assert.deepEqual(
     reading.rows.map((customer) => customer.name),
     ["C-0", "C-1", "C-2", "C-3", "C-4", "C-5", "C-6"],
+  );
+});
+
+test("the reads take the criteria builder: typed fields, AND/OR written as they read", async () => {
+  await saved(["Ana", "Beto", "Carla", "Dora"]);
+
+  const page = await commonBoundedContext.execute(
+    new CommandSearchEntities(
+      Customer,
+      criteria<Customer>()
+        .selection(selection.any(["name", "like", "an"], ["vat", "=", "V-3"]))
+        .order("name")
+        .limit(5),
+    ),
+  );
+
+  assert.deepEqual(
+    page.rows.map((customer) => customer.name),
+    ["Ana", "Dora"],
   );
 });

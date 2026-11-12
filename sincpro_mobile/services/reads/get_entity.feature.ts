@@ -1,4 +1,4 @@
-import type { Criteria } from "@sincpro/criteria";
+import type { CriteriaFor } from "@sincpro/criteria";
 import type { Entity } from "@sincpro/mobile/domain/entity/entity";
 import type { AnyClass } from "@sincpro/mobile/domain/entity/relations";
 import { GetQuery, type ReadKey } from "@sincpro/mobile/domain/reads/queries";
@@ -9,7 +9,7 @@ export class CommandGetEntity<T extends Entity> extends GetQuery<T> {
   constructor(
     readonly entity: AnyClass<T>,
     id: ReadKey,
-    criteria: Criteria<T> = {},
+    criteria: CriteriaFor<T> = {},
   ) {
     super(id, criteria);
   }

@@ -1,4 +1,4 @@
-import type { Criteria } from "@sincpro/criteria";
+import type { CriteriaFor } from "@sincpro/criteria";
 import type { Entity } from "@sincpro/mobile/domain/entity/entity";
 import type { AnyClass } from "@sincpro/mobile/domain/entity/relations";
 import { LiteralSearchQuery } from "@sincpro/mobile/domain/reads/queries";
@@ -9,7 +9,7 @@ export class CommandFindEntities<T extends Entity> extends LiteralSearchQuery<T>
   constructor(
     readonly entity: AnyClass<T>,
     text = "",
-    criteria: Criteria<T> = {},
+    criteria: CriteriaFor<T> = {},
   ) {
     super(text, criteria);
   }

@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { criteria, dynamic, InvalidCriteria, selection, type Value } from "@sincpro/criteria";
 
 import {
   compileCriteria,
+  type CompiledCriteria,
   type CriteriaSqlTarget,
-  rowsFor,
-  type SqlDocument,
+  selectStatement,
 } from "../../sincpro_mobile/domain/database/criteria_sql.ts";
 
 const notes: CriteriaSqlTarget = {
@@ -21,13 +22,33 @@ const lines: CriteriaSqlTarget = {
   column: (field) => field === "uuid" || field === "version",
 };
 
-function row(partial: Partial<SqlDocument> & { data: string }): SqlDocument {
-  return {
-    uuid: partial.uuid ?? "a",
-    version: partial.version ?? 1,
-    data: partial.data,
-    columns: partial.columns ?? {},
-  };
+type Row = { uuid: string; data: string; title?: string };
+
+function row(partial: { uuid: string; data: string; columns?: { title?: string } }): Row {
+  return { uuid: partial.uuid, data: partial.data, title: partial.columns?.title };
+}
+
+/** The uuids SQLite reads for the compiled statement, over these notes (and their lines). */
+function matchedBy(
+  compiled: CompiledCriteria,
+  noteRows: readonly Row[],
+  lineRows: readonly Row[] = [],
+): string[] {
+  const sqlite = new DatabaseSync(":memory:");
+  try {
+    sqlite.exec("CREATE TABLE notes (uuid TEXT, version INTEGER, data TEXT, title TEXT)");
+    sqlite.exec("CREATE TABLE lines (uuid TEXT, version INTEGER, data TEXT)");
+    const note = sqlite.prepare("INSERT INTO notes VALUES (?, 1, ?, ?)");
+    for (const one of noteRows) note.run(one.uuid, one.data, one.title ?? null);
+    const line = sqlite.prepare("INSERT INTO lines VALUES (?, 1, ?)");
+    for (const one of lineRows) line.run(one.uuid, one.data);
+    const select = selectStatement(compiled, "notes", "uuid");
+    return (sqlite.prepare(select.text).all(...select.params) as { uuid: string }[]).map(
+      (found) => found.uuid,
+    );
+  } finally {
+    sqlite.close();
+  }
 }
 
 test("a column and a JSON field become one statement", () => {
@@ -72,14 +93,14 @@ test("a nested JSON path and a relation both compile", () => {
   assert.deepEqual(compiled.params, ["Heredia", 10]);
 });
 
-test("rowsFor answers the same question as the statement", () => {
+test("the statement answers the question SQLite is asked", () => {
   const compiled = compileCriteria(
     criteria<{ title: string; vat: string }>().selection(
       selection.any(["title", "like", "acme"], ["vat", "=", "3101"]),
     ).value,
     notes,
   );
-  const matched = rowsFor(compiled, [
+  const matched = matchedBy(compiled, [
     row({
       uuid: "1",
       columns: { title: "Acme" },
@@ -97,10 +118,7 @@ test("rowsFor answers the same question as the statement", () => {
     }),
   ]);
 
-  assert.deepEqual(
-    matched.map((item) => item.uuid),
-    ["1", "2"],
-  );
+  assert.deepEqual(matched.sort(), ["1", "2"]);
 });
 
 test("a relation matches the child whose id is stored in the JSON", () => {
@@ -113,22 +131,19 @@ test("a relation matches the child whose id is stored in the JSON", () => {
     },
     notes,
   );
-  const matched = rowsFor(
+  const matched = matchedBy(
     compiled,
     [
       row({ uuid: "order-1", data: JSON.stringify({ lines: ["line-1"] }) }),
       row({ uuid: "order-2", data: JSON.stringify({ lines: ["line-2"] }) }),
     ],
-    () => [
+    [
       row({ uuid: "line-1", data: JSON.stringify({ amount: 12 }) }),
       row({ uuid: "line-2", data: JSON.stringify({ amount: 1 }) }),
     ],
   );
 
-  assert.deepEqual(
-    matched.map((item) => item.uuid),
-    ["order-1"],
-  );
+  assert.deepEqual(matched, ["order-1"]);
 });
 
 test("a field that is not an identifier is refused", () => {
@@ -292,7 +307,7 @@ test("a period is the half-open range of the wall date", () => {
     notes,
     { now: new Date("2026-10-24T03:00:00.000Z"), timeZone: "America/La_Paz" },
   );
-  const matched = rowsFor(month, [
+  const matched = matchedBy(month, [
     row({ uuid: "start", data: JSON.stringify({ due: "2026-10-01" }) }),
     row({ uuid: "inside", data: JSON.stringify({ due: "2026-10-24T15:00:00.000Z" }) }),
     row({ uuid: "end", data: JSON.stringify({ due: "2026-11-01" }) }),
@@ -307,10 +322,7 @@ test("a period is the half-open range of the wall date", () => {
   assert.deepEqual(weeks.params, ["2026-10-19", "2026-11-02"]);
   assert.deepEqual(quarter.params, ["2026-10-01", "2027-01-01"]);
   assert.deepEqual(wall.params, ["2026-10-23", "2026-10-24"]);
-  assert.deepEqual(
-    matched.map((item) => item.uuid),
-    ["start", "inside"],
-  );
+  assert.deepEqual(matched.sort(), ["inside", "start"]);
 });
 
 test("a period off between, a context value, hours on today, and a token page are refused", () => {
