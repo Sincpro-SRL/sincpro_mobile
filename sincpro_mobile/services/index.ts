@@ -35,6 +35,10 @@ export {
   DeactivateDomain,
 } from "@sincpro/mobile/services/domains/deactivate_domain.feature";
 export {
+  ClearEvents,
+  CommandClearEvents,
+} from "@sincpro/mobile/services/events/clear_events.feature";
+export {
   DEFAULT_EVENT_RETENTION_DAYS,
   RECENT_EVENTS_LIMIT,
 } from "@sincpro/mobile/services/events/common";

@@ -194,6 +194,25 @@ export class SqliteEventStore implements EventStore {
     );
   }
 
+  /** Retention of the failed ones: those set aside before `cutoff` (ISO), from when they failed. */
+  async pruneFailedBefore(cutoff: string): Promise<void> {
+    await DBCursor.mutateDatabase(
+      `DELETE FROM ${this.table}
+       WHERE state = 'set_aside' AND COALESCE(settled_at, published_at) < ?`,
+      cutoff,
+    );
+  }
+
+  /** Empties every event in `states`, whatever its age; answers how many went. */
+  async clearIn(states: readonly StoredState[]): Promise<number> {
+    if (states.length === 0) return 0;
+    const result = await DBCursor.mutateDatabase(
+      `DELETE FROM ${this.table} WHERE state IN (${placeholders(states.length)})`,
+      ...states,
+    );
+    return result.changes;
+  }
+
   async clear(): Promise<void> {
     await DBCursor.mutateDatabase(`DELETE FROM ${this.table}`);
   }

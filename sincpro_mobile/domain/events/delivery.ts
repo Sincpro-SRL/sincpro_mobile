@@ -24,7 +24,7 @@ import { type LabelText, textOf } from "./label";
  * says nothing needs a session and no connection. `ui` asks the activity toast to show its
  * delivery. `attempts` is how many times the queue tries it before setting it aside — the
  * failed ones —, the queue's (10) when unsaid; an application changes it for one event by its
- * name (`AppConfig.events`).
+ * name (`AppConfig.events.attempts`).
  */
 export type DeliveryDeclaration = {
   readonly label?: LabelText;
@@ -33,16 +33,6 @@ export type DeliveryDeclaration = {
   readonly ui?: boolean;
   readonly attempts?: number;
 };
-
-/**
- * What an application changes of an event's delivery, by its name (`AppConfig.events`):
- *
- *     events: { [PrintImageRequestedEvent.eventName]: { attempts: 1 } }
- *
- * `attempts: 1` — never retried on its own: a print the person watched fail goes to the failed
- * ones at once, for them to retry, and never holds back what comes after.
- */
-export type DeliveryOverride = Pick<DeliveryDeclaration, "attempts">;
 
 /** What an event's delivery waits for. */
 export type DeliveryNeeds = { readonly network: boolean; readonly session: boolean };

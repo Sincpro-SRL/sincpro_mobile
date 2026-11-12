@@ -1,5 +1,4 @@
 import { logger } from "@sincpro/client-framework";
-import type { DeliveryOverride } from "@sincpro/mobile/domain/events";
 import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import {
@@ -27,13 +26,16 @@ export interface AppConfig {
    */
   observability?: ObservabilityConfig;
   /**
-   * What the app changes of an event's delivery, by its name: the attempts the queue gives it
-   * before setting it aside — the failed ones —; the event's own, else 10, when unsaid.
+   * What the app changes of its stored events. All optional: unsaid keeps the defaults.
    * @example
-   * // A failed print goes to the failed prints at once, for the person to retry.
-   * events: { [PrintImageRequestedEvent.eventName]: { attempts: 1 } }
+   * events: {
+   *   // A failed print goes to the failed prints at once, for the person to retry.
+   *   attempts: { [PrintImageRequestedEvent.eventName]: 1 },
+   *   // Failed events are dropped 30 days after they failed.
+   *   retentionDays: { failed: 30 },
+   * }
    */
-  events?: Record<string, DeliveryOverride>;
+  events?: EventsConfig;
   /**
    * Override options for any cron by taskName.
    * `ui` marks the cron for the activity toast. Silence is the default.
@@ -41,8 +43,27 @@ export interface AppConfig {
    * crons: { CHECK_NETWORK: { ui: true, label: "Verificando conexión" } }
    */
   crons?: Record<string, Partial<CronWorkerOpts>>;
-  /** Days an acknowledged event stays in the local log. Defaults to 7. */
+  /** @deprecated `events.retentionDays.delivered` — it wins when both are set. */
   eventRetentionDays?: number;
+}
+
+/**
+ * What an app changes of its stored events — nothing is forced; emptying them when needed is
+ * `CommandClearEvents`, which nothing runs on its own.
+ */
+export interface EventsConfig {
+  /**
+   * By event name, the attempts its delivery gets before it is set aside — the failed ones —:
+   * the event's own (`static attempts`), else 10, when unsaid. `1` never retries it on its own.
+   */
+  readonly attempts?: Readonly<Record<string, number>>;
+  /** How long a stored event is kept, in days, by how it ended. */
+  readonly retentionDays?: {
+    /** Delivered: 7 when unsaid; `Infinity` keeps them. */
+    readonly delivered?: number;
+    /** Failed: until the person retries or deletes them when unsaid; else dropped after. */
+    readonly failed?: number;
+  };
 }
 
 /**
@@ -57,7 +78,7 @@ export function createKernel(
   // Every run needs an id before anything else, and Hermes has no Web Crypto.
   installWebCrypto();
   instrumentObservability(config.observability);
-  eventDelivery.configure(config.events);
+  eventDelivery.configure({ attempts: config.events?.attempts });
   const kernel = new Kernel([baseModule, ...(config.domains ?? [])]);
   if (config.crons) kernel.applyCronConfig(config.crons);
   kernel.registerExtensions();
@@ -70,7 +91,7 @@ export function createKernel(
  */
 export async function startApp(
   kernel: Kernel,
-  config: Pick<AppConfig, "eventRetentionDays"> = {},
+  config: Pick<AppConfig, "eventRetentionDays" | "events"> = {},
 ): Promise<Kernel> {
   // The migrations first — the telemetry's tables are among them —, then shipping, and only then
   // the queue, the crons and the hooks: every run, the first ones included, is traced and logged.
@@ -81,7 +102,12 @@ export async function startApp(
   await orchestrator.bootstrap();
   // Off the startup path: pruning is housekeeping, never a reason to wait.
   commonBoundedContext
-    .execute(new CommandPruneEventHistory(config.eventRetentionDays))
+    .execute(
+      new CommandPruneEventHistory(
+        config.events?.retentionDays?.delivered ?? config.eventRetentionDays,
+        config.events?.retentionDays?.failed,
+      ),
+    )
     .catch((error: unknown) =>
       logger.warn("Event history pruning failed", errorAttributes(error)),
     );

@@ -346,7 +346,7 @@ test("a print whose printer is off fails unavailable and waits to be retried, ke
 });
 
 test("an app that gives a print one attempt finds it failed at once, the screens told, the line not held", async () => {
-  eventDelivery.configure({ [PrintImageRequestedEvent.eventName]: { attempts: 1 } });
+  eventDelivery.configure({ attempts: { [PrintImageRequestedEvent.eventName]: 1 } });
   printing(() => Promise.reject(new PrinterUnavailable("printer off")));
   const told: string[] = [];
   const stop = UIEventBus.on(

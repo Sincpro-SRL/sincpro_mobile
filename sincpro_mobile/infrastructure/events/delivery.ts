@@ -21,7 +21,6 @@ import { eventStore } from "@sincpro/mobile/adapters/repositories/sqlite_event_s
 import {
   deliveryAttemptsOf,
   deliveryNeedsOf,
-  type DeliveryOverride,
   InternetIsDownEvent,
   InternetIsUpEvent,
   labelOf,
@@ -86,7 +85,7 @@ class EventDelivery implements EventQueue {
   private online = true;
   private session = false;
   private started = false;
-  private overrides: Readonly<Record<string, DeliveryOverride>> = {};
+  private attempts: Readonly<Record<string, number>> = {};
 
   /** Publishes events outside a run: the head of their own flow. */
   readonly publisher = new Publisher(this);
@@ -101,11 +100,11 @@ class EventDelivery implements EventQueue {
   }
 
   /**
-   * What the application changes of some events' delivery, by their name (`AppConfig.events`):
-   * read at each attempt, so it holds for the queue of every generation.
+   * What the application changes of some events' delivery, by their name
+   * (`AppConfig.events.attempts`): read at each attempt, so it holds for every generation.
    */
-  configure(overrides: Readonly<Record<string, DeliveryOverride>> = {}): void {
-    this.overrides = overrides;
+  configure(options: { readonly attempts?: Readonly<Record<string, number>> } = {}): void {
+    this.attempts = options.attempts ?? {};
   }
 
   /** Hears the connectivity and tells the activity, once per JS context. */
@@ -209,7 +208,7 @@ class EventDelivery implements EventQueue {
 
   private attemptsOf(subscriber: Subscriber, stored: StoredEvent): number | undefined {
     const name = stored.envelope.name;
-    return this.overrides[name]?.attempts ?? deliveryAttemptsOf(subscriber.eventTypeOf(name));
+    return this.attempts[name] ?? deliveryAttemptsOf(subscriber.eventTypeOf(name));
   }
 
   private settled(stored: StoredEvent): void {

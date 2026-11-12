@@ -27,10 +27,12 @@ import {
 import type { CommonDependencies } from "../../sincpro_mobile/infrastructure/dependencies.ts";
 import { PagePrintWatch } from "../../sincpro_mobile/infrastructure/webview/page_print_watch.ts";
 import {
+  CommandClearEvents,
   CommandConnectPrinter,
   CommandPrinterStatus,
   CommandPrintTestPage,
   CommandProcessWebViewMessage,
+  CommandPruneEventHistory,
   CommandRequestBluetoothPermission,
   CommandRestorePrinterConnection,
   CommandRetryEvents,
@@ -267,4 +269,34 @@ test("a page's print cycle executes Commands, and a capture that never answers f
     spanOf("common/FailPagePrint")?.attributes["print.failure"],
     "the capture did not answer",
   );
+});
+
+test("the history is pruned as the app says: the failed ones only when it set their retention", async () => {
+  const pruned: string[] = [];
+  swap("eventStore", {
+    pruneDeliveredBefore: async () => void pruned.push("delivered"),
+    pruneFailedBefore: async () => void pruned.push("failed"),
+  });
+
+  await commonBoundedContext.execute(new CommandPruneEventHistory());
+  assert.deepEqual(pruned, ["delivered"], "unsaid, a failed one waits for the person");
+
+  pruned.length = 0;
+  await commonBoundedContext.execute(new CommandPruneEventHistory(Infinity, 30));
+  assert.deepEqual(pruned, ["failed"], "Infinity keeps the delivered ones");
+});
+
+test("emptying the events runs only when asked; pending ones only when named", async () => {
+  const asked: string[][] = [];
+  swap("eventStore", {
+    clearIn: async (states: readonly string[]) => {
+      asked.push([...states]);
+      return 3;
+    },
+  });
+
+  assert.equal(await commonBoundedContext.execute(new CommandClearEvents()), 3);
+  await commonBoundedContext.execute(new CommandClearEvents(["pending"]));
+  assert.deepEqual(asked, [["delivered", "set_aside"], ["pending"]]);
+  assert.equal(spanOf("common/ClearEvents")?.attributes["events.count"], 3);
 });

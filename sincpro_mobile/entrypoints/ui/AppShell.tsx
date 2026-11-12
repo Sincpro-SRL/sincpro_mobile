@@ -1,7 +1,10 @@
 import { logger } from "@sincpro/client-framework";
-import type { DeliveryOverride } from "@sincpro/mobile/domain/events";
 import { defineBackgroundCrons } from "@sincpro/mobile/framework/background";
-import { createKernel, startApp } from "@sincpro/mobile/framework/createApp";
+import {
+  createKernel,
+  type EventsConfig,
+  startApp,
+} from "@sincpro/mobile/framework/createApp";
 import type { DomainModule } from "@sincpro/mobile/framework/domain_module";
 import type { Kernel } from "@sincpro/mobile/framework/kernel";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
@@ -145,11 +148,11 @@ export interface AppShellConfig {
    */
   observability?: ObservabilityConfig;
   /**
-   * What the app changes of an event's delivery, by its name (`AppConfig.events`): the attempts
-   * before it is set aside. `{ [PrintImageRequestedEvent.eventName]: { attempts: 1 } }` sends a
-   * failed print to the failed prints at once.
+   * What the app changes of its stored events, all optional: `attempts` by event name
+   * (`{ [PrintImageRequestedEvent.eventName]: 1 }` sends a failed print to the failed ones at
+   * once) and `retentionDays` (`delivered` 7, `failed` kept until retried or deleted).
    */
-  events?: Record<string, DeliveryOverride>;
+  events?: EventsConfig;
   /** Light theme tokens. Defaults to the DS base theme if omitted. */
   theme?: ThemeTokens;
   /** Dark theme tokens. When provided, the system color-scheme toggle activates it. */
@@ -163,7 +166,7 @@ export interface AppShellConfig {
   brandFont?: BrandFontConfig;
   /** Component rendered while fonts + domain init complete. */
   splashComponent?: ComponentType;
-  /** Days a processed event stays in the history before pruning. Default 7. */
+  /** @deprecated `events.retentionDays.delivered` — it wins when both are set. */
   eventRetentionDays?: number;
   /** Minimum time (ms) the splash stays visible. Default 2000. */
   splashDuration?: number;
@@ -216,7 +219,10 @@ export function defineAppShell(config: AppShellConfig): AppShellDefinition {
     // icon is blank. On iOS ICON_FONTS is empty: icons are SF Symbols.
     fontFiles: { ...ICON_FONTS, ...config.brandFont?.files },
     start: onceUntilFailure(async () => {
-      await startApp(kernel, { eventRetentionDays: config.eventRetentionDays });
+      await startApp(kernel, {
+        eventRetentionDays: config.eventRetentionDays,
+        events: config.events,
+      });
     }),
   };
 }
