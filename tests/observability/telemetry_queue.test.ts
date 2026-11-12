@@ -4,9 +4,9 @@ import test from "node:test";
 import { LogQueueRepository } from "../../sincpro_mobile/infrastructure/telemetry/logging/log_queue_repository.ts";
 import { LokiClient } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_client.ts";
 import {
-  _resetLokiClient as _resetTelemetry,
-  getLokiClient,
-  initLokiClient as initTelemetry,
+  _resetLogShipping,
+  initLogShipping,
+  shipLog,
 } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_registry.ts";
 
 function makeCursor() {
@@ -142,24 +142,30 @@ test("LokiClient.deliver: throws on non-2xx so flush_job keeps entries in queue"
   }
 });
 
-// push fallback — offline errors must reach Loki eventually via the queue.
-test("LokiClient.push: enqueues to SQLite when fetch fails (offline path)", async () => {
+// offline — a line is stored whatever the network, and the flush is told; nothing is fetched.
+test("shipLog: a line is stored in SQLite with the network down, and no request is made", async () => {
   const { cursor, store } = makeCursor();
   const repo = new LogQueueRepository(asCursor(cursor));
   const original = global.fetch;
+  let fetched = 0;
   global.fetch = async () => {
+    fetched += 1;
     throw new Error("network down");
   };
+  let told = 0;
   try {
-    _resetTelemetry();
-    initTelemetry({ endpoint: "http://loki.test", labels: { app: "app" } }, repo);
-    getLokiClient()!.push("error", "checkout timeout");
+    initLogShipping(repo, () => {
+      told += 1;
+    });
+    shipLog("error", "checkout timeout");
     await new Promise((r) => setTimeout(r, 20));
     assert.equal(store.length, 1);
     assert.equal(store[0].level, "error");
+    assert.equal(told, 1);
+    assert.equal(fetched, 0, "a line never goes out by itself");
   } finally {
     global.fetch = original;
-    _resetTelemetry();
+    _resetLogShipping();
   }
 });
 

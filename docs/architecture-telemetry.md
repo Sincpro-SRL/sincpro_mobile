@@ -52,7 +52,7 @@ flowchart TB
         worker["TelemetryFlushWorker<br/>signal · InternetIsUp · bg cron"]
         flush["FlushTelemetry.run()"]
         conn["ConnectivityState"]
-        loki["LokiClient<br/>push (opportunistic) · deliver (batch)"]
+        loki["LokiClient<br/>deliver (batch)"]
         otlp["OtlpClient"]
     end
 
@@ -60,7 +60,7 @@ flowchart TB
     lokiSrv[["Loki"]]
 
     app --> tracing
-    app -->|logger.push| loki
+    app -->|shipLog: what speaks| logRepo
     tracing --> provider
     tracing -.->|active context| ctx
     provider --> proc
@@ -68,7 +68,7 @@ flowchart TB
     exporter --> spanRepo
     spanRepo --> spansTbl
     exporter -->|onEnqueued / store-first| signal
-    loki -->|on failure| logRepo
+    logRepo -->|onEnqueued| signal
     logRepo --> logsTbl
 
     signal --> flush

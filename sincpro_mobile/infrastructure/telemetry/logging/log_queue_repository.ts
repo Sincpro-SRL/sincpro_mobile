@@ -78,7 +78,9 @@ export class LogQueueRepository {
 
   async enqueue(level: string, message: string): Promise<void> {
     await this.db.mutateDatabase(
-      `INSERT INTO telemetry_queue (level, message) VALUES (?, ?)`,
+      // Milliseconds kept, as the line was written: a batch keeps every line's own time.
+      `INSERT INTO telemetry_queue (level, message, created_at)
+       VALUES (?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))`,
       level,
       message,
     );

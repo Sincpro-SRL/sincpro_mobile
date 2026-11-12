@@ -14,15 +14,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type { LogEntry } from "../../sincpro_mobile/infrastructure/telemetry/logging/log_queue_repository.ts";
 import {
-  _nowNs,
   LokiClient,
+  LokiRefused,
 } from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_client.ts";
-import {
-  _resetLokiClient as _resetTelemetry,
-  getLokiClient,
-  initLokiClient as initTelemetry,
-} from "../../sincpro_mobile/infrastructure/telemetry/logging/loki_registry.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -77,51 +73,30 @@ function assertValidNsTimestamp(ts: string, label: string): void {
   assert.ok(n < NS_CEIL, `${label}: ${ts} is above nanosecond range (too large)`);
 }
 
-// ---------------------------------------------------------------------------
-// _nowNs — monotonic nanosecond clock
-// ---------------------------------------------------------------------------
+let seq = 0;
 
-test("_nowNs: returns a numeric string", () => {
-  const ts = _nowNs();
-  assert.match(ts, /^\d+$/);
-});
-
-test("_nowNs: value is in nanosecond range (not ms, not seconds)", () => {
-  assertValidNsTimestamp(_nowNs(), "_nowNs()");
-});
-
-test("_nowNs: consecutive calls are strictly increasing", () => {
-  const samples = Array.from({ length: 200 }, () => _nowNs());
-  for (let i = 1; i < samples.length; i++) {
-    assert.ok(
-      BigInt(samples[i]) > BigInt(samples[i - 1]),
-      `_nowNs not monotonic at index ${i}: ${samples[i - 1]} >= ${samples[i]}`,
-    );
-  }
-});
-
-test("_nowNs: no duplicates across 1000 rapid calls", () => {
-  const seen = new Set<string>();
-  for (let i = 0; i < 1000; i++) {
-    const ts = _nowNs();
-    assert.ok(!seen.has(ts), `duplicate timestamp: ${ts}`);
-    seen.add(ts);
-  }
-});
+/** One line as the log queue keeps it: written now, to the millisecond. */
+function entry(level: string, message: string): LogEntry {
+  return {
+    id: ++seq,
+    level,
+    message,
+    created_at: new Date().toISOString().replace("T", " ").replace("Z", ""),
+  };
+}
 
 // ---------------------------------------------------------------------------
-// LokiClient.push — payload structure compliance
+// LokiClient.deliver — payload structure compliance
 // ---------------------------------------------------------------------------
 
-test("push: sends to correct Loki endpoint path", async () => {
+test("deliver: sends to correct Loki endpoint path", async () => {
   const { requests, restore } = captureFetch();
   try {
     const client = new LokiClient({
       endpoint: "https://loki.acme.com",
       labels: { app: "mobile" },
     });
-    client.push("info", "msg");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("info", "msg")]);
 
     assert.equal(requests[0].url, "https://loki.acme.com/loki/api/v1/push");
     assert.equal(requests[0].method, "POST");
@@ -130,12 +105,11 @@ test("push: sends to correct Loki endpoint path", async () => {
   }
 });
 
-test("push: sets Content-Type application/json", async () => {
+test("deliver: sets Content-Type application/json", async () => {
   const { requests, restore } = captureFetch();
   try {
     const client = new LokiClient({ endpoint: "http://loki.test", labels: { app: "app" } });
-    client.push("info", "msg");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("info", "msg")]);
 
     assert.equal(requests[0].headers["Content-Type"], "application/json");
   } finally {
@@ -143,12 +117,11 @@ test("push: sets Content-Type application/json", async () => {
   }
 });
 
-test("push: payload has top-level 'streams' array", async () => {
+test("deliver: payload has top-level 'streams' array", async () => {
   const { requests, restore } = captureFetch();
   try {
     const client = new LokiClient({ endpoint: "http://loki.test", labels: { app: "app" } });
-    client.push("info", "msg");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("info", "msg")]);
 
     const body = requests[0].body;
     assert.ok(Array.isArray(body.streams), "streams must be an array");
@@ -158,15 +131,14 @@ test("push: payload has top-level 'streams' array", async () => {
   }
 });
 
-test("push: each stream has 'stream' labels object and 'values' array", async () => {
+test("deliver: each stream has 'stream' labels object and 'values' array", async () => {
   const { requests, restore } = captureFetch();
   try {
     const client = new LokiClient({
       endpoint: "http://loki.test",
       labels: { app: "sincpro-mobile", env: "prod" },
     });
-    client.push("warn", "low disk");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("warn", "low disk")]);
 
     const stream = requests[0].body.streams[0];
     assert.ok(
@@ -180,15 +152,14 @@ test("push: each stream has 'stream' labels object and 'values' array", async ()
   }
 });
 
-test("push: stream labels include all configured labels plus 'level'", async () => {
+test("deliver: stream labels include all configured labels plus 'level'", async () => {
   const { requests, restore } = captureFetch();
   try {
     const client = new LokiClient({
       endpoint: "http://loki.test",
       labels: { app: "sincpro-mobile", env: "staging", tenant: "acme" },
     });
-    client.push("error", "checkout failed");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("error", "checkout failed")]);
 
     const labels = requests[0].body.streams[0].stream;
     assert.equal(labels.app, "sincpro-mobile");
@@ -200,42 +171,16 @@ test("push: stream labels include all configured labels plus 'level'", async () 
   }
 });
 
-test("push: each value entry is [timestamp_ns_string, log_line_string]", async () => {
+test("deliver: each value entry is [timestamp_ns_string, log_line_string]", async () => {
   const { requests, restore } = captureFetch();
   try {
     const client = new LokiClient({ endpoint: "http://loki.test", labels: { app: "app" } });
-    client.push("debug", "user login");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("debug", "user login")]);
 
     const [ts, line] = requests[0].body.streams[0].values[0];
-    assertValidNsTimestamp(ts, "push value[0]");
+    assertValidNsTimestamp(ts, "deliver value[0]");
     assert.equal(typeof line, "string");
     assert.equal(line, "user login");
-  } finally {
-    restore();
-  }
-});
-
-test("push: consecutive calls produce strictly increasing timestamps", async () => {
-  const { requests, restore } = captureFetch();
-  try {
-    const client = new LokiClient({ endpoint: "http://loki.test", labels: { app: "app" } });
-
-    // Fire 20 pushes synchronously — all in the same event loop tick (same ms)
-    for (let i = 0; i < 20; i++) {
-      client.push("info", `event-${i}`);
-    }
-    await new Promise((r) => setTimeout(r, 30));
-
-    assert.equal(requests.length, 20);
-    const timestamps = requests.map((r) => r.body.streams[0].values[0][0]);
-
-    for (let i = 1; i < timestamps.length; i++) {
-      assert.ok(
-        BigInt(timestamps[i]) > BigInt(timestamps[i - 1]),
-        `timestamp not strictly increasing at index ${i}: ${timestamps[i - 1]} >= ${timestamps[i]}`,
-      );
-    }
   } finally {
     restore();
   }
@@ -253,8 +198,7 @@ test("headers: custom headers (e.g. api-key) are sent on every request", async (
       labels: { app: "app" },
       headers: { "sincpro-api-key": "secret-123", "X-Scope-OrgID": "acme" },
     });
-    client.push("info", "msg");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("info", "msg")]);
 
     assert.equal(requests[0].headers["sincpro-api-key"], "secret-123");
     assert.equal(requests[0].headers["X-Scope-OrgID"], "acme");
@@ -273,8 +217,7 @@ test("headers: basic auth and custom headers coexist", async () => {
       auth: { type: "basic", username: "u", password: "p" },
       headers: { "api-key": "k" },
     });
-    client.push("info", "msg");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("info", "msg")]);
 
     assert.equal(requests[0].headers["Authorization"], `Basic ${btoa("u:p")}`);
     assert.equal(requests[0].headers["api-key"], "k");
@@ -292,8 +235,7 @@ test("headers: explicit Authorization in headers overrides auth shortcut", async
       auth: { type: "bearer", token: "from-auth" },
       headers: { Authorization: "Bearer from-headers" },
     });
-    client.push("info", "msg");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("info", "msg")]);
 
     assert.equal(requests[0].headers["Authorization"], "Bearer from-headers");
   } finally {
@@ -310,8 +252,7 @@ test("headers: a custom content-type cannot override the JSON Content-Type", asy
       // lowercase, would clobber the body's JSON content type if not guarded
       headers: { "content-type": "text/plain", "api-key": "k" },
     });
-    client.push("info", "msg");
-    await new Promise((r) => setTimeout(r, 10));
+    await client.deliver([entry("info", "msg")]);
 
     assert.equal(requests[0].headers["Content-Type"], "application/json");
     assert.equal(
@@ -477,27 +418,20 @@ test("deliver: each value entry is [string, string] — timestamp and log line",
 });
 
 // ---------------------------------------------------------------------------
-// Initialization — initTelemetry ordering invariant
+// A batch Loki does not accept
 // ---------------------------------------------------------------------------
 
-test("initTelemetry: client is null before init, non-null after", () => {
-  _resetTelemetry();
-  assert.equal(getLokiClient(), null, "client must be null before initTelemetry");
-
-  initTelemetry({ endpoint: "http://loki.test", labels: { app: "test" } });
-  assert.ok(getLokiClient() !== null, "client must be set after initTelemetry");
-
-  _resetTelemetry();
-});
-
-test("initTelemetry: re-calling replaces the client (idempotent restart)", () => {
-  _resetTelemetry();
-  initTelemetry({ endpoint: "http://a.test", labels: { app: "a" } });
-  const first = getLokiClient();
-
-  initTelemetry({ endpoint: "http://b.test", labels: { app: "b" } });
-  const second = getLokiClient();
-
-  assert.notEqual(first, second, "second initTelemetry must replace the client");
-  _resetTelemetry();
+test("deliver: a batch Loki refuses throws its status, so the flush keeps the lines", async () => {
+  const original = global.fetch;
+  global.fetch = async () => new Response("bad key", { status: 401 });
+  try {
+    const client = new LokiClient({ endpoint: "http://loki.test", labels: { app: "app" } });
+    await assert.rejects(client.deliver([entry("info", "x")]), (error: unknown) => {
+      assert.ok(error instanceof LokiRefused);
+      assert.equal(error.status, 401);
+      return true;
+    });
+  } finally {
+    global.fetch = original;
+  }
 });

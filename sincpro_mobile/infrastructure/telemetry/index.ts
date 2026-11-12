@@ -25,8 +25,8 @@ export { bufferStats } from "./buffer_registry";
 // Logging
 export type { LogEntry } from "./logging/log_queue_repository";
 export { LogQueueRepository } from "./logging/log_queue_repository";
-export { LokiClient } from "./logging/loki_client";
-export { getLokiClient } from "./logging/loki_registry";
+export { LokiClient, LokiRefused } from "./logging/loki_client";
+export { shipLog, shipsLogs } from "./logging/loki_registry";
 
 // Tracing
 export { activeTraceLabel, getActiveSpanContext } from "./tracing/active_span";

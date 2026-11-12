@@ -1,31 +1,36 @@
 import {
   type Attributes,
   combineLoggers,
+  filteredLogger,
+  type LogFilter,
   type Logger,
   type LogLayer,
-  type LogLevel,
   type LogRecord,
 } from "@sincpro/client-framework";
 import { consoleLogger } from "@sincpro/client-framework/console";
 
-import { getLokiClient } from "./telemetry/logging/loki_registry";
+import { shipLog } from "./telemetry/logging/loki_registry";
 import { activeTraceLabel } from "./telemetry/tracing/active_span";
 
 /**
- * Where the lines of the client framework go on a phone: the console and Loki.
+ * Where the lines of the client framework go on a phone — the console and Loki — and which of
+ * them speak.
  *
  * Context: there is one logger per layer — `logger` (infrastructure) and `loggerAdapter`
  * (adapters) from `@sincpro/client-framework`, and `this.logger` inside a use case —, never one
- * per screen or service. This module only owns the policy of the two destinations:
+ * per screen or service. This module owns the policy of the two destinations, one rule for both
+ * (client-framework's `LogFilter`):
  *
- * - The console is the framework's engine (`consoleLogger`): silent in production, WARN and
- *   ERROR always printed in development, INFO and DEBUG only while the in-app debug switch is on
- *   and the line's layer is enabled.
- * - Loki receives ERROR and WARN always and, from enabled layers, what its level asks for —
- *   INFO by default, DEBUG when the host asks (`configureLogger({ loki: "debug" })`) —, whatever
- *   the console shows: production incidents must be observable.
+ * - **Production**: what the app ships normally — its own bounded contexts at `info`; the core's
+ *   `common`, the `adapter` and `infrastructure` layers quiet.
+ * - **Debugging** — a debug build, or the person's switch (`Debug`): everything speaks, but the
+ *   layers the person turns off on the debug screen.
+ * - WARN and ERROR always speak, in both. Spans are never filtered: a quiet line still has its
+ *   span in Tempo.
  *
- * The engine reads the policy on every line, so a debug switch never reconfigures the process.
+ * The console prints only in a debug build; Loki receives what speaks, stored first and sent in
+ * batches (`shipLog`). The filter is read on every line, so the switch never reconfigures the
+ * process.
  */
 
 /** Every layer a line can come from, in the order the debug screen lists them. */
@@ -38,55 +43,62 @@ export const LOG_LAYERS: readonly LogLayer[] = [
   "feature",
 ];
 
-/** The packaged quiet defaults: adapters (Odoo's HTTP, repositories) stay off until asked. */
-export const DEFAULT_ENABLED_LAYERS: Readonly<Record<LogLayer, boolean>> = {
-  infrastructure: true,
-  adapter: false,
-  bounded_context: true,
-  event_handler: true,
-  application_service: true,
-  feature: true,
+/** What speaks in production when the app says nothing. */
+export const DEFAULT_PRODUCTION_LOGS: LogFilter = {
+  level: "info",
+  layers: { adapter: false, infrastructure: false },
+  boundedContexts: { common: false },
 };
 
-/** What a host decides about the console: production or development, and how verbose. */
+/** What speaks while debugging when the app says nothing: every line. */
+export const DEFAULT_DEBUG_LOGS: LogFilter = { level: "debug" };
+
+/** What a host decides about its lines. */
 export type LoggerPolicy = {
+  /** `development` prints on the console (a debug build); `production` keeps it silent. */
   mode?: "development" | "production";
-  /** Development INFO/DEBUG threshold while the debug switch is on. */
-  level?: Extract<LogLevel, "debug" | "info">;
-  /** Layers whose INFO/DEBUG may speak; WARN/ERROR are never hidden. */
-  layers?: Partial<Record<LogLayer, boolean>>;
-  /**
-   * The lowest level Loki receives: `info` (the default), `debug` to ship everything, `warn` to
-   * ship only problems. WARN and ERROR always go; INFO and DEBUG only from enabled layers.
-   */
-  loki?: Extract<LogLevel, "debug" | "info" | "warn">;
+  /** What speaks normally, over `DEFAULT_PRODUCTION_LOGS`. */
+  production?: LogFilter;
+  /** What speaks while debugging, over `DEFAULT_DEBUG_LOGS`; the person's layers go over it. */
+  debug?: LogFilter;
 };
-
-const RANK: Readonly<Record<LogLevel, number>> = { debug: 0, info: 1, warn: 2, error: 3 };
 
 const MAX_LINE = 2048;
 
 let mode: "development" | "production" = "development";
-let level: "debug" | "info" = "info";
-let lokiLevel: "debug" | "info" | "warn" = "info";
-let consoleDebug = false;
-const enabledLayers: Record<LogLayer, boolean> = { ...DEFAULT_ENABLED_LAYERS };
+let production: LogFilter = DEFAULT_PRODUCTION_LOGS;
+let debugging: LogFilter = DEFAULT_DEBUG_LOGS;
+let debugLogging = false;
+const enabledLayers: Record<LogLayer, boolean> = debugLayersOf(debugging);
 
 type LoggerListener = () => void;
 const listeners = new Set<LoggerListener>();
 
-let consoleEngine: Logger = consoleLogger(consoleOptions());
+let consoleEngine: Logger = consoleLogger({ mode });
 
-function consoleOptions() {
+/** `filter` over `base`, rule by rule. */
+function over(base: LogFilter, filter: LogFilter | undefined): LogFilter {
   return {
-    mode,
-    level: consoleDebug ? level : ("warn" as const),
-    layers: { ...enabledLayers },
+    level: filter?.level ?? base.level,
+    layers: { ...base.layers, ...filter?.layers },
+    boundedContexts: { ...base.boundedContexts, ...filter?.boundedContexts },
   };
 }
 
+/** The layers that speak while debugging, as the debug screen shows them: all but those turned off. */
+function debugLayersOf(filter: LogFilter): Record<LogLayer, boolean> {
+  return Object.fromEntries(
+    LOG_LAYERS.map((layer) => [layer, filter.layers?.[layer] !== false]),
+  ) as Record<LogLayer, boolean>;
+}
+
+/** What speaks now: debugging — with the person's layers —, or production. */
+function speaking(): LogFilter {
+  return debugLogging ? { ...debugging, layers: { ...enabledLayers } } : production;
+}
+
 function changed(): void {
-  consoleEngine = consoleLogger(consoleOptions());
+  consoleEngine = consoleLogger({ mode });
   for (const listener of listeners) listener();
 }
 
@@ -133,51 +145,53 @@ export function lokiLine(record: LogRecord): string {
   return kept + trace + stack;
 }
 
-/** Loki's policy: ERROR and WARN always; INFO and DEBUG from enabled layers, at its level. */
-function shipsToLoki(record: LogRecord): boolean {
-  if (record.level === "error" || record.level === "warn") return true;
-  return RANK[record.level] >= RANK[lokiLevel] && enabledLayers[record.layer];
-}
-
 const lokiEngine: Logger = {
   log(record) {
-    if (!shipsToLoki(record)) return;
-    const client = getLokiClient();
-    if (!client) return;
-    const line = lokiLine(record);
-    queueMicrotask(() => client.push(record.level, line));
+    shipLog(record.level, lokiLine(record));
   },
 };
 
-/** The engine every bounded context of the app logs through: the console and Loki. */
-export const mobileLogger: Logger = combineLoggers(
-  { log: (record) => consoleEngine.log(record) },
-  lokiEngine,
+/**
+ * The engine every bounded context of the app logs through: what speaks (`speaking`) goes to the
+ * console (a debug build) and to Loki.
+ */
+export const mobileLogger: Logger = filteredLogger(
+  combineLoggers({ log: (record) => consoleEngine.log(record) }, lokiEngine),
+  speaking,
 );
 
 /**
- * The host's console policy (`mode` from `__DEV__`, the level, the layers). Applies at once,
- * to every line from then on.
+ * The host's policy: the console's mode, what speaks normally and what speaks while debugging.
+ * Applies at once, to every line from then on; the person's layers start from the debug filter.
  */
 export function configureLogger(policy: LoggerPolicy): void {
   if (policy.mode !== undefined) mode = policy.mode;
-  if (policy.level !== undefined) level = policy.level;
-  if (policy.loki !== undefined) lokiLevel = policy.loki;
-  if (policy.layers) patchLayers(policy.layers);
+  if (policy.production !== undefined)
+    production = over(DEFAULT_PRODUCTION_LOGS, policy.production);
+  if (policy.debug !== undefined) {
+    debugging = over(DEFAULT_DEBUG_LOGS, policy.debug);
+    patchLayers(debugLayersOf(debugging));
+  }
   changed();
 }
 
-/** The in-app debug switch: INFO/DEBUG on the console. WARN/ERROR always print. */
-export function setConsoleDebug(enabled: boolean): void {
-  if (consoleDebug === enabled) return;
-  consoleDebug = enabled;
+/** What speaks normally — the production filter in use. */
+export function productionLogs(): LogFilter {
+  return production;
+}
+
+/** The debug switch: everything speaks (but the layers turned off). WARN/ERROR always speak. */
+export function setDebugLogging(enabled: boolean): void {
+  if (debugLogging === enabled) return;
+  debugLogging = enabled;
   changed();
 }
 
-export function isConsoleDebug(): boolean {
-  return consoleDebug;
+export function isDebugLogging(): boolean {
+  return debugLogging;
 }
 
+/** The layers that speak while debugging. */
 export function getEnabledLayers(): Record<LogLayer, boolean> {
   return { ...enabledLayers };
 }
@@ -208,8 +222,14 @@ export function setEnabledLayers(patch: Partial<Record<LogLayer, boolean>>): voi
   if (patchLayers(patch)) changed();
 }
 
+/** Back to the debug filter's layers — the app's, every layer when it says nothing. */
 export function resetEnabledLayers(): void {
-  setEnabledLayers(DEFAULT_ENABLED_LAYERS);
+  setEnabledLayers(debugLayersOf(debugging));
+}
+
+/** The debug filter's layers, as `resetEnabledLayers` leaves them. */
+export function defaultEnabledLayers(): Record<LogLayer, boolean> {
+  return debugLayersOf(debugging);
 }
 
 /** Hears the debug switch and every layer change. Answers how to stop. */

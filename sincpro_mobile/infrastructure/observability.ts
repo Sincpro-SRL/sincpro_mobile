@@ -2,6 +2,8 @@ import {
   configureProcess,
   type ErrorReporter,
   type IdentityKeys,
+  type LogFilter,
+  type LogLayer,
   type ProcessIdentity,
   processIdentity,
 } from "@sincpro/client-framework";
@@ -11,7 +13,7 @@ import * as Application from "expo-application";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
-import { configureLogger, mobileLogger, setConsoleDebug } from "./logger";
+import { configureLogger, mobileLogger, setDebugLogging } from "./logger";
 import { getTracer } from "./telemetry/tracing/tracer";
 import type { FlushConfig, TelemetryConfig } from "./telemetry/types";
 
@@ -55,15 +57,28 @@ export type ObservabilityConfig = {
   /** Traces, to an OTLP collector (`https://otlp.sincpro.dev`; `/v1/traces` is added). */
   traces?: { endpoint: string; headers?: Record<string, string> };
   /**
-   * Log lines: their level and, with an endpoint, Loki (`https://loki.sincpro.dev`;
-   * `/loki/api/v1/push` is added). `info` by default; `debug` sends everything, `warn` only
-   * problems. In a debug build the console prints from that level; a release build's console
-   * stays silent.
+   * Log lines — which speak, and, with an endpoint, Loki (`https://loki.sincpro.dev`;
+   * `/loki/api/v1/push` is added), where they are stored first and sent in batches. WARN and
+   * ERROR always speak; spans are never filtered. Every key is optional:
+   *
+   *     logs: {
+   *       level: "info",                                     // what speaks normally
+   *       layers: { adapter: false, infrastructure: false }, // INFO/DEBUG kept quiet by layer
+   *       boundedContexts: { common: false },                // and by bounded context
+   *       debug: {},                                         // a debug build or the switch: everything
+   *     }
+   *
+   * A debug build starts debugging (the console prints it), unless `level` is `warn`; a release
+   * build ships what speaks normally until the person turns the switch on. The console of a
+   * release build stays silent.
    */
   logs?: {
     endpoint?: string;
     headers?: Record<string, string>;
     level?: "debug" | "info" | "warn";
+    layers?: Partial<Record<LogLayer, boolean>>;
+    boundedContexts?: Readonly<Record<string, boolean>>;
+    debug?: LogFilter;
   };
   /**
    * Unexpected failures: the app's Sentry-compatible client (GlitchTip), initialized by the app
@@ -146,15 +161,18 @@ export function appIdentity(environment?: string): AppIdentity {
   };
 }
 
-/** The console's mode from the build, and the level both the console and Loki take. */
+/** The console's mode from the build, what speaks normally and what speaks while debugging. */
 function configureLogs(logs: ObservabilityConfig["logs"]): void {
-  const level = logs?.level ?? "info";
   configureLogger({
     mode: debugBuild() ? "development" : "production",
-    level: level === "debug" ? "debug" : "info",
-    loki: level,
+    production: {
+      ...(logs?.level ? { level: logs.level } : {}),
+      ...(logs?.layers ? { layers: logs.layers } : {}),
+      ...(logs?.boundedContexts ? { boundedContexts: logs.boundedContexts } : {}),
+    },
+    debug: logs?.debug ?? {},
   });
-  if (debugBuild()) setConsoleDebug(level !== "warn");
+  if (debugBuild()) setDebugLogging(logs?.level !== "warn");
 }
 
 /**
