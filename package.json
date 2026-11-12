@@ -51,7 +51,7 @@
     "tailwind-variants": "^3.2.2"
   },
   "peerDependencies": {
-    "@sincpro/client-framework": "^1.8.0",
+    "@sincpro/client-framework": "^1.9.0",
     "@sincpro/mobile-ui": "^3.3.0",
     "expo-application": "*",
     "expo-background-task": "*",
@@ -88,7 +88,7 @@
     "@opentelemetry/api": "^1.9.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@shopify/flash-list": "2.3.2",
-    "@sincpro/client-framework": "^1.8.0",
+    "@sincpro/client-framework": "^1.9.0",
     "@sincpro/mobile-ui": "^3.3.0",
     "@storybook/addon-ondevice-actions": "10.7.1",
     "@storybook/react-native": "10.7.1",
