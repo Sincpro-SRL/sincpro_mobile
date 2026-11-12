@@ -110,6 +110,7 @@ beforeEach(async () => {
   await eventStore.clear();
   heard.length = 0;
   failures.length = 0;
+  eventDelivery.configure();
   eventDelivery.listen(new Subscriber(testsBoundedContext));
   eventDelivery.setOnline(true);
   eventDelivery.setSession(true);
@@ -342,6 +343,34 @@ test("a print whose printer is off fails unavailable and waits to be retried, ke
   );
   assert.equal(notices[0]?.key, `print:${envelope.id}`, "the request's id keys its notice");
   assert.deepEqual(notices[1]?.actions, PRINT_FAILURE_ACTIONS);
+});
+
+test("an app that gives a print one attempt finds it failed at once, the screens told, the line not held", async () => {
+  eventDelivery.configure({ [PrintImageRequestedEvent.eventName]: { attempts: 1 } });
+  printing(() => Promise.reject(new PrinterUnavailable("printer off")));
+  const told: string[] = [];
+  const stop = UIEventBus.on(
+    PrintImageRequestedEvent.eventName,
+    (stored) => told.push((stored as { state: string }).state),
+    { debounce: false },
+  );
+  try {
+    await publish(printRequest("first"));
+    await publish(printRequest("second"));
+  } finally {
+    stop();
+  }
+  const failed = await eventStore.inState("set_aside");
+  assert.deepEqual(
+    failed.map((one) => [one.failures[0]?.kind, one.attempts]),
+    [
+      ["unavailable", 1],
+      ["unavailable", 1],
+    ],
+    "both prints are failed ones, none waits to be retried",
+  );
+  assert.deepEqual(await eventStore.inState("pending"), []);
+  assert.deepEqual(told, ["set_aside", "set_aside"]);
 });
 
 test("a print without its image is invalid and set aside; without a printer, domain", async () => {

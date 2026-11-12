@@ -1,4 +1,5 @@
 import { logger } from "@sincpro/client-framework";
+import type { DeliveryOverride } from "@sincpro/mobile/domain/events";
 import { defineBackgroundCrons } from "@sincpro/mobile/framework/background";
 import { createKernel, startApp } from "@sincpro/mobile/framework/createApp";
 import type { DomainModule } from "@sincpro/mobile/framework/domain_module";
@@ -143,6 +144,12 @@ export interface AppShellConfig {
    * version, native build and release (`<slug>:<version>`). Omit it and nothing is shipped.
    */
   observability?: ObservabilityConfig;
+  /**
+   * What the app changes of an event's delivery, by its name (`AppConfig.events`): the attempts
+   * before it is set aside. `{ [PrintImageRequestedEvent.eventName]: { attempts: 1 } }` sends a
+   * failed print to the failed prints at once.
+   */
+  events?: Record<string, DeliveryOverride>;
   /** Light theme tokens. Defaults to the DS base theme if omitted. */
   theme?: ThemeTokens;
   /** Dark theme tokens. When provided, the system color-scheme toggle activates it. */
@@ -195,6 +202,7 @@ export function defineAppShell(config: AppShellConfig): AppShellDefinition {
   const kernel = createKernel({
     domains: config.domains,
     observability: config.observability,
+    events: config.events,
   });
   defineBackgroundCrons(kernel);
   const domains = config.domains.map(({ key, name }) => ({ key, name }));

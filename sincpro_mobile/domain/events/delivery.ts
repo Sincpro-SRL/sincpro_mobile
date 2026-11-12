@@ -15,20 +15,34 @@ import { type LabelText, textOf } from "./label";
  *       static readonly label = { es: "Imprimiendo...", en: "Printing..." };
  *       static readonly requiresNetwork = false;   // prints offline
  *       static readonly requiresSession = false;   // a page may print before signing in
+ *       static readonly attempts = 1;              // set aside at its first failure
  *     }
  *
  * Context: whether an event may be delivered now is the event's to say — what it is about
  * needs a connection, or a signed-in session — never the subscriber's: the stored queue asks it
  * of the event's class (`deliveryNeedsOf`) and lets the rest go on while it waits. An event that
  * says nothing needs a session and no connection. `ui` asks the activity toast to show its
- * delivery.
+ * delivery. `attempts` is how many times the queue tries it before setting it aside — the
+ * failed ones —, the queue's (10) when unsaid; an application changes it for one event by its
+ * name (`AppConfig.events`).
  */
 export type DeliveryDeclaration = {
   readonly label?: LabelText;
   readonly requiresNetwork?: boolean;
   readonly requiresSession?: boolean;
   readonly ui?: boolean;
+  readonly attempts?: number;
 };
+
+/**
+ * What an application changes of an event's delivery, by its name (`AppConfig.events`):
+ *
+ *     events: { [PrintImageRequestedEvent.eventName]: { attempts: 1 } }
+ *
+ * `attempts: 1` — never retried on its own: a print the person watched fail goes to the failed
+ * ones at once, for them to retry, and never holds back what comes after.
+ */
+export type DeliveryOverride = Pick<DeliveryDeclaration, "attempts">;
 
 /** What an event's delivery waits for. */
 export type DeliveryNeeds = { readonly network: boolean; readonly session: boolean };
@@ -40,6 +54,12 @@ export function deliveryNeedsOf(type: object | undefined): DeliveryNeeds {
     network: declared.requiresNetwork === true,
     session: declared.requiresSession !== false,
   };
+}
+
+/** How many attempts the class of an event asks for; `undefined` keeps the queue's. */
+export function deliveryAttemptsOf(type: object | undefined): number | undefined {
+  const declared = ((type ?? {}) as DeliveryDeclaration).attempts;
+  return typeof declared === "number" ? declared : undefined;
 }
 
 /** What a person reads for an event: its class's label, or its wire name. */

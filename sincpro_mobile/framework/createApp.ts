@@ -1,4 +1,6 @@
 import { logger } from "@sincpro/client-framework";
+import type { DeliveryOverride } from "@sincpro/mobile/domain/events";
+import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import {
   instrumentObservability,
@@ -25,6 +27,14 @@ export interface AppConfig {
    */
   observability?: ObservabilityConfig;
   /**
+   * What the app changes of an event's delivery, by its name: the attempts the queue gives it
+   * before setting it aside — the failed ones —; the event's own, else 10, when unsaid.
+   * @example
+   * // A failed print goes to the failed prints at once, for the person to retry.
+   * events: { [PrintImageRequestedEvent.eventName]: { attempts: 1 } }
+   */
+  events?: Record<string, DeliveryOverride>;
+  /**
    * Override options for any cron by taskName.
    * `ui` marks the cron for the activity toast. Silence is the default.
    * @example
@@ -42,11 +52,12 @@ export interface AppConfig {
  * wakes runs traced, logged and reported the same way.
  */
 export function createKernel(
-  config: Pick<AppConfig, "domains" | "crons" | "observability"> = {},
+  config: Pick<AppConfig, "domains" | "crons" | "observability" | "events"> = {},
 ): Kernel {
   // Every run needs an id before anything else, and Hermes has no Web Crypto.
   installWebCrypto();
   instrumentObservability(config.observability);
+  eventDelivery.configure(config.events);
   const kernel = new Kernel([baseModule, ...(config.domains ?? [])]);
   if (config.crons) kernel.applyCronConfig(config.crons);
   kernel.registerExtensions();

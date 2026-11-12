@@ -19,7 +19,9 @@ import {
 } from "@sincpro/client-framework";
 import { eventStore } from "@sincpro/mobile/adapters/repositories/sqlite_event_store";
 import {
+  deliveryAttemptsOf,
   deliveryNeedsOf,
+  type DeliveryOverride,
   InternetIsDownEvent,
   InternetIsUpEvent,
   labelOf,
@@ -70,7 +72,9 @@ function tell(executable: unknown, status: ActivityStatus, detail?: string): voi
  * web. Who hears is said explicitly (`listen`, from `Kernel.subscriberFor`): a `Subscriber` is
  * never changed, a new one takes over. An event waits while its class asks for what is missing
  * (`requiresNetwork`, `requiresSession`) and the rest go on; `drain()` runs again when it comes
- * back — the network up, a session started, the app in the foreground. Settling tells the
+ * back — the network up, a session started, the app in the foreground. How many attempts an
+ * event gets is its class's (`attempts`), or what the application set for its name
+ * (`configure`), else the queue's. Settling tells the
  * screens that listen to the event's name (`UIEventBus`) and the connectivity: a failure that
  * means there is no connection (`NETWORK_DOWN`) marks the phone offline until it comes back. The
  * activity ("procesando…") is the process's to tell (`processListeners`), never the queue's door.
@@ -82,6 +86,7 @@ class EventDelivery implements EventQueue {
   private online = true;
   private session = false;
   private started = false;
+  private overrides: Readonly<Record<string, DeliveryOverride>> = {};
 
   /** Publishes events outside a run: the head of their own flow. */
   readonly publisher = new Publisher(this);
@@ -93,6 +98,14 @@ class EventDelivery implements EventQueue {
   /** Who hears what the queue delivers now: the active modules' bounded contexts. */
   get subscriber(): Subscriber {
     return this.generation.subscriber;
+  }
+
+  /**
+   * What the application changes of some events' delivery, by their name (`AppConfig.events`):
+   * read at each attempt, so it holds for the queue of every generation.
+   */
+  configure(overrides: Readonly<Record<string, DeliveryOverride>> = {}): void {
+    this.overrides = overrides;
   }
 
   /** Hears the connectivity and tells the activity, once per JS context. */
@@ -180,6 +193,7 @@ class EventDelivery implements EventQueue {
         store,
         subscriber,
         ready: (stored) => this.ready(subscriber, stored),
+        attemptsOf: (stored) => this.attemptsOf(subscriber, stored),
         onSettled: (stored) => this.settled(stored),
       }),
       retire: () => {
@@ -191,6 +205,11 @@ class EventDelivery implements EventQueue {
   private ready(subscriber: Subscriber, stored: StoredEvent): boolean {
     const needs = deliveryNeedsOf(subscriber.eventTypeOf(stored.envelope.name));
     return (!needs.network || this.online) && (!needs.session || this.session);
+  }
+
+  private attemptsOf(subscriber: Subscriber, stored: StoredEvent): number | undefined {
+    const name = stored.envelope.name;
+    return this.overrides[name]?.attempts ?? deliveryAttemptsOf(subscriber.eventTypeOf(name));
   }
 
   private settled(stored: StoredEvent): void {
