@@ -29,9 +29,11 @@ interface CrashRecoveryProps {
 export function CrashRecovery({
   error,
   onRetry,
-  showDetails = Debug.isEnabled(),
-  canSendReport = processObservability()?.telemetry !== undefined,
+  showDetails,
+  canSendReport,
 }: CrashRecoveryProps) {
+  const details = showDetails ?? Debug.isEnabled();
+  const sendable = canSendReport ?? processObservability()?.telemetry !== undefined;
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [sending, setSending] = useState(false);
@@ -64,14 +66,14 @@ export function CrashRecovery({
         Esta pantalla se cerró por un error. Puedes reintentar; si vuelve a pasar, envía el
         reporte.
       </Typography.Text>
-      {showDetails ? (
+      {details ? (
         <Typography.Text align="center" className="text-text-tertiary" variant="caption">
           {`${error.name}: ${error.message}`}
         </Typography.Text>
       ) : null}
       <View className="w-full gap-2">
         <Actions.Button onPress={onRetry} title="Reintentar" variant="cta" />
-        {canSendReport ? (
+        {sendable ? (
           <Actions.Button
             loading={sending}
             onPress={sendReport}
