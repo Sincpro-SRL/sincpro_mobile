@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DomainEvent, type StoredEvent } from "@sincpro/client-framework";
+import { DomainEvent, type StoredMessage } from "@sincpro/client-framework";
 import { criteria, selection } from "@sincpro/criteria";
 
 import { DocumentRepository } from "../../sincpro_mobile/adapters/repositories/document.repository.ts";
@@ -90,7 +90,7 @@ class FakeOutbox implements Outbox {
 
   constructor(private readonly database: FakeDocumentDatabase) {}
 
-  async save(stored: StoredEvent): Promise<void> {
+  async save(stored: StoredMessage): Promise<void> {
     await new FakeDocumentStore(this.database, "events").upsert({
       uuid: stored.envelope.id,
       version: 1,

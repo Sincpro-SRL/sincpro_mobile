@@ -33,8 +33,8 @@ cron, `AppShell`, the telemetry exporters. It does not own a second client.
   (`@xBoundedContext.handler([EventA, EventB])`, with its dependencies and `this.boundedContext`)
   and an event handler of a `Subscriber` (`@appSubscriber.handler([...])`, with the
   subscriber's dependencies). The core's events reach the event handlers of
-  `entrypoints/queue/` on `commonBoundedContext` — `OnDomainSwitched`, `OnNewAppSettings`,
-  `OnPrintImageRequested`, `OnWebViewMessage` —, each translating its event into a use case's
+  `entrypoints/queue/` on `commonBoundedContext` — `OnNewAppSettings`, `OnPrintImageRequested`
+  —, each translating its event into a use case's
   Command (`this.boundedContext.execute(...)`); `framework/base_module.ts` imports them and
   `package.json` lists them in `sideEffects`.
 - Still not built: a `ContextStore` (MMKV) and a `Transport` over SQLite for
@@ -155,11 +155,11 @@ settings and table introspection stay hand-written singletons over `DBCursor`. T
 not the aggregate port. `IRepository` / `IRemoteRepository` live in
 `domain/repositories/repository.ts`.
 
-| Repository                | Table           | Role                                                                                                                                      |
-| ------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `SqliteEventStore`        | `stored_events` | The stored queue's `EventStore` (`add`, `next`, `save`), and what the screens read: recent, failed (`set_aside`), retry, prune, `@mapped` |
-| `SettingsRepository`      | `settings`      | Typed key/value store (`JSON.stringify` + `type` column)                                                                                  |
-| `DatabaseTableRepository` | `sqlite_master` | Introspection only (list tables, dump rows)                                                                                               |
+| Repository                | Table           | Role                                                                                                                                        |
+| ------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SqliteEventStore`        | `stored_events` | The stored queue's `MessageStore` (`add`, `next`, `save`), and what the screens read: recent, failed (`set_aside`), retry, prune, `@mapped` |
+| `SettingsRepository`      | `settings`      | Typed key/value store (`JSON.stringify` + `type` column)                                                                                    |
+| `DatabaseTableRepository` | `sqlite_master` | Introspection only (list tables, dump rows)                                                                                                 |
 
 ---
 
@@ -183,11 +183,17 @@ aside too. Delivery is at least once.
   (`@xBoundedContext.handler([...])`). One `Subscriber` per queue, never one per handler. When
   the active modules change, a new generation of the stored queue takes over after the retired
   one finishes the event it is delivering: one drainer at a time, for the life of the app.
-  `listen` awaits nothing, so a handler the queue is running (`OnDomainSwitched`) may turn a
-  domain on.
-- **When.** `ready` asks the event's **class**: `requiresNetwork` waits for a connection,
-  `requiresSession` (the default) for a signed-in session. It waits while the rest go on and
-  goes as soon as what it needs comes back — `InternetIsUp`, a login, the app in the foreground.
+  `listen` awaits nothing, so a use case the queue is running may turn a domain on.
+- **When.** `ready` asks the message's **class** — an event or a Command —, with the app's
+  `events.byName` over it: `requiresNetwork` waits for a connection, `requiresSession` (the
+  default) for a signed-in session. It waits while the rest go on and goes as soon as what it
+  needs comes back — the network (heard at once, `listenToNetworkChanges`), a login, the app in
+  the foreground.
+- **What follows.** client-framework's verdict, with the message's policy: sent once
+  (`retries: 0`) and a failure is a failed one; what `requiresNetwork` waits while the server is
+  not there, until `maxAttempts`. The phone wraps the verdict: a `NETWORK_DOWN` failure waits for
+  the connection, whatever the message declared. A Command sent (`eventDelivery.publisher.send`)
+  runs in the bus that consumes it (`DomainModule.consumes`), its answer kept.
 - **What it tells.** `onSettled` emits the event's name on the `UIEventBus` for the screens,
   and marks the phone offline on a `NETWORK_DOWN` failure. The activity ("procesando…") is the
   process's: `start()` registers `processListeners.onStart/onCompletion/onFailure`, never the
@@ -263,8 +269,8 @@ feeds the `InternetIsUp/Down` signals that the delivery and the telemetry flush 
 - **`Orchestrator`** — the runtime brain: `bootstrap()`, `authenticateSession()`, runtime
   `enableDomain/disableDomain` (mutex-serialized), and an AppState watcher that hands the
   queue the active modules' `Subscriber`, drains it and reconciles cron whenever the app
-  foregrounds. Enabling or disabling a domain does not await the drain: it may run inside an
-  event handler the queue is delivering to (`OnDomainSwitched`, on `ActivateDomainEvent`).
+  foregrounds. Enabling or disabling a domain does not await the drain: it may run inside a use
+  case the queue is delivering to.
 
 ```mermaid
 sequenceDiagram

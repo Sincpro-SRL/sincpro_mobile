@@ -31,7 +31,7 @@ import { DomainModule } from "../../sincpro_mobile/framework/domain_module.ts";
 import { Kernel } from "../../sincpro_mobile/framework/kernel.ts";
 import { eventDelivery } from "../../sincpro_mobile/infrastructure/events/delivery.ts";
 import { eventOutbox } from "../../sincpro_mobile/infrastructure/events/outbox.ts";
-import { storedEventOf } from "../../sincpro_mobile/infrastructure/events/stored.ts";
+import { storedMessageOf } from "../../sincpro_mobile/infrastructure/events/stored.ts";
 import {
   ACTIVITY_EVENT,
   type ActivityFact,
@@ -136,17 +136,24 @@ test("an event waits for what its class needs, while the rest go on", async () =
   assert.equal(await stateOf("s"), "delivered");
 });
 
-test("a failure a retry may fix waits and holds the line; one that never will is set aside", async () => {
+test("sent once: a failure is a failed one and never holds the line; the app gives retries by name", async () => {
   failures.push(new RepeatableFailure("odoo is restarting"));
   await publish(newEvent(OfflineEvent, { value: "first" }));
   await publish(newEvent(OfflineEvent, { value: "second" }));
-  assert.deepEqual(heard, [], "what comes after waits, so the order holds");
-  const [waiting] = await eventStore.inState("pending");
-  assert.ok(waiting, "the first is still waiting");
+  assert.equal(await stateOf("first"), "set_aside", "sent once, a failure is a failed one");
+  assert.deepEqual(heard, ["test.offline.v1.fine:second"], "it never holds the line");
 
+  eventDelivery.configure({
+    byName: { [OfflineEvent.eventName]: { retries: 1 } },
+    backoff: { first: 1 },
+  });
+  failures.push(new RepeatableFailure("odoo is restarting"));
+  await publish(newEvent(OfflineEvent, { value: "retried" }));
+  assert.equal(await stateOf("retried"), "pending", "it has a retry: sent again");
+  // An unavailable server asks for a second at least.
   await new Promise((resolve) => setTimeout(resolve, 1100));
   await eventDelivery.drain();
-  assert.deepEqual(heard, ["test.offline.v1.fine:first", "test.offline.v1.fine:second"]);
+  assert.equal(await stateOf("retried"), "delivered");
 
   failures.push(new DomainValidationError("no customer"));
   await publish(newEvent(OfflineEvent, { value: "refused" }));
@@ -168,9 +175,17 @@ test("a failure that means no connection marks the phone offline until it comes 
   off();
   assert.equal(eventDelivery.isOnline(), false);
   assert.deepEqual(told, ["down"]);
+  assert.equal(
+    await stateOf("net"),
+    "pending",
+    "a dropped connection waits for it, never fails",
+  );
   await publish(newEvent(NetworkEvent, { value: "later" }));
   assert.equal(await stateOf("later"), "pending");
   eventDelivery.setOnline(true);
+  await eventDelivery.drain();
+  assert.equal(await stateOf("net"), "delivered", "back online, it goes");
+  assert.equal(await stateOf("later"), "delivered");
 });
 
 class OrderPaid extends DomainEvent {
@@ -228,6 +243,19 @@ test("a use case registered for a Command and an event answers both", async () =
   );
   await publish(newEvent(OrderPaid, { order: "o-4" }));
   assert.deepEqual(heard, ["payment:o-3", "payment:o-4"]);
+});
+
+test("a Command sent through the queue runs in the bus that consumes it, its answer kept", async () => {
+  const kernel = new Kernel([new SalesModule()]);
+  eventDelivery.listen(kernel.subscriberFor(new Set(["SALES"])));
+  const envelope = await eventDelivery.publisher.send(new CommandRegisterPayment("o-9"));
+  await eventDelivery.drain();
+  const [sent] = await eventStore.byIds([envelope.id]);
+  assert.deepEqual(
+    [sent?.kind, sent?.name, sent?.state, sent?.answer],
+    ["command", "sales.CommandRegisterPayment", "delivered", "paid:o-9"],
+  );
+  assert.deepEqual(heard, ["payment:o-9"]);
 });
 
 test("a message from outside: an event is stored in its flow, a Command runs only when consumed", async () => {
@@ -301,7 +329,7 @@ test("the activity of a delivery is told by the process, from its use case's run
 test("a repository's outbox keeps the message in its transaction, delivered after", async () => {
   const outbox = eventOutbox();
   const event = newEvent(OfflineEvent, { value: "outbox" });
-  await outbox.save(storedEventOf(event, envelopeOf(event)));
+  await outbox.save(storedMessageOf("event", event, envelopeOf(event)));
   assert.equal(await stateOf("outbox"), "pending");
   outbox.schedule();
   await eventDelivery.drain();
@@ -330,13 +358,13 @@ function printing(outcome: () => Promise<void>) {
 const printRequest = (imageBase64: string) =>
   newEvent(PrintImageRequestedEvent, { imageBase64, title: "Ticket 7", jobId: "" });
 
-test("a print whose printer is off fails unavailable and waits to be retried, keyed by its message", async () => {
+test("a print whose printer is off is a failed one at once, never sent again on its own, keyed by its message", async () => {
   const { notices } = printing(() => Promise.reject(new PrinterUnavailable("no answer")));
   const envelope = await eventDelivery.publisher.publish(printRequest("abc"));
   await eventDelivery.drain();
-  const [waiting] = await eventStore.inState("pending");
-  assert.equal(waiting?.failures[0]?.kind, "unavailable");
-  assert.equal(waiting?.attempts, 1);
+  const [failed] = await eventStore.inState("set_aside");
+  assert.equal(failed?.failures[0]?.kind, "unavailable");
+  assert.equal(failed?.attempts, 1);
   assert.deepEqual(
     notices.map((notice) => notice.name),
     ["printer.printing", "printer.print_failed"],
@@ -345,8 +373,7 @@ test("a print whose printer is off fails unavailable and waits to be retried, ke
   assert.deepEqual(notices[1]?.actions, PRINT_FAILURE_ACTIONS);
 });
 
-test("an app that gives a print one attempt finds it failed at once, the screens told, the line not held", async () => {
-  eventDelivery.configure({ attempts: { [PrintImageRequestedEvent.eventName]: 1 } });
+test("two prints with the printer off are two failed ones at once, the screens told, the line not held", async () => {
   printing(() => Promise.reject(new PrinterUnavailable("printer off")));
   const told: string[] = [];
   const stop = UIEventBus.on(
@@ -398,13 +425,7 @@ test("the core's use cases are registered by their decorators, for their Command
   const { commonBoundedContext, CommandPrintImage: CorePrintCommand } =
     await import("../../sincpro_mobile/services/index.ts");
   const subscriber = new Kernel([baseModule]).subscriberFor(new Set(["COMMON"]));
-  for (const name of [
-    "common.print.v1.image_requested",
-    "common.webview.v1.message_received",
-    "common.settings.added",
-    "common.domain.activate",
-    "common.domain.deactivate",
-  ]) {
+  for (const name of ["common.print.v1.image_requested", "common.settings.added"]) {
     assert.ok(subscriber.eventTypeOf(name), `${name} is heard by the core`);
   }
   assert.ok(commonBoundedContext.handlerOf(CorePrintCommand));

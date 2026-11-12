@@ -48,7 +48,7 @@ import { DomainAppError, StaleAggregate } from "@sincpro/mobile/exceptions";
 import { eventOutbox } from "@sincpro/mobile/infrastructure/events/outbox";
 import {
   envelopeOfRecorded,
-  storedEventOf,
+  storedMessageOf,
 } from "@sincpro/mobile/infrastructure/events/stored";
 
 import { SqliteDocumentStore } from "./sqlite_document_store";
@@ -156,7 +156,9 @@ export class DocumentRepository<T extends Entity> implements IRepository<
           sequence: index + 1,
           correlationId: flow,
         };
-        await outbox.save(storedEventOf(event, envelopeOfRecorded(recorded, this.cause)));
+        await outbox.save(
+          storedMessageOf("event", event, envelopeOfRecorded(recorded, this.cause)),
+        );
       }
     });
     outbox.schedule();
@@ -470,7 +472,9 @@ export class DocumentRepository<T extends Entity> implements IRepository<
       return;
     }
     for (const item of recorded) {
-      await outbox.save(storedEventOf(item.event, envelopeOfRecorded(item, this.cause)));
+      await outbox.save(
+        storedMessageOf("event", item.event, envelopeOfRecorded(item, this.cause)),
+      );
     }
     if (session.deliver) session.outboxes.add(outbox);
   }

@@ -1,10 +1,8 @@
 import { logger } from "@sincpro/client-framework";
+import type { ConnectivityConfig } from "@sincpro/mobile/domain/connectivity";
+import type { EventsConfig } from "@sincpro/mobile/domain/events";
 import { defineBackgroundCrons } from "@sincpro/mobile/framework/background";
-import {
-  createKernel,
-  type EventsConfig,
-  startApp,
-} from "@sincpro/mobile/framework/createApp";
+import { createKernel, startApp } from "@sincpro/mobile/framework/createApp";
 import type { DomainModule } from "@sincpro/mobile/framework/domain_module";
 import type { Kernel } from "@sincpro/mobile/framework/kernel";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
@@ -148,11 +146,13 @@ export interface AppShellConfig {
    */
   observability?: ObservabilityConfig;
   /**
-   * What the app changes of its stored events, all optional: `attempts` by event name
-   * (`{ [PrintImageRequestedEvent.eventName]: 1 }` sends a failed print to the failed ones at
-   * once) and `retentionDays` (`delivered` 7, `failed` kept until retried or deleted).
+   * What the app sets of its stored messages — `AppConfig.events`, every key optional: sent once
+   * (`retries: 0`), a failure goes to the failed ones; what goes over the network waits for it;
+   * `keep` (delivered 7 days, failed until a person acts); `byName` for one message.
    */
   events?: EventsConfig;
+  /** How the app knows there is internet — `AppConfig.connectivity`: its own `check`, optional. */
+  connectivity?: ConnectivityConfig;
   /** Light theme tokens. Defaults to the DS base theme if omitted. */
   theme?: ThemeTokens;
   /** Dark theme tokens. When provided, the system color-scheme toggle activates it. */
@@ -166,8 +166,6 @@ export interface AppShellConfig {
   brandFont?: BrandFontConfig;
   /** Component rendered while fonts + domain init complete. */
   splashComponent?: ComponentType;
-  /** @deprecated `events.retentionDays.delivered` — it wins when both are set. */
-  eventRetentionDays?: number;
   /** Minimum time (ms) the splash stays visible. Default 2000. */
   splashDuration?: number;
   /**
@@ -206,6 +204,7 @@ export function defineAppShell(config: AppShellConfig): AppShellDefinition {
     domains: config.domains,
     observability: config.observability,
     events: config.events,
+    connectivity: config.connectivity,
   });
   defineBackgroundCrons(kernel);
   const domains = config.domains.map(({ key, name }) => ({ key, name }));
@@ -219,10 +218,7 @@ export function defineAppShell(config: AppShellConfig): AppShellDefinition {
     // icon is blank. On iOS ICON_FONTS is empty: icons are SF Symbols.
     fontFiles: { ...ICON_FONTS, ...config.brandFont?.files },
     start: onceUntilFailure(async () => {
-      await startApp(kernel, {
-        eventRetentionDays: config.eventRetentionDays,
-        events: config.events,
-      });
+      await startApp(kernel, { events: config.events });
     }),
   };
 }

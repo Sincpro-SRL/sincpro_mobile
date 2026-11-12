@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
-import type { StoredEvent } from "@sincpro/client-framework";
+import type { StoredMessage } from "@sincpro/client-framework";
 
 import { eventStore } from "../../sincpro_mobile/adapters/repositories/sqlite_event_store.ts";
 import MIGRATIONS from "../../sincpro_mobile/entrypoints/db/migrations.ts";
@@ -19,14 +19,16 @@ async function storedEventsTable(): Promise<void> {
 
 function message(
   id: string,
-  overrides: Partial<StoredEvent> & { name?: string; publishedAt?: string } = {},
-): StoredEvent {
+  overrides: Partial<StoredMessage> & { name?: string; publishedAt?: string } = {},
+): StoredMessage {
   const {
     name = "test.thing.v1.happened",
     publishedAt = new Date().toISOString(),
     ...rest
   } = overrides;
   return {
+    kind: "event",
+    answer: null,
     envelope: { name, id, correlationId: `flow-${id}`, causationId: null, publishedAt },
     payload: { value: id },
     state: "pending",

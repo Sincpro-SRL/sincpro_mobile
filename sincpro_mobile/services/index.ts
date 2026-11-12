@@ -39,7 +39,7 @@ export {
   CommandClearEvents,
 } from "@sincpro/mobile/services/events/clear_events.feature";
 export {
-  DEFAULT_EVENT_RETENTION_DAYS,
+  DEFAULT_RETENTION,
   RECENT_EVENTS_LIMIT,
 } from "@sincpro/mobile/services/events/common";
 export {
@@ -125,7 +125,3 @@ export {
   CommandApplyAppSettings,
   type SettingsStore,
 } from "@sincpro/mobile/services/settings/apply_app_settings.feature";
-export {
-  CommandProcessWebViewMessage,
-  ProcessWebViewMessage,
-} from "@sincpro/mobile/services/webview/process_web_view_message.app_service";

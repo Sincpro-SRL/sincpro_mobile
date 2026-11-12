@@ -93,13 +93,11 @@ test("WebView messages reach the handler of their type; an app's handler wins", 
 
 test("the core passes data raw and lets the app configure it", () => {
   // No allow-lists: an app's own WebView message types reach its handlers.
-  const webview = read(
-    "sincpro_mobile/services/webview/process_web_view_message.app_service.ts",
-  );
+  const webview = read("sincpro_mobile/infrastructure/webview/message_handlers.ts");
   assert.doesNotMatch(webview, /validTypes/);
   assert.match(
     webview,
-    /return parsed && typeof parsed\.type === "string" \? parsed : null;/,
+    /if \(!message \|\| typeof message\.type !== "string"\) return false;/,
   );
   // Any react-native-webview prop reaches the WebView, after the defaults.
   const injectable = read("sincpro_mobile/ui/components/organisms/InjectableWebView.tsx");
@@ -114,6 +112,6 @@ test("the core passes data raw and lets the app configure it", () => {
   );
   assert.match(
     read("sincpro_mobile/entrypoints/ui/AppShell.tsx"),
-    /eventRetentionDays: config\.eventRetentionDays/,
+    /startApp\(kernel, \{ events: config\.events \}\)/,
   );
 });

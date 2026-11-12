@@ -176,7 +176,7 @@ flowchart TB
     end
 
     subgraph REPOS["Repositories (adapters/ports)"]
-        repo["Entity repositories · SqliteEventStore (EventStore)"]
+        repo["Entity repositories · SqliteEventStore (MessageStore)"]
     end
 
     netcron["CHECK_NETWORK cron<br/>CommandCheckConnectivity"] -->|emits| netev["InternetIsUp / Down<br/>(UIEventBus)"]
@@ -583,17 +583,16 @@ The framework ships injectable scripts that intercept `window.print()` calls ins
 
 ```tsx
 import { WebViewAdapter } from "@sincpro/mobile/adapters/webview";
+import { dispatchWebViewMessage } from "@sincpro/mobile/infrastructure/webview/message_handlers";
 
 <WebView
   injectedJavaScriptBeforeContentLoaded={WebViewAdapter.getDefaultInterceptors()
     .map((s) => s.script)
     .join("\n")}
   onMessage={({ nativeEvent }) => {
-    // The base module hears it: OnWebViewMessage → ProcessWebViewMessage queues a PRINT_IMAGE,
-    // OnPrintImageRequested → PrintImage prints it
-    void eventDelivery.publisher.publish(
-      newEvent(WebViewMessageReceivedEvent, { raw: nativeEvent.data }),
-    );
+    // Each message goes to the handler of its type: the base module's print cycle
+    // (`webViewHandlers()`), or one an app's module adds for its own types
+    void dispatchWebViewMessage(nativeEvent.data);
   }}
 />;
 ```

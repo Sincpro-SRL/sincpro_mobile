@@ -31,7 +31,6 @@ import {
   CommandConnectPrinter,
   CommandPrinterStatus,
   CommandPrintTestPage,
-  CommandProcessWebViewMessage,
   CommandPruneEventHistory,
   CommandRequestBluetoothPermission,
   CommandRestorePrinterConnection,
@@ -213,31 +212,6 @@ function keptQueue() {
   };
 }
 
-test("a page's print image is queued by a child run, in the same trace and flow", async () => {
-  const { kept, queue } = keptQueue();
-  swap("publisher", new Publisher(queue as never));
-  const raw = JSON.stringify({
-    type: "PRINT_IMAGE",
-    image: "abc",
-    width: 1,
-    height: 2,
-    jobId: "job-1",
-    metadata: { title: "Ticket 7" },
-  });
-
-  await commonBoundedContext.execute(new CommandProcessWebViewMessage(raw));
-
-  const parent = spanOf("common/ProcessWebViewMessage");
-  const child = spanOf("common/QueuePrint");
-  assert.ok(parent && child);
-  assert.equal(child.parentSpanId, parent.spanId, "the queueing is a child of the message");
-  assert.equal(child.traceId, parent.traceId);
-  const [stored] = kept;
-  assert.ok(stored?.event instanceof PrintImageRequestedEvent);
-  assert.equal((stored.event as PrintImageRequestedEvent).jobId, "job-1");
-  assert.ok(stored.envelope.correlationId, "the event continues the run's flow");
-});
-
 test("a page's print cycle executes Commands, and a capture that never answers fails on time", async () => {
   const { kept, queue } = keptQueue();
   swap("publisher", new Publisher(queue as never));
@@ -271,7 +245,7 @@ test("a page's print cycle executes Commands, and a capture that never answers f
   );
 });
 
-test("the history is pruned as the app says: the failed ones only when it set their retention", async () => {
+test("the history is pruned as the app keeps it: by default delivered 7 days, failed until a person acts", async () => {
   const pruned: string[] = [];
   swap("eventStore", {
     pruneDeliveredBefore: async () => void pruned.push("delivered"),
@@ -282,8 +256,10 @@ test("the history is pruned as the app says: the failed ones only when it set th
   assert.deepEqual(pruned, ["delivered"], "unsaid, a failed one waits for the person");
 
   pruned.length = 0;
-  await commonBoundedContext.execute(new CommandPruneEventHistory(Infinity, 30));
-  assert.deepEqual(pruned, ["failed"], "Infinity keeps the delivered ones");
+  await commonBoundedContext.execute(
+    new CommandPruneEventHistory({ delivered: "forever", failed: 30 }),
+  );
+  assert.deepEqual(pruned, ["failed"], '"forever" keeps the delivered ones');
 });
 
 test("emptying the events runs only when asked; pending ones only when named", async () => {

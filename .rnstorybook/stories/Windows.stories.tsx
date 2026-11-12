@@ -15,6 +15,7 @@ import { View } from "react-native";
 function sampleEvent(fields: Partial<EventRecord>): EventRecord {
   return {
     id: `${fields.name ?? "event"}-${fields.publishedAt ?? ""}`,
+    kind: "event",
     name: "",
     label: "",
     state: "pending",
@@ -26,6 +27,7 @@ function sampleEvent(fields: Partial<EventRecord>): EventRecord {
     failures: [],
     error: null,
     payload: {},
+    answer: null,
     ...fields,
   };
 }

@@ -2,54 +2,87 @@ import type {
   DeliveryFailure,
   DomainEvent,
   JsonValue,
+  MessageKind,
   StoredState,
 } from "@sincpro/client-framework";
 
 import { type LabelText, textOf } from "./label";
 
 /**
- * What an event class declares about itself on a phone, beside its wire name (`eventName`):
+ * What a message class — an event or a Command — declares about its delivery on a phone, beside
+ * its wire name:
  *
  *     class PrintImageRequestedEvent extends DomainEvent {
  *       static readonly eventName = "common.print.v1.image_requested";
  *       static readonly label = { es: "Imprimiendo...", en: "Printing..." };
- *       static readonly requiresNetwork = false;   // prints offline
  *       static readonly requiresSession = false;   // a page may print before signing in
- *       static readonly attempts = 1;              // set aside at its first failure
+ *     }
+ *     class CommandSendMessage extends Command<Sent> {
+ *       static readonly requiresNetwork = true;    // waits for the connection and the server
+ *       static readonly retries = 2;               // sent again twice after a failure
  *     }
  *
- * Context: whether an event may be delivered now is the event's to say — what it is about
- * needs a connection, or a signed-in session — never the subscriber's: the stored queue asks it
- * of the event's class (`deliveryNeedsOf`) and lets the rest go on while it waits. An event that
- * says nothing needs a session and no connection. `ui` asks the activity toast to show its
- * delivery. `attempts` is how many times the queue tries it before setting it aside — the
- * failed ones —, the queue's (10) when unsaid; an application changes it for one event by its
- * name (`AppConfig.events.attempts`).
+ * Context: what a message needs is the message's to say, and an application changes it by its
+ * name (`AppConfig.events.byName`) — never the queue's:
+ * - `requiresNetwork`: it waits for a connection, and a server that is not there makes it wait,
+ *   not fail (client-framework's `WAITING_KINDS`). False when unsaid.
+ * - `requiresSession`: it waits for a signed-in session. True when unsaid.
+ * - `retries`: sent again after a failure; the app's `events.retries` (0) when unsaid.
+ * - `maxAttempts`: every send, waits included; the app's `events.maxAttempts` (no limit) when
+ *   unsaid.
+ * - `label` and `ui`: what a person reads, and whether the activity toast shows it.
  */
 export type DeliveryDeclaration = {
   readonly label?: LabelText;
   readonly requiresNetwork?: boolean;
   readonly requiresSession?: boolean;
+  readonly retries?: number;
+  readonly maxAttempts?: number;
   readonly ui?: boolean;
-  readonly attempts?: number;
 };
 
-/** What an event's delivery waits for. */
+/** What an application changes of one message's delivery, by its name. */
+export type DeliveryOverride = Pick<
+  DeliveryDeclaration,
+  "requiresNetwork" | "requiresSession" | "retries" | "maxAttempts"
+>;
+
+/** Days a stored message is kept, or `"forever"`. */
+export type Retention = number | "forever";
+
+/**
+ * What an application sets of its stored messages — every key optional, its default beside it:
+ *
+ *     events: {
+ *       retries: 0,                                  // sent again after a failure
+ *       maxAttempts: Infinity,                       // every send, waits included
+ *       backoff: { first: 1_000, longest: 60_000 },  // ms between sends
+ *       keep: { delivered: 7, failed: "forever" },   // days kept, by how they ended
+ *       byName: { "chat.CommandSendMessage": { retries: 2 } },  // a Command by its identity
+ *     }
+ */
+export type EventsConfig = {
+  readonly retries?: number;
+  readonly maxAttempts?: number;
+  readonly backoff?: { readonly first?: number; readonly longest?: number };
+  readonly keep?: { readonly delivered?: Retention; readonly failed?: Retention };
+  readonly byName?: Readonly<Record<string, DeliveryOverride>>;
+};
+
+/** What a message's delivery waits for. */
 export type DeliveryNeeds = { readonly network: boolean; readonly session: boolean };
 
-/** What the class of an event — or nothing, when nobody hears it here — asks of its delivery. */
-export function deliveryNeedsOf(type: object | undefined): DeliveryNeeds {
-  const declared = (type ?? {}) as DeliveryDeclaration;
+/** What a declaration — a class's, with the app's over it — asks its delivery to wait for. */
+export function deliveryNeedsOf(declared: DeliveryDeclaration): DeliveryNeeds {
   return {
     network: declared.requiresNetwork === true,
     session: declared.requiresSession !== false,
   };
 }
 
-/** How many attempts the class of an event asks for; `undefined` keeps the queue's. */
-export function deliveryAttemptsOf(type: object | undefined): number | undefined {
-  const declared = ((type ?? {}) as DeliveryDeclaration).attempts;
-  return typeof declared === "number" ? declared : undefined;
+/** What the class of a message declares — nothing, when nobody here knows it. */
+export function declarationOf(type: object | undefined): DeliveryDeclaration {
+  return (type ?? {}) as DeliveryDeclaration;
 }
 
 /** What a person reads for an event: its class's label, or its wire name. */
@@ -58,7 +91,7 @@ export function labelOf(type: object | undefined, name: string): LabelText {
   return declared.label && textOf(declared.label) ? declared.label : name;
 }
 
-/** Whether an event's delivery is shown in the activity toast. */
+/** Whether a message's delivery is shown in the activity toast. */
 export function showsDelivery(type: object | undefined): boolean {
   return ((type ?? {}) as DeliveryDeclaration).ui === true;
 }
@@ -85,6 +118,8 @@ export function newEvent<E extends DomainEvent>(
  */
 export type EventRecord = {
   readonly id: string;
+  /** A fact for whoever hears it, or an intention for the bus that consumes it. */
+  readonly kind: MessageKind;
   readonly name: string;
   /** What a person reads: its class's label, or its wire name. */
   readonly label: string;
@@ -98,4 +133,6 @@ export type EventRecord = {
   /** Why the last attempt failed, for a person; `null` when nothing failed. */
   readonly error: string | null;
   readonly payload: JsonValue;
+  /** What a Command answered, once delivered; `null` for an event. */
+  readonly answer: JsonValue | null;
 };

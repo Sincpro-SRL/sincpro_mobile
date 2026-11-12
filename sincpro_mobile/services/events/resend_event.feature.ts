@@ -30,6 +30,7 @@ export class ResendEvent extends Feature<CommandResendEvent, void> {
 
   private async storeAgain(record: EventRecord): Promise<void> {
     await this.eventStore.add({
+      kind: record.kind,
       envelope: {
         name: record.name,
         id: newEntityId(),
@@ -43,6 +44,7 @@ export class ResendEvent extends Feature<CommandResendEvent, void> {
       retryAt: null,
       reached: [],
       failures: [],
+      answer: null,
     });
     void this.eventDelivery.drain();
   }
