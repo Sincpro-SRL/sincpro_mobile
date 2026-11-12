@@ -731,9 +731,7 @@ export class DocumentRepository<T extends Entity> implements IRepository<
   }
 
   private repositoryFor(type: Function): DocumentRepository<Entity> {
-    const found = registry.get(type);
-    if (!found) throw new DomainAppError(`no document repository for ${type.name}`);
-    return found;
+    return DocumentRepository.of(type as AnyClass<Entity>);
   }
 
   private openSession(options?: { deliver?: boolean }): Session {
