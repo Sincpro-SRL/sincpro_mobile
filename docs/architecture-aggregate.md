@@ -6,22 +6,25 @@ Un teléfono que ya tiene las tablas de eventos no las tira. El store crea la ta
 
 ## Piezas
 
-| Pieza                 | Dónde                                            | Qué decide                                                                          |
-| --------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| `Entity`              | `domain/entity/entity.ts`                        | Identidad (`uuid`), `version`, tiempos, `record`                                    |
-| `RemoteEntity`        | el mismo archivo                                 | El `id` de Odoo (`remoteId`) y `remoteState`. No reemplaza el `uuid`                |
-| `@check`              | `domain/entity/checks.ts`                        | Regla sobre campos del propio agregado                                              |
-| `valueRule`           | `domain/entity/values.ts`                        | Predicado de un valor: `parse` / `holds`                                            |
-| `@relation`           | `domain/entity/relations.ts`                     | Otra entidad que viaja con esta. El segundo argumento es `RelationCascade`          |
-| `@mapped`             | `infrastructure/database/mapped.ts`              | Puntero por ids a una entidad que vive sola. Cada lectura reconsulta. No se escribe |
-| `withChangeTracking`  | `domain/entity/change_tracking.ts`               | Diff contra la última lectura. Emite `entity.updated`                               |
-| `DomainEvent`         | `@sincpro/client-framework`                      | El hecho que el agregado registra (`record`), con su `eventName`                    |
-| `Subscriber`          | `@sincpro/client-framework` (`subscriberFor`)    | Quién ejecuta un hecho ya guardado: los bounded contexts que lo registraron         |
-| `Hook`                | `domain/repositories/hooks.ts`                   | Qué corre el repositorio alrededor de leer, guardar y borrar                        |
-| `IRepository`         | `domain/repositories/repository.ts`              | El puerto: guardar, upsert, borrar, publicar, leer                                  |
-| `DocumentRepository`  | `adapters/repositories/document.repository.ts`   | Ese puerto sobre un `DocumentStore`                                                 |
-| `SqliteDocumentStore` | `adapters/repositories/sqlite_document_store.ts` | La fila real: `uuid`, `version`, `data`, columnas declaradas                        |
-| `Outbox`              | `domain/repositories/document_store.ts`          | `save` del evento en `stored_events` y `schedule` de la entrega (`eventOutbox()`)   |
+| Pieza                 | Dónde                                            | Qué decide                                                                             |
+| --------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `Entity`              | `domain/entity/entity.ts`                        | Identidad (`uuid`), `version`, tiempos, `record`                                       |
+| `DEFAULT_*`           | estáticos de `Entity`                            | Cómo se lee: su clave, su orden, su display y cómo la encuentra un texto               |
+| `RemoteEntity`        | el mismo archivo                                 | El `id` de Odoo (`remoteId`) y `remoteState`. No reemplaza el `uuid`                   |
+| `@check`              | `domain/entity/checks.ts`                        | Regla sobre campos del propio agregado                                                 |
+| `valueRule`           | `domain/entity/values.ts`                        | Predicado de un valor: `parse` / `holds`                                               |
+| `@relation`           | `domain/entity/relations.ts`                     | Otra entidad que viaja con esta. El segundo argumento es `RelationCascade`             |
+| `@mapped`             | `infrastructure/database/mapped.ts`              | Puntero por ids a una entidad que vive sola. Cada lectura reconsulta. No se escribe    |
+| `withChangeTracking`  | `domain/entity/change_tracking.ts`               | Diff contra la última lectura. Emite `entity.updated`                                  |
+| `DomainEvent`         | `@sincpro/client-framework`                      | El hecho que el agregado registra (`record`), con su `eventName`                       |
+| `Subscriber`          | `@sincpro/client-framework` (`subscriberFor`)    | Quién ejecuta un hecho ya guardado: los bounded contexts que lo registraron            |
+| `Hook`                | `domain/repositories/hooks.ts`                   | Qué corre el repositorio alrededor de leer, guardar y borrar                           |
+| `IRepository`         | `domain/repositories/repository.ts`              | El puerto: guardar, upsert, borrar, publicar, leer                                     |
+| `DocumentRepository`  | `adapters/repositories/document.repository.ts`   | Ese puerto sobre un `DocumentStore`                                                    |
+| `SqliteDocumentStore` | `adapters/repositories/sqlite_document_store.ts` | La fila real: `uuid`, `version`, `data`, columnas declaradas                           |
+| `Get`, `Search`, …    | `domain/reads/queries.ts`                        | Las lecturas de una entidad como Commands: `Get`, `GetMany`, `LiteralSearch`, `Search` |
+| `EntityReads`         | `framework/entity_reads.ts`                      | El Feature que las responde desde el repositorio de la entidad. No se escribe          |
+| `Outbox`              | `domain/repositories/document_store.ts`          | `save` del evento en `stored_events` y `schedule` de la entrega (`eventOutbox()`)      |
 
 `StoreMode.LOCAL` guarda el documento y no encola. `StoreMode.RELAY` guarda el documento y deja cada evento que el agregado registró en el outbox, dentro de la misma transacción.
 
@@ -111,6 +114,126 @@ Si `after_save` lanza, la transacción deshace la fila del padre y la de los hij
 `findById` hidrata y corre `after_read`. `findByIds`, `findAll` y `findByCriteria` hidratan cada fila (`after_read`) y después corren `after_search` una vez con la página. `findByCriteria` traduce el criteria a SQL en ese momento: una columna declarada se compara por su nombre, y cualquier otro campo con `json_extract` sobre `data`. `today` es la fecha del reloj en su zona y `now` el mismo instante en UTC; los dos se leen una vez al compilar. Un `period` con `between` es `>= inicio AND < fin`. Una relación cruza con `EXISTS`. La colección que ya está en memoria sigue filtrando con el motor de `@sincpro/criteria`. `remoteId`, `remoteState` y `ackedVersion` salen por columna cuando el store las tiene: `sqliteDocuments` las declara si la entidad es `RemoteEntity`.
 
 La hidratación de una `@relation` lee los ids del documento y carga esas filas en el repositorio del hijo. Un JSON viejo que todavía trae el hijo embebido también se acepta. Después anota los ids que el padre tenía y, si el agregado sigue cambios, toma el snapshot. Un `after_read` que rellena un campo entra en ese snapshot: no sale como `entity.updated` en el próximo guardado.
+
+`findByIds`, `findByRemoteIds` y `findByRemoteState` leen con una consulta `IN (…)` cada 500 valores y devuelven lo encontrado en el orden pedido; lo que no existe no está.
+
+### Una página
+
+`search(criteria)` es lo que lee una pantalla: una página, nunca la tabla entera. Es el `repository.search` del backend.
+
+- El orden es el del criteria; si no nombra ninguno, el de la entidad (`DEFAULT_ORDER`). `uuid` lo cierra como desempate en la dirección del primer orden, así dos filas nunca empatan. `NULL` va primero, como lo ordena SQLite.
+- 50 filas salvo que `pagination.limit` diga otra cosa. Se lee una más para saber si sigue otra página.
+- `strategy: { token }` sigue desde el cursor de la página anterior con un keyset en SQL: igual en los órdenes de antes, más allá en este. El token es el de `@sincpro/criteria` (`mintCursor`), así que un `Reading` y `useReading` hacen "cargar más" igual que contra un servidor. Un token de otro orden se rechaza con `InvalidCriteria` y el `Reading` vuelve a la primera página. `strategy: { rows }` salta filas y no da cursor.
+- `count` decide cuánto cuesta: `"none"` no cuenta, `"capped"` (el default) cuenta hasta `COUNT_CEILING` (10 000) y responde `exact: false` pasado eso, `"exact"` cuenta todo.
+
+Devuelve una `EntityCollection` con `cursor` (`null` en la última página) y `total`. `count(criteria)` responde solo el conteo del filtro.
+
+```ts
+const page = await tickets.search({
+  selection: { field: "state", operator: "=", value: "open" },
+  pagination: { limit: 20 },
+});
+page.toArray();
+page.cursor;
+page.total; // { value: 134, exact: true }
+const next = await tickets.search(resumingFrom(criteria, page.cursor));
+```
+
+### Cómo se lee una entidad
+
+La entidad declara cómo se lee, como en el backend. Se sobrescribe solo lo que cambia:
+
+| Estático                   | Default                                  | Lo usa                   |
+| -------------------------- | ---------------------------------------- | ------------------------ |
+| `DEFAULT_GET_ID()`         | `"uuid"`                                 | `Get`, `GetMany`         |
+| `DEFAULT_ORDER()`          | `uuid` descendente: lo más nuevo primero | `search` sin orden       |
+| `DEFAULT_DISPLAY()`        | `"name"`                                 | `DEFAULT_LITERAL_SEARCH` |
+| `DEFAULT_LITERAL_SEARCH()` | `like` sobre el display                  | `LiteralSearch`          |
+
+```ts
+export class Ticket extends RemoteEntity {
+  number = "";
+  title = "";
+  state = "open";
+
+  static override DEFAULT_ORDER() {
+    return [{ field: "number", descending: true }];
+  }
+
+  static override DEFAULT_LITERAL_SEARCH(): Criteria | null {
+    return {
+      selection: {
+        all: [
+          { field: "state", operator: "=", value: "open" },
+          {
+            any: [
+              { field: "number", operator: "starts with", value: TEXT },
+              { field: "title", operator: "like", value: TEXT },
+            ],
+          },
+        ],
+      },
+    };
+  }
+}
+```
+
+`TEXT` es donde va lo que se escribió. Con el texto vacío, las condiciones que lo tienen se caen y el resto (`state = open`) sigue. `null` es que la entidad no se busca: un texto no encuentra nada.
+
+### Lecturas como casos de uso
+
+Una pantalla no escribe sus lecturas. Cada caso de uso tiene su archivo, como cualquier otro: el Command dice qué entidad lee, y el Feature hereda la lectura de `EntityReads` sin escribir nada.
+
+```ts
+// services/ticket/search_tickets.feature.ts
+export class CommandSearchTickets extends Search(Ticket) {}
+
+@ticketsBoundedContext.feature(CommandSearchTickets)
+export class SearchTickets extends EntityReads<CommandSearchTickets> {}
+```
+
+| Command base            | Construye            | Responde                        |
+| ----------------------- | -------------------- | ------------------------------- |
+| `Get(Ticket)`           | `(id, criteria?)`    | `Ticket`, o `AggregateNotFound` |
+| `GetMany(Ticket)`       | `(ids, criteria?)`   | `{ records, missing }`          |
+| `LiteralSearch(Ticket)` | `(text?, criteria?)` | `Page<Ticket>` corta (8)        |
+| `Search(Ticket)`        | `(criteria?)`        | `Page<Ticket>`                  |
+
+`Page<T>` es la de `@sincpro/criteria`: `rows`, `cursor`, `count`, `meta` (`null`: el modelo no viaja) y `dropped`. Es la misma forma que responde un `Transport` remoto, así que una pantalla o un `Reading` no saben dónde viven los datos:
+
+```ts
+const tickets = resource<Ticket>((criteria) =>
+  ticketsBoundedContext.execute(new CommandSearchTickets(criteria)),
+);
+const reading = tickets.read({ pagination: { limit: 20 } }); // useReading(tickets, criteria)
+```
+
+El `criteria` de quien llama va sobre lo que la entidad lee por default: su filtro se suma, y lo demás que nombra (orden, página, conteo) reemplaza.
+
+Un caso de uso que lee dentro de un alcance sobrescribe su lectura y llama a `super` con él. El alcance se suma al filtro de quien llama:
+
+```ts
+export class CommandSearchTickets extends Search(Ticket) {
+  constructor(
+    criteria: Criteria<Ticket> = {},
+    readonly includeClosed = false,
+  ) {
+    super(criteria);
+  }
+}
+
+@ticketsBoundedContext.feature(CommandSearchTickets)
+export class SearchTickets extends EntityReads<CommandSearchTickets> {
+  protected override search(query: CommandSearchTickets) {
+    if (query.includeClosed) return super.search(query);
+    return super.search(query, {
+      selection: { field: "state", operator: "=", value: "open" },
+    });
+  }
+}
+```
+
+Lo mismo con `get`, `getMany` y `literalSearch`. Un Feature puede responder varias lecturas de su entidad (`feature([CommandGetTicket, CommandFindTickets])` con `EntityReads<CommandGetTicket | CommandFindTickets>`). Lee del repositorio registrado para la entidad (`sqliteDocuments(Ticket, …)`); otro se elige sobrescribiendo `readsFrom(entity)`. `AggregateNotFound` es `not_found`: la ejecución termina `refused` y no se reporta.
 
 `findByIdSync` y `findByIdsSync` existen para `@mapped`. No corren hooks: un getter no puede esperar.
 
@@ -221,7 +344,7 @@ No hay archivar. Borrar es `remove`.
 | Momento                           | Cuándo                                                                                                |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `after_read`                      | Cada fila hidratada                                                                                   |
-| `after_search`                    | Una vez, con la página de `findByIds`, `findAll` o `findByCriteria`                                   |
+| `after_search`                    | Una vez, con la página de `search`, `findByIds`, `findAll` o `findByCriteria`                         |
 | `before_save`                     | Antes de escribir, también en `upsert`                                                                |
 | `before_create` / `before_update` | Solo en `save`, según `isNew`                                                                         |
 | `after_create` / `after_update`   | Solo en `save`, después de la fila                                                                    |

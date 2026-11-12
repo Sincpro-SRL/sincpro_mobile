@@ -149,6 +149,7 @@
     "./domain": "./dist/domain/index.js",
     "./domain/entity": "./dist/domain/entity/index.js",
     "./domain/events": "./dist/domain/events/index.js",
+    "./domain/reads": "./dist/domain/reads/index.js",
     "./domain/repositories": "./dist/domain/repositories/index.js",
     "./domain/database": "./dist/domain/database/index.js",
     "./domain/connectivity": "./dist/domain/connectivity/index.js",

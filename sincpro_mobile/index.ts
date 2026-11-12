@@ -21,6 +21,7 @@ export { BaseModule, baseModule } from "@sincpro/mobile/framework/base_module";
 export type { AppConfig } from "@sincpro/mobile/framework/createApp";
 export { createApp, createKernel, startApp } from "@sincpro/mobile/framework/createApp";
 export { DomainModule } from "@sincpro/mobile/framework/domain_module";
+export { EntityReads } from "@sincpro/mobile/framework/entity_reads";
 export { Kernel } from "@sincpro/mobile/framework/kernel";
 export { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 export { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";

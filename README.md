@@ -358,6 +358,33 @@ A repository in `StoreMode.RELAY` stores them through `eventOutbox()` (the `stor
 table) and asks for the delivery after the commit. One in `StoreMode.LOCAL` without an outbox
 keeps them on the entity: nothing is delivered.
 
+### ✅ Entity reads — Get, GetMany, LiteralSearch, Search
+
+A local entity is read the way the backend reads one, and answers in the same shape as a
+remote source (`Page<T>` of `@sincpro/criteria`), so a screen or a `Reading` does not care
+where the data lives. The entity declares how it is read (`DEFAULT_GET_ID`, `DEFAULT_ORDER`,
+`DEFAULT_DISPLAY`, `DEFAULT_LITERAL_SEARCH` with `TEXT`); each read is a use case with its
+own file, whose Feature writes nothing:
+
+```ts
+import { Search } from "@sincpro/mobile/domain/reads";
+import { EntityReads } from "@sincpro/mobile";
+
+export class CommandSearchTickets extends Search(Ticket) {}
+
+@ticketsBoundedContext.feature(CommandSearchTickets)
+export class SearchTickets extends EntityReads<CommandSearchTickets> {}
+
+const page = await ticketsBoundedContext.execute(
+  new CommandSearchTickets({ pagination: { limit: 20 } }),
+); // page.rows, page.cursor (keyset, SQL), page.count
+```
+
+`DocumentRepository.search(criteria)` answers the page underneath: the entity's order closed
+by `uuid`, fifty rows unless asked, a cursor in `@sincpro/criteria`'s token format and a count
+that is `none`, capped at 10 000 (the default) or `exact`. See
+[docs/architecture-aggregate.md](docs/architecture-aggregate.md#leer).
+
 ### ✅ Remote Entity Sync
 
 `RemoteEntity` extends `Entity` with sync state tracking for entities that mirror data from a remote server. It manages the full lifecycle from pending local creation to confirmed remote sync.
