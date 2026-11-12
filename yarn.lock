@@ -2116,10 +2116,10 @@
   resolved "https://registry.yarnpkg.com/@sinclair/typebox/-/typebox-0.27.10.tgz#beefe675f1853f73676aecc915b2bd2ac98c4fc6"
   integrity sha512-MTBk/3jGLNB2tVxv6uLlFh1iu64iYOQ2PbdOSK3NW8JZsmlaOh2q6sdtKowBhfw8QFLmYNzTW4/oK4uATIi6ZA==
 
-"@sincpro/client-framework@^1.4.0":
-  version "1.4.0"
-  resolved "https://registry.yarnpkg.com/@sincpro/client-framework/-/client-framework-1.4.0.tgz#a069c990cf7f78a1095aec3bb9279e37ecf1697a"
-  integrity sha512-SOhLR0rWw1xFajKNrFZNfHnSXl8WxxLt23MkhUzF9JvZuWjSbI4G4VWPD0sy0O0GCVsmsNqCUphDUaFye5FhoQ==
+"@sincpro/client-framework@^1.5.0":
+  version "1.5.0"
+  resolved "https://registry.yarnpkg.com/@sincpro/client-framework/-/client-framework-1.5.0.tgz#359f0742afe2888291864dff7242156e14a46bcd"
+  integrity sha512-3dU1oluFh7R4A+nbdntQ1w0hks5KFVRMdqdgeKE1XLwdc7S3ywygUy0jv7ZAvPIxPKHmDGneoUnGmDGyMxGc1w==
 
 "@sincpro/criteria@^2.1.0":
   version "2.1.0"
