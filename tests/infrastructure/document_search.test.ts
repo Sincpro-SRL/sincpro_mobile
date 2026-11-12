@@ -3,10 +3,8 @@ import { beforeEach, test } from "node:test";
 
 import { type Criteria, InvalidCriteria, resumingFrom } from "@sincpro/criteria";
 
-import {
-  COUNT_CEILING,
-  sqliteDocuments,
-} from "../../sincpro_mobile/adapters/repositories/document.repository.ts";
+import { sqliteDocuments } from "../../sincpro_mobile/adapters/repositories/document.repository.ts";
+import { COUNT_CEILING } from "../../sincpro_mobile/domain/database/criteria_sql.ts";
 import {
   Entity,
   ERemoteState,

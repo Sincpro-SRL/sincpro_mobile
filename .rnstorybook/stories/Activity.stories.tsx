@@ -1,3 +1,4 @@
+import { fromRows, resource } from "@sincpro/criteria";
 import type { EventRecord } from "@sincpro/mobile/domain/events";
 import { ActivityStrip } from "@sincpro/mobile/ui/activity/ActivityStrip";
 import EventTimelineItem from "@sincpro/mobile/ui/components/molecules/EventTimelineItem";
@@ -8,7 +9,7 @@ import { useEventQuery } from "@sincpro/mobile/ui/events/use-event-query";
 import { Typography } from "@sincpro/mobile-ui/Typography";
 import { ListViewV2 } from "@sincpro/mobile-ui/views/ListViewV2";
 import type { Meta, StoryObj } from "@storybook/react-native";
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { View } from "react-native";
 
 const ERROR_LIMIT = 150;
@@ -85,7 +86,8 @@ function EventList({
   description: string;
   events: EventRecord[];
 }) {
-  const list = useEventQuery(events);
+  const inMemory = useMemo(() => resource(fromRows(events, { identity: "id" })), [events]);
+  const list = useEventQuery({}, inMemory);
   return (
     <ListViewV2.Root
       description={description}

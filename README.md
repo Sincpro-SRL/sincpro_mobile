@@ -306,12 +306,36 @@ import {
   CommandDeleteEvents,
   CommandListFailedEvents,
   CommandRetryEvents,
+  CommandSearchEvents,
   commonBoundedContext,
 } from "@sincpro/mobile";
 
 const failed = await commonBoundedContext.execute(new CommandListFailedEvents());
 const retried = await commonBoundedContext.execute(new CommandRetryEvents(failed)); // how many went back
 await commonBoundedContext.execute(new CommandDeleteEvents([failed[0]]));
+```
+
+The screens never load the whole history. `CommandSearchEvents(criteria)` answers a
+`Page<EventRecord>` read in SQL: newest first, filtered by state, name, kind, date or attempts,
+and by `label` (the class's, matched without accents or case), with the cursor of the next page
+and a count. `CommandReadTable(table, criteria, text)` pages the database screen the same way,
+newest row first. The event, failed-event and table screens load more with `useReading`
+(`@sincpro/criteria-react`).
+
+```tsx
+const page = await commonBoundedContext.execute(
+  new CommandSearchEvents({
+    selection: { field: "state", operator: "=", value: "set_aside" },
+    pagination: { limit: 25 },
+  }),
+); // page.rows, page.cursor, page.count
+
+// The failed-events screen lists what the app scopes, read in SQL with its filters:
+<DeadLetterQueueList
+  scope={{
+    selection: { field: "name", operator: "=", value: PrintImageRequestedEvent.eventName },
+  }}
+/>;
 ```
 
 ### ✅ Domain Entity and its events

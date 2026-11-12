@@ -1,4 +1,8 @@
-import { type CompiledCriteria } from "@sincpro/mobile/domain/database/criteria_sql";
+import {
+  type CompiledCriteria,
+  countStatement,
+  selectStatement,
+} from "@sincpro/mobile/domain/database/criteria_sql";
 import {
   type ColumnDefinition,
   missingColumns,
@@ -102,37 +106,15 @@ export class SqliteDocumentStore implements DocumentStore {
 
   async selectMatching(compiled: CompiledCriteria): Promise<DocumentRow[]> {
     await this.ensure();
-    const params: ColumnValue[] = [...compiled.params];
-    let sql = `SELECT ${this.selected()} FROM ${this.table}`;
-    if (compiled.whereSql) sql += ` WHERE ${compiled.whereSql}`;
-    if (compiled.orderSql) sql += ` ORDER BY ${compiled.orderSql}`;
-    if (compiled.limit !== undefined) {
-      sql += " LIMIT ?";
-      params.push(compiled.limit);
-    } else if (compiled.offset > 0) {
-      sql += " LIMIT -1";
-    }
-    if (compiled.offset > 0) {
-      sql += " OFFSET ?";
-      params.push(compiled.offset);
-    }
+    const { sql, params } = selectStatement(compiled, this.table, this.selected());
     const rows = await DBCursor.getAllAsync<Record<string, ColumnValue>>(sql, ...params);
     return rows.map((row) => toDocument(row, this.columnNames));
   }
 
   async countMatching(compiled: CompiledCriteria, ceiling?: number): Promise<number> {
     await this.ensure();
-    const params: ColumnValue[] = [...compiled.params];
-    let counted = `SELECT 1 FROM ${this.table}`;
-    if (compiled.whereSql) counted += ` WHERE ${compiled.whereSql}`;
-    if (ceiling !== undefined) {
-      counted += " LIMIT ?";
-      params.push(ceiling);
-    }
-    const row = await DBCursor.getFirstAsync<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM (${counted})`,
-      ...params,
-    );
+    const { sql, params } = countStatement(compiled, this.table, ceiling);
+    const row = await DBCursor.getFirstAsync<{ total: number }>(sql, ...params);
     return Number(row?.total ?? 0);
   }
 

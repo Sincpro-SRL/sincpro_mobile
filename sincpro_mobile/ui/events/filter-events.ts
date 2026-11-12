@@ -1,4 +1,7 @@
+import type { Criteria, Expression } from "@sincpro/criteria";
+import type { EventRecord } from "@sincpro/mobile/domain/events";
 import {
+  type CriteriaCondition,
   type CriteriaField,
   type CriteriaGroup,
   type CriteriaNode,
@@ -8,14 +11,6 @@ import {
 export type EventStatusFilter = "ALL" | "pending" | "delivered" | "set_aside";
 
 export type EventDateRange = "all" | "today" | "week" | "month";
-
-export interface EventListItem {
-  name: string;
-  label?: string;
-  state?: string;
-  publishedAt: string;
-  attempts?: number;
-}
 
 export const EVENT_FIELDS: readonly CriteriaField[] = [
   {
@@ -82,124 +77,108 @@ export function countConditions(node: CriteriaNode): number {
   return node.children.reduce((total, child) => total + countConditions(child), 0);
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+type EventExpression = Expression<EventRecord>;
 
-function normalize(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
+/** The local day `day` (`YYYY-MM-DD`) starts at, as the instant `publishedAt` is compared to. */
+function dayStart(day: string, days = 0): string {
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(year, month - 1, date + days).toISOString();
 }
 
-function startOfDay(date: Date): number {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+function startOfToday(now: Date, daysBack: number): string {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysBack).toISOString();
 }
 
-// Events are immutable in name and label: their normalized text is computed once per
-// instance, not once per keystroke. The WeakMap lets collected events go.
-const searchText = new WeakMap<EventListItem, readonly [label: string, name: string]>();
+function rangeOf(range: EventDateRange, now: Date): EventExpression | undefined {
+  if (range === "all") return undefined;
+  const back = range === "today" ? 0 : range === "week" ? 6 : 29;
+  return { field: "publishedAt", operator: ">=", value: startOfToday(now, back) };
+}
 
-function textsOfEvent(event: EventListItem): readonly [string, string] {
-  let texts = searchText.get(event);
-  if (texts === undefined) {
-    texts = [normalize(event.label || ""), normalize(event.name)];
-    searchText.set(event, texts);
+/** A condition on the publishing date, read as local days, as the filter builder shows them. */
+function onDay(condition: CriteriaCondition): EventExpression {
+  const [first = "", second = ""] = condition.values.map(String);
+  if (condition.operator === "before") {
+    return { field: "publishedAt", operator: "<", value: dayStart(first) };
   }
-  return texts;
-}
-
-function matchesNeedle(event: EventListItem, needle: string): boolean {
-  if (!needle) return true;
-  const [label, name] = textsOfEvent(event);
-  return label.includes(needle) || name.includes(needle);
-}
-
-export function matchesEventQuery(event: EventListItem, query: string): boolean {
-  return matchesNeedle(event, normalize(query));
-}
-
-export function matchesEventRange(
-  publishedAt: string,
-  range: EventDateRange,
-  now = new Date(),
-): boolean {
-  if (range === "all") return true;
-  const time = Date.parse(publishedAt);
-  if (Number.isNaN(time)) return false;
-  const start = startOfDay(now);
-  if (range === "today") return time >= start;
-  if (range === "week") return time >= start - 6 * DAY_MS;
-  return time >= start - 29 * DAY_MS;
-}
-
-function localDay(publishedAt: string): string {
-  const time = Date.parse(publishedAt);
-  if (Number.isNaN(time)) return "";
-  const date = new Date(time);
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
-}
-
-function fieldValue(event: EventListItem, field: string): string | number {
-  if (field === "name") return event.name;
-  if (field === "label") return event.label ?? "";
-  if (field === "state") return event.state ?? "";
-  if (field === "publishedAt") return localDay(event.publishedAt);
-  if (field === "attempts") return event.attempts ?? 0;
-  return "";
-}
-
-function matchesNode(event: EventListItem, node: CriteriaNode): boolean {
-  if (node.kind === "group") {
-    if (!node.children.length) return true;
-    const results = node.children.map((child) => matchesNode(event, child));
-    if (node.join === "any") return results.some(Boolean);
-    if (node.join === "none") return !results.some(Boolean);
-    return results.every(Boolean);
+  if (condition.operator === "after") {
+    return { field: "publishedAt", operator: ">=", value: dayStart(first, 1) };
   }
-  const value = fieldValue(event, node.field);
-  const first = node.values[0];
-  const second = node.values[1];
-  if (node.operator === "contains") {
-    return normalize(String(value)).includes(normalize(String(first ?? "")));
-  }
-  if (node.operator === "equal") {
-    return typeof value === "number"
-      ? value === Number(first)
-      : normalize(String(value)) === normalize(String(first ?? ""));
-  }
-  if (node.operator === "empty") return String(value).trim().length === 0;
-  if (node.operator === "greater") return Number(value) > Number(first);
-  if (node.operator === "before") return String(value) < String(first ?? "");
-  if (node.operator === "after") return String(value) > String(first ?? "");
-  if (node.operator === "between") {
-    return typeof value === "number"
-      ? value >= Number(first) && value <= Number(second)
-      : String(value) >= String(first ?? "") && String(value) <= String(second ?? "");
-  }
-  return false;
+  const last = condition.operator === "between" ? second : first;
+  return {
+    all: [
+      { field: "publishedAt", operator: ">=", value: dayStart(first) },
+      { field: "publishedAt", operator: "<", value: dayStart(last, 1) },
+    ],
+  };
 }
 
-export function filterEvents<T extends EventListItem>(
-  events: readonly T[],
-  criteria: {
+function conditionOf(condition: CriteriaCondition): EventExpression {
+  if (condition.field === "publishedAt") return onDay(condition);
+  const field = condition.field as keyof EventRecord & string;
+  const [first, second] = condition.values;
+  const numeric = field === "attempts";
+  const value = numeric ? Number(first) : String(first ?? "");
+  switch (condition.operator) {
+    case "contains":
+      return { field, operator: "like", value: String(first ?? "") };
+    case "empty":
+      return {
+        any: [
+          { field, operator: "is null", value: true },
+          { field, operator: "=", value: "" },
+        ],
+      };
+    case "greater":
+      return { field, operator: ">", value };
+    case "between":
+      return { field, operator: "between", value: [Number(first), Number(second)] };
+    default:
+      return { field, operator: "=", value };
+  }
+}
+
+function expressionOf(node: CriteriaNode): EventExpression | undefined {
+  if (node.kind === "condition") return conditionOf(node);
+  const parts = node.children
+    .map(expressionOf)
+    .filter((part): part is EventExpression => part !== undefined);
+  if (parts.length === 0) return undefined;
+  if (node.join === "any") return { any: parts };
+  if (node.join === "none") return { negate: { any: parts } };
+  return { all: parts };
+}
+
+/**
+ * What the event screens ask the stored events: the state chosen, the text typed (its label or
+ * its technical name), the days and the custom filter, all at once — read in SQL a page at a
+ * time (`CommandSearchEvents`), never filtered over what is already on screen.
+ */
+export function eventCriteria(
+  filters: {
     status?: EventStatusFilter;
     query?: string;
     range?: EventDateRange;
     custom?: CriteriaGroup;
   },
   now = new Date(),
-): T[] {
-  const status = criteria.status ?? "ALL";
-  const needle = normalize(criteria.query ?? "");
-  const range = criteria.range ?? "all";
-  const custom = criteria.custom;
-  return events.filter((event) => {
-    if (status !== "ALL" && event.state !== status) return false;
-    if (!matchesNeedle(event, needle)) return false;
-    if (!matchesEventRange(event.publishedAt, range, now)) return false;
-    return custom ? matchesNode(event, custom) : true;
-  });
+): Criteria<EventRecord> {
+  const typed = (filters.query ?? "").trim();
+  const parts = [
+    filters.status && filters.status !== "ALL"
+      ? ({ field: "state", operator: "=", value: filters.status } as EventExpression)
+      : undefined,
+    typed
+      ? ({
+          any: [
+            { field: "label", operator: "like", value: typed },
+            { field: "name", operator: "like", value: typed },
+          ],
+        } as EventExpression)
+      : undefined,
+    rangeOf(filters.range ?? "all", now),
+    filters.custom ? expressionOf(filters.custom) : undefined,
+  ].filter((part): part is EventExpression => part !== undefined);
+  if (parts.length === 0) return {};
+  return { selection: parts.length === 1 ? parts[0] : { all: parts } };
 }

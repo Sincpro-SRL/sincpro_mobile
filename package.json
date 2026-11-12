@@ -42,6 +42,7 @@
     "@opentelemetry/resources": "^2.10.0",
     "@opentelemetry/sdk-trace-base": "^2.10.0",
     "@sincpro/criteria": "^2.1.0",
+    "@sincpro/criteria-react": "^2.1.0",
     "async-mutex": "^0.5.0",
     "big.js": "^7.0.1",
     "dayjs": "^1.11.21",

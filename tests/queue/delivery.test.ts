@@ -100,7 +100,7 @@ const publish = async (event: DomainEvent) => {
 };
 
 const stateOf = async (value: string) =>
-  (await eventStore.recent(50)).find(
+  (await eventStore.search({ pagination: { limit: 50 } })).rows.find(
     (record) => (record.payload as { value?: string }).value === value,
   )?.state;
 

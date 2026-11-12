@@ -19,7 +19,8 @@ function JsonDetailView() {
     selectedRowJson,
     goBackFromJson,
     currentRowIndex,
-    filteredData,
+    rows,
+    total,
     hasNextRow,
     hasPreviousRow,
     goToNextRow,
@@ -37,7 +38,7 @@ function JsonDetailView() {
       <FormViewV2.Header variant="default">
         <FormViewV2.Header.Actions>
           <Typography.Text className="text-text-secondary" variant="bodySmall">
-            {currentRowIndex + 1} de {filteredData.length}
+            {currentRowIndex + 1} de {total ?? rows.length}
           </Typography.Text>
         </FormViewV2.Header.Actions>
       </FormViewV2.Header>

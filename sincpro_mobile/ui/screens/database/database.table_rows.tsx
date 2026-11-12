@@ -7,7 +7,9 @@ import { useDatabase } from "./database.context";
 function TableRowsView() {
   const {
     isLoading,
-    filteredData,
+    rows,
+    hasMore,
+    loadMore,
     selectedTable,
     goBackFromRows,
     selectRowJson,
@@ -16,11 +18,13 @@ function TableRowsView() {
 
   return (
     <ListViewV2.Root
+      hasMore={hasMore}
       isLoading={isLoading}
-      items={filteredData}
+      items={rows}
       name={`Datos - ${selectedTable}`}
       onBack={goBackFromRows}
-      onPressItem={(item: any) => selectRowJson(safeJsonStringify(item), item.index)}
+      onLoadMore={loadMore}
+      onPressItem={(item: any) => selectRowJson(safeJsonStringify(item), rows.indexOf(item))}
       onSearch={setSearchQuery}
     >
       <ListViewV2.Header variant="default">
@@ -31,7 +35,7 @@ function TableRowsView() {
         {(item: any) => (
           <TableInfoRow
             item={{ data: safeJsonStringify(item) }}
-            onPress={() => selectRowJson(safeJsonStringify(item), item.index)}
+            onPress={() => selectRowJson(safeJsonStringify(item), rows.indexOf(item))}
           />
         )}
       </ListViewV2.Content>

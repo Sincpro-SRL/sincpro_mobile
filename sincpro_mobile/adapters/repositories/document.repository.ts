@@ -11,6 +11,8 @@ import {
   compileCriteria,
   type CompiledCriteria,
   compilePage,
+  countCeiling,
+  countOf,
   type CriteriaSqlTarget,
   cursorAfter,
 } from "@sincpro/mobile/domain/database/criteria_sql";
@@ -82,8 +84,6 @@ interface Session {
   remembered: Map<string, Remembered>;
 }
 
-/** Past how many a count stops and answers "at least": the backend's ceiling. */
-export const COUNT_CEILING = 10_000;
 /** How many values one `IN (…)` binds: far under SQLite's variable limit. */
 const IN_BATCH = 500;
 
@@ -234,7 +234,9 @@ export class DocumentRepository<T extends Entity> implements IRepository<
    * `COUNT_CEILING` (the default), or exact.
    */
   async search(criteria: DocumentCriteria<T> = {}): Promise<EntityCollection<T>> {
-    const page = compilePage(criteria, this.sqlTarget(), this.entity().DEFAULT_ORDER());
+    const page = compilePage(criteria, this.sqlTarget(), {
+      order: this.entity().DEFAULT_ORDER(),
+    });
     const rows = await this.store.selectMatching(page.rows);
     const shown = rows.slice(0, page.limit);
     const found = await this.hydrateAll(shown);
@@ -672,10 +674,7 @@ export class DocumentRepository<T extends Entity> implements IRepository<
 
   private async counted(filter: CompiledCriteria, mode: CountMode): Promise<Count | null> {
     if (mode === "none") return null;
-    if (mode === "exact")
-      return { value: await this.store.countMatching(filter), exact: true };
-    const seen = await this.store.countMatching(filter, COUNT_CEILING + 1);
-    return { value: Math.min(seen, COUNT_CEILING), exact: seen <= COUNT_CEILING };
+    return countOf(await this.store.countMatching(filter, countCeiling(mode)), mode);
   }
 
   private async hydrateAll(rows: readonly DocumentRow[]): Promise<T[]> {

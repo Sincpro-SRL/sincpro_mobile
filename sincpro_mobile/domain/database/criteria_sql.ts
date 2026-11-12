@@ -1,4 +1,5 @@
 import {
+  type Count,
   type CountMode,
   type Criteria,
   type Expression,
@@ -144,8 +145,9 @@ export function rowsFor(
 /**
  * The page a criteria asks of a document collection, compiled as the engine pages it.
  *
- * 1. The order is the criteria's, else `defaultOrder` (the entity's), closed by `uuid` in the
- *    direction of the first sort unless it already names it.
+ * 1. The order is the criteria's, else `paged.order` (the entity's), closed by its identity
+ *    (`uuid` unless `paged.identity` names another unique column) in the direction of the first
+ *    sort unless it already names it.
  * 2. The page is `limit` rows (fifty unless the criteria says), after `rows` skipped or past
  *    the row a `token` names. A token minted under another ordering is refused.
  * 3. Past a token is a keyset over the sorts: equal on the sorts before, beyond on this one, in
@@ -155,11 +157,11 @@ export function rowsFor(
 export function compilePage<T>(
   asked: DocumentCriteria<T>,
   target: CriteriaSqlTarget,
-  defaultOrder: readonly Sort[],
+  paged: { order: readonly Sort[]; identity?: string },
   clock: CriteriaClock = deviceClock(),
 ): CompiledPage {
   const criteria = criteriaOf(asked) as Criteria;
-  const sorts = orderingOf(criteria.order ?? [], defaultOrder);
+  const sorts = orderingOf(criteria.order ?? [], paged.order, paged.identity ?? "uuid");
   const filter = compileCriteria(
     { selection: criteria.selection, order: sorts, grouping: criteria.grouping },
     target,
@@ -193,6 +195,62 @@ export function compilePage<T>(
   };
 }
 
+/** Past how many a count stops and answers "at least": the backend's ceiling. */
+export const COUNT_CEILING = 10_000;
+
+/** The statement that reads `compiled` from `from` — a table, or a view with its alias. */
+export function selectStatement(
+  compiled: CompiledCriteria,
+  from: string,
+  selected = "*",
+): { sql: string; params: SqlParam[] } {
+  const params = [...compiled.params];
+  let sql = `SELECT ${selected} FROM ${from}`;
+  if (compiled.whereSql) sql += ` WHERE ${compiled.whereSql}`;
+  if (compiled.orderSql) sql += ` ORDER BY ${compiled.orderSql}`;
+  if (compiled.limit !== undefined) {
+    sql += " LIMIT ?";
+    params.push(compiled.limit);
+  } else if (compiled.offset > 0) {
+    sql += " LIMIT -1";
+  }
+  if (compiled.offset > 0) {
+    sql += " OFFSET ?";
+    params.push(compiled.offset);
+  }
+  return { sql, params };
+}
+
+/**
+ * The statement that counts what `compiled` filters, its order and page aside; it stops at
+ * `ceiling` rows when given. It answers one row, `total`.
+ */
+export function countStatement(
+  compiled: CompiledCriteria,
+  from: string,
+  ceiling?: number,
+): { sql: string; params: SqlParam[] } {
+  const params = [...compiled.params];
+  let counted = `SELECT 1 FROM ${from}`;
+  if (compiled.whereSql) counted += ` WHERE ${compiled.whereSql}`;
+  if (ceiling !== undefined) {
+    counted += " LIMIT ?";
+    params.push(ceiling);
+  }
+  return { sql: `SELECT COUNT(*) AS total FROM (${counted})`, params };
+}
+
+/** How many rows a count reads at most: every one when exact, one past the ceiling when capped. */
+export function countCeiling(mode: "capped" | "exact"): number | undefined {
+  return mode === "exact" ? undefined : COUNT_CEILING + 1;
+}
+
+/** What a count answers for the rows it saw: past the ceiling it is "at least" the ceiling. */
+export function countOf(seen: number, mode: "capped" | "exact"): Count {
+  if (mode === "exact") return { value: seen, exact: true };
+  return { value: Math.min(seen, COUNT_CEILING), exact: seen <= COUNT_CEILING };
+}
+
 /** The token the page after `row` resumes from, under the page's ordering. */
 export function cursorAfter(row: SqlDocument, page: CompiledPage): string {
   const keys: Record<string, unknown> = {};
@@ -202,11 +260,15 @@ export function cursorAfter(row: SqlDocument, page: CompiledPage): string {
   return mintCursor(keys, page.sorts);
 }
 
-function orderingOf(asked: readonly Sort[], defaultOrder: readonly Sort[]): Sort[] {
+function orderingOf(
+  asked: readonly Sort[],
+  defaultOrder: readonly Sort[],
+  identity: string,
+): Sort[] {
   const sorts = asked.length > 0 ? [...asked] : [...defaultOrder];
-  if (sorts.length === 0) return [{ field: "uuid", descending: true }];
-  if (sorts.some((sort) => sort.field === "uuid")) return sorts;
-  return [...sorts, { field: "uuid", descending: sorts[0].descending === true }];
+  if (sorts.length === 0) return [{ field: identity, descending: true }];
+  if (sorts.some((sort) => sort.field === identity)) return sorts;
+  return [...sorts, { field: identity, descending: sorts[0].descending === true }];
 }
 
 function wholeNumber(value: number, label: string): number {
