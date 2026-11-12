@@ -96,7 +96,9 @@ const { rows, hasMore, more } = useReading(tickets, criteria<Ticket>().limit(20)
 
 `today`, `now` y un `period` se calculan en la zona horaria que la app instaló en client-framework
 (`installTimeZone("America/La_Paz")`: la de la empresa o la del usuario), y en la de la plataforma
-si no instaló ninguna. Los días de los filtros de una pantalla empiezan a la medianoche de esa
+si no instaló ninguna. La zona guardada en los ajustes (`EAppSetting.TIME_ZONE`) la instala el
+bootstrap del kernel antes de cualquier pantalla o tarea en segundo plano (`appSettings.load()`), y
+`CommandApplyAppSettings` la vuelve a instalar al guardarla. Los días de los filtros de una pantalla empiezan a la medianoche de esa
 misma zona. Una zona propia de cada ejecución (la de su contexto) llega con
 Sincpro-SRL/sincpro_client_framework#46.
 

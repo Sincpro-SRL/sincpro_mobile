@@ -12,6 +12,7 @@ import {
   resetPlan,
 } from "@sincpro/mobile/domain/database/migration_plan";
 import { repos } from "@sincpro/mobile/entrypoints/db/repositories";
+import { appSettings } from "@sincpro/mobile/infrastructure/app_settings";
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 import { initializeRepositoryFacade } from "@sincpro/mobile/infrastructure/database/mapped";
 import {
@@ -19,6 +20,7 @@ import {
   forgetMigrations,
   markMigrationApplied,
 } from "@sincpro/mobile/infrastructure/database/schema";
+import { Debug } from "@sincpro/mobile/infrastructure/debug";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import { registerWebViewHandler } from "@sincpro/mobile/infrastructure/webview/message_handlers";
 import type { CronWorker, CronWorkerOpts } from "@sincpro/mobile/infrastructure/workers";
@@ -35,6 +37,13 @@ export class Kernel {
     repos.register(this.repositories());
     initializeRepositoryFacade(repos);
     await this.runMigrations();
+    // What the app runs with is read here, once, before any screen or background task: the
+    // debug switch and the time zone, language and colors (installed in client-framework). A
+    // debug switch that cannot be read keeps the level the app was built with.
+    await Debug.hydrate().catch((error: unknown) =>
+      logger.warn("[Kernel] The debug switch could not be read", errorAttributes(error)),
+    );
+    await appSettings.load();
   });
 
   constructor(modules: DomainModule[]) {

@@ -1,6 +1,7 @@
+import type { ColorSchemeChoice } from "@sincpro/mobile/domain/settings";
 import { resolveOnColor } from "@sincpro/mobile-ui/theme/contrast";
 
-export type ColorSchemeChoice = "light" | "dark" | "system";
+export type { ColorSchemeChoice };
 export type ResolvedScheme = "light" | "dark";
 
 /** The part of React Native's `Appearance` the app's color scheme depends on. */

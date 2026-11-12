@@ -7,8 +7,11 @@ import type { DomainModule } from "@sincpro/mobile/framework/domain_module";
 import type { Kernel } from "@sincpro/mobile/framework/kernel";
 import { errorAttributes } from "@sincpro/mobile/infrastructure/logger";
 import type { ObservabilityConfig } from "@sincpro/mobile/infrastructure/observability";
+import { tellCrash, viewOf } from "@sincpro/mobile/infrastructure/ui/crash";
+import { installGlobalErrorHandler } from "@sincpro/mobile/infrastructure/ui/errorHandler";
 import { onceUntilFailure } from "@sincpro/mobile/tools/utils/once";
 import { DeviceNotices } from "@sincpro/mobile/ui/activity";
+import { CrashRecovery } from "@sincpro/mobile/ui/components/organisms/CrashRecovery";
 import { type BrandingConfig, setBranding } from "@sincpro/mobile-ui/branding";
 import { OverlayHost } from "@sincpro/mobile-ui/Dialog";
 import { ICON_FONTS } from "@sincpro/mobile-ui/Display";
@@ -207,6 +210,8 @@ export function defineAppShell(config: AppShellConfig): AppShellDefinition {
     connectivity: config.connectivity,
   });
   defineBackgroundCrons(kernel);
+  // After the app's error client set up its own (Sentry's SDK reports what reaches the top).
+  installGlobalErrorHandler();
   const domains = config.domains.map(({ key, name }) => ({ key, name }));
 
   return {
@@ -246,7 +251,7 @@ function useStart(shell: AppShellDefinition) {
         if (active) setStatus("ready");
       })
       .catch((error: unknown) => {
-        logger.error("[AppShell] The app could not start", errorAttributes(error));
+        tellCrash(error, "app start");
         if (active) setStatus("failed");
       });
     return () => {
@@ -279,6 +284,8 @@ export function AppShell({
 }) {
   const { config } = shell;
   const { status, retry } = useStart(shell);
+  // A new generation mounts the screens again after one broke while drawing.
+  const [generation, setGeneration] = useState(0);
   const [minDurationMet, setMinDurationMet] = useState(false);
   const [fontsLoaded, fontError] = useFonts(shell.fontFiles);
   const activeTheme = useTheme();
@@ -339,8 +346,15 @@ export function AppShell({
                       without it each overlay renders in place, clipped by its container. */}
                   <OverlayHost>
                     <ErrorBoundary
-                      onError={(error) =>
-                        logger.error("[AppShell] Render failed", errorAttributes(error))
+                      fallback={(error) => (
+                        <CrashRecovery
+                          error={error}
+                          onRetry={() => setGeneration((value) => value + 1)}
+                        />
+                      )}
+                      key={generation}
+                      onError={(error, info) =>
+                        tellCrash(error, viewOf(info.componentStack), info.componentStack)
                       }
                     >
                       {withProviders(

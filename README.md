@@ -642,8 +642,7 @@ await commonBoundedContext.execute(new CommandPrintImage(base64Png, "Ticket 7"))
 | Command                                | What it does                                                                              |
 | -------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `CommandPrinterStatus`                 | `{ bluetoothGranted, selected, connected }`, never asking                                 |
-| `CommandRequestBluetoothPermission`    | The system's dialog; tells the person granted or denied, answers the status               |
-| `CommandScanPrinters`                  | The devices in reach; asks for Bluetooth first                                            |
+| `CommandScanPrinters`                  | The devices in reach; without Bluetooth granted, `BluetoothPermissionDenied`              |
 | `CommandConnectPrinter(address, name)` | Connects and keeps it as the chosen printer                                               |
 | `CommandDisconnectPrinter`             | Disconnects on purpose: nothing reconnects until the person connects again                |
 | `CommandPrintTestPage`                 | A short page that proves the printer works                                                |
@@ -653,6 +652,8 @@ await commonBoundedContext.execute(new CommandPrintImage(base64Png, "Ticket 7"))
 | `CommandQueuePrint(...)`               | Queues the print (`PrintImageRequestedEvent`): it survives a closed app and a printer off |
 
 Each use case tells the person what happened through the `Notifier` port; the screen only decides its own state. A failure says its kind: no printer chosen is `PrinterNotSelected` (`domain`), a printer off or out of reach `PrinterUnavailable` (`unavailable`), Bluetooth not granted `BluetoothPermissionDenied` (`permission_denied`). The three are the device answering, not a fault: the run ends `refused` and nothing is reported.
+
+**Never asks for Bluetooth.** Connecting, scanning, printing from the queue and reconnecting only _read_ the permission; the system's dialog is shown by `CommandRequestPermission(EPermission.BLUETOOTH)` when the person taps «Permitir» in the printer settings (see [Permissions](#-permissions--asked-only-when-a-person-acts)).
 
 **Grace reconnect:** if a print fails on a stale link, the adapter disconnects, reconnects to the chosen printer and tries once more.
 
@@ -718,11 +719,62 @@ function StatusBar() {
 | `debugMode`              | `boolean`                       | Developer debug toggle (persisted)       |
 | `colorScheme`            | `"light" \| "dark" \| "system"` | Current color scheme (persisted)         |
 | `setColorScheme(scheme)` | function                        | Switches theme + persists preference     |
-| `timezone`               | `string \| null`                | Persisted timezone setting               |
-| `updateTimezone(tz)`     | function                        | Updates and persists                     |
-| `hasGeoPermission`       | `boolean`                       | Current geo permission state             |
-| `requestGeoPermission()` | `async () => boolean`           | Requests location permission             |
-| `checkGeoPermission()`   | `async () => void`              | Rechecks without prompting               |
+| `timezone`               | `string \| null`                | The app's time zone (`null`: platform's) |
+| `locale`                 | `string \| null`                | The app's language (`null`: phone's)     |
+| `updateTimezone(tz)`     | function                        | Saves and installs zone + language       |
+| `hasGeoPermission`       | `boolean`                       | Deprecated: `usePermission(LOCATION)`    |
+| `requestGeoPermission()` | `async () => boolean`           | Deprecated: `usePermission(LOCATION)`    |
+| `checkGeoPermission()`   | `async () => void`              | Deprecated: `usePermission(LOCATION)`    |
+
+### ✅ Permissions — asked only when a person acts
+
+One service for every permission the app asks the phone for (`EPermission.BLUETOOTH`, `EPermission.LOCATION`). It reads a permission without asking, shows the system's dialog only from a person's action, after they read what it is for, and leads to the system's settings when it was blocked.
+
+```tsx
+import { EPermission } from "@sincpro/mobile/domain";
+import { PermissionCard, usePermission } from "@sincpro/mobile/ui";
+
+<PermissionCard
+  kind={EPermission.LOCATION}
+  reason="Para registrar dónde se entrega cada pedido."
+/>;
+
+const location = usePermission(EPermission.LOCATION); // { status, granted, busy, request, openSettings, act }
+```
+
+| Status        | Means                                                                | `PermissionCard` offers |
+| ------------- | -------------------------------------------------------------------- | ----------------------- |
+| `granted`     | Granted                                                              | —                       |
+| `denied`      | Not granted; the system's dialog can still ask                       | «Permitir»              |
+| `blocked`     | Only the system's settings grant it (Android «don't ask again», iOS) | «Abrir ajustes»         |
+| `unavailable` | This phone or platform does not have it (Bluetooth on the web)       | —                       |
+
+| Command                               | What it does                                                                                             |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `CommandCheckPermission(kind)`        | Where it stands, never asking; every screen following it (`usePermission`) sees the answer               |
+| `CommandRequestPermission(kind)`      | The system's dialog, only when it can still ask; tells the person the answer — a denial is not a failure |
+| `CommandOpenPermissionSettings(kind)` | This app's page in the system's settings                                                                 |
+
+`usePermission` reads the permission when the screen mounts and again whenever the app comes back to the foreground, so a permission granted in the settings shows at once. Nothing in a background task, a cron or the queue asks: the printer adapter, for one, only reads Bluetooth and fails `BluetoothPermissionDenied` (`permission_denied`, refused, not reported).
+
+**Migrating from 2.x:** `CommandRequestBluetoothPermission` / `CommandCheckBluetoothPermission` → `CommandRequestPermission(EPermission.BLUETOOTH)` / `CommandCheckPermission(EPermission.BLUETOOTH)`; the `bluetooth` dependency → `permissions`; `GeoPermissionCard` → `PermissionCard`. `useCommon()`'s `hasGeoPermission`, `requestGeoPermission`, `checkGeoPermission`, `geoIsLoading` and `geoError` and `GeoAdapter.requestPermission` / `hasPermission` still work, deprecated: use `usePermission(EPermission.LOCATION)`.
+
+### ✅ App settings — time zone, language, colors
+
+The kernel's bootstrap reads the app's settings once, before any screen or background task runs (`appSettings.load()`), and **installs** the saved time zone in client-framework (`installTimeZone`). From then on every date the app reads or writes follows it: `timeZoneNow()`, `formatDate(input, null)`, `getCurrentDateInTimezone()`, the `today`/`period` of a criteria (`deviceClock`) and the days a screen filters by. With no zone saved — or one that is not a zone — it is the platform's.
+
+A change goes through one use case, saved and applied at once (no restart):
+
+```ts
+await commonBoundedContext.execute(
+  new CommandApplyAppSettings([
+    { key: EAppSetting.TIME_ZONE, value: "America/La_Paz" },
+    { key: EAppSetting.LOCALE, value: "es-BO" },
+  ]),
+);
+```
+
+`useCommon()` reads the same state synchronously (`timezone`, `locale`, `colorScheme`) — no default shown first and replaced a moment later — and its `updateTimezone` / `setColorScheme` run that command.
 
 ### ✅ Domain Switcher
 
@@ -747,16 +799,20 @@ function AppSwitcher() {
 }
 ```
 
-### ✅ Global Error Handling
+### ✅ Unexpected failures — logged, reported, recoverable
 
-`DomainException` instances that escape to the React root are bridged to native `Alert` dialogs automatically:
+What fails outside a use case — a screen that breaks while drawing, the app's start, an error that reaches the JS thread's top — is never a blank screen nor a message without a stack:
 
-```tsx
-import { installGlobalErrorHandler } from "@sincpro/mobile";
+| Where it failed                | What the core does                                                                                                                                                                                                                                    |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A screen, while drawing        | One ERROR line with its stack and React's component stack (console and Loki); reported once to the app's error client, the component stack linked as its cause; **«Algo salió mal»** with «Reintentar» (the screens mount again) and «Enviar reporte» |
+| The app's start                | The same line and report; the start screen offers «Reintentar»                                                                                                                                                                                        |
+| The JS thread's top (global)   | The line, then handed to the app's error client (Sentry's SDK reports it); a fatal one waits up to 2 s for its line to leave before the app closes                                                                                                    |
+| A `DomainException` at the top | The business answering: a native `Alert`, not reported                                                                                                                                                                                                |
 
-// Call once before defineAppShell
-installGlobalErrorHandler();
-```
+`defineAppShell` installs the global handler after the app's error client (`observability.errors`) set up its own, so nothing is reported twice; `installGlobalErrorHandler()` is idempotent. «Enviar reporte» is `CommandSendErrorReport`: what the app logged leaves now instead of with the next batch.
+
+**Original file and line.** A release bundle is minified: the line carries `release` and the native build (`app.build`, Sentry's `dist`) to find its source maps. GlitchTip shows the original file and line once the app's release pipeline uploads the source maps (and Android's R8 mapping) for that release — Sentry's Expo plugin does it on `eas build` and `eas update`.
 
 ---
 
@@ -1096,15 +1152,13 @@ const {
   setColorScheme,
   timezone,
   updateTimezone,
-  hasGeoPermission,
-  requestGeoPermission,
   debugMode,
 } = useCommon();
 ```
 
 ### `installGlobalErrorHandler()`
 
-Bridges `DomainException` to native `Alert`. Call once before `defineAppShell`.
+Installed by `defineAppShell`: logs what reaches the JS thread's top with its stack and hands it to the app's error client; a `DomainException` becomes a native `Alert`. Idempotent.
 
 ### `baseModule` / `BaseModule`
 

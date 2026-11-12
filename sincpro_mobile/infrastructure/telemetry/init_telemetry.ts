@@ -1,6 +1,6 @@
 import { DBCursor } from "@sincpro/mobile/infrastructure/database";
 
-import { _registerBuffers } from "./buffer_registry";
+import { _registerBuffers, bufferStats } from "./buffer_registry";
 import { ConnectivityState } from "./connectivity_state";
 import { FlushTelemetry } from "./flush_telemetry";
 import { LogQueueRepository } from "./logging/log_queue_repository";
@@ -114,6 +114,27 @@ export async function initTelemetry(
   // Expose buffer pressure for health checks / dashboards.
   _registerBuffers(logQueue, spanQueue);
 }
+
+/**
+ * Sends what is waiting now — a fatal error's line before the app closes, a report a person
+ * asked to send —, without waiting for the batch; nothing when telemetry did not start.
+ */
+export async function deliverTelemetryNow(): Promise<void> {
+  await _worker?.flushNow();
+}
+
+/**
+ * Telemetry as the core's use cases send it (`TelemetryDelivery`): delivered now, answering how
+ * many lines and spans still wait (offline), or `null` when this build sends none.
+ */
+export const telemetryDelivery = {
+  async deliverNow(): Promise<number | null> {
+    if (!_worker) return null;
+    await _worker.flushNow();
+    const { logs, spans } = await bufferStats();
+    return (logs?.rows ?? 0) + (spans?.rows ?? 0);
+  },
+};
 
 /**
  * One delivery run for the OS background task. Reuses the pipeline the app already
