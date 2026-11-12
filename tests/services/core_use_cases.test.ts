@@ -17,7 +17,6 @@ import {
 } from "@sincpro/client-framework/testing";
 
 import type { Notice, Notifier } from "../../sincpro_mobile/domain/notifier.ts";
-import { PrintImageRequestedEvent } from "../../sincpro_mobile/domain/print/events.ts";
 import { printCycleHandlers } from "../../sincpro_mobile/entrypoints/webview/print_cycle.ts";
 import {
   BluetoothPermissionDenied,
