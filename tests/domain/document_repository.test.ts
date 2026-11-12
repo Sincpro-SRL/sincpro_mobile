@@ -823,6 +823,7 @@ test("search pages any document store the same way: the keyset holds in memory t
     order: [{ field: "title" }],
     pagination: { limit: 2 },
   });
+  const first = page;
   seen.push(...page.toArray().map((note) => note.uuid));
   while (page.cursor !== null) {
     page = await repository.search({
@@ -833,5 +834,6 @@ test("search pages any document store the same way: the keyset holds in memory t
   }
 
   assert.deepEqual(seen, expected);
-  assert.deepEqual(page.total, { value: titles.length, exact: true });
+  assert.deepEqual(first.total, { value: titles.length, exact: true });
+  assert.equal(page.total, null, "a page that resumes does not count again");
 });
