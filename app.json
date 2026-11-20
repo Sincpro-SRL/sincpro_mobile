@@ -6,7 +6,6 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "bo.com.sincpro.mobile.storybook",
       "supportsTablet": true

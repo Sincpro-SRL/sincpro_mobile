@@ -1,6 +1,6 @@
 import type { ExportResult } from "@opentelemetry/core";
 import { ExportResultCode } from "@opentelemetry/core";
-import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
+import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace";
 
 import type { SpanQueueRepository } from "./span_queue_repository";
 import { serializeSpan } from "./span_serializer";

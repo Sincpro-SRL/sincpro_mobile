@@ -4,8 +4,8 @@ import test from "node:test";
 import { trace } from "@opentelemetry/api";
 import type { ExportResult } from "@opentelemetry/core";
 import { ExportResultCode } from "@opentelemetry/core";
-import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
-import { BasicTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace";
+import { SimpleSpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
 
 import { _resetContextManager } from "../../sincpro_mobile/infrastructure/context_manager/index.ts";
 import { interceptClass } from "../../sincpro_mobile/infrastructure/interceptor/intercept.ts";
@@ -25,8 +25,8 @@ class CapturingExporter implements SpanExporter {
 
 function setupTracing() {
   const exporter = new CapturingExporter();
-  const provider = new BasicTracerProvider({
-    spanProcessors: [new SimpleSpanProcessor(exporter)],
+  const provider = new TracerProvider({
+    spanProcessors: [new SimpleSpanProcessor({ exporter })],
   });
   trace.setGlobalTracerProvider(provider);
 

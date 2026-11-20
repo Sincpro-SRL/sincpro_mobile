@@ -147,8 +147,7 @@ export function managed<T>(
     },
     async (value, error) => {
       const gen = (value as unknown as Record<symbol, unknown>)[GEN_SYM] as
-        | AsyncGenerator<T, void, unknown>
-        | undefined;
+        AsyncGenerator<T, void, unknown> | undefined;
       if (!gen) return;
       if (error !== undefined) {
         await gen.throw(error).catch(() => {});

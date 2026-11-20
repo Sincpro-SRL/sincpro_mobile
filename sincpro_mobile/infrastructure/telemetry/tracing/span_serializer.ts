@@ -11,7 +11,7 @@ export function hrTimeToNanoString(hrTime: [number, number]): string {
 
 /**
  * Minimal shape of OTel ReadableSpan needed for serialization.
- * Using a local interface instead of importing from sdk-trace-base so this
+ * Using a local interface instead of importing from sdk-trace so this
  * module stays importable in the Node test runner (OTel packages are CJS).
  */
 export interface SerializableSpanEvent {

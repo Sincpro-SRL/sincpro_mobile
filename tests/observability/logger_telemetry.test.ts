@@ -3,8 +3,8 @@ import test from "node:test";
 
 import { trace } from "@opentelemetry/api";
 import { ExportResultCode } from "@opentelemetry/core";
-import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
-import { BasicTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace";
+import { SimpleSpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
 import {
   BoundedContext,
   Command,
@@ -230,8 +230,8 @@ test("logger: Loki message lleva trace_id y span_id cuando hay un span activo", 
 
   // Instala un TracerProvider en memoria (no SQLite)
   const exporter = new CapturingExporter();
-  const provider = new BasicTracerProvider({
-    spanProcessors: [new SimpleSpanProcessor(exporter)],
+  const provider = new TracerProvider({
+    spanProcessors: [new SimpleSpanProcessor({ exporter })],
   });
   trace.setGlobalTracerProvider(provider);
 

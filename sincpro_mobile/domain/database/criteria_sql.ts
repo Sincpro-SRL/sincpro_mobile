@@ -498,8 +498,7 @@ function membership(
 
 function pageOf(
   pagination:
-    | { limit?: number; strategy?: { token: string | null } | { rows: number } }
-    | undefined,
+    { limit?: number; strategy?: { token: string | null } | { rows: number } } | undefined,
 ): {
   limit?: number;
   offset: number;

@@ -1181,7 +1181,7 @@ Telemetry depends on the context manager one-directionally; nothing in the conte
 ContextManager (stack-based)             ← carries the active OTel context across calls
         │  Hermes has no AsyncLocalStorage → an explicit push/pop stack
         ▼
-OpenTelemetry SDK (BasicTracerProvider)
+OpenTelemetry SDK (TracerProvider)
         │  SimpleSpanProcessor → SQLiteSpanExporter
         ▼
 SQLite buffers  (spans_queue, telemetry_queue)
@@ -1206,7 +1206,7 @@ flowchart TB
     end
 
     subgraph SDK["OpenTelemetry SDK (Hermes-safe)"]
-        provider["BasicTracerProvider"]
+        provider["TracerProvider"]
         proc["SimpleSpanProcessor"]
         exporter["SQLiteSpanExporter<br/>(custom — writes to SQLite)"]
     end

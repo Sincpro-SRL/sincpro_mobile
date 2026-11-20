@@ -35,7 +35,7 @@ flowchart TB
     end
 
     subgraph SDK["OpenTelemetry SDK (Hermes-safe)"]
-        provider["BasicTracerProvider"]
+        provider["TracerProvider"]
         proc["SimpleSpanProcessor"]
         exporter["SQLiteSpanExporter<br/>(custom — writes to SQLite)"]
     end

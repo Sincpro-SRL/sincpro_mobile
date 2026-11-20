@@ -1,11 +1,11 @@
 import { trace } from "@opentelemetry/api";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import { BasicTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { SimpleSpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
 
 import type { SpanQueueRepository } from "./span_queue_repository";
 import { SQLiteSpanExporter } from "./sqlite_span_exporter";
 
-let _provider: BasicTracerProvider | null = null;
+let _provider: TracerProvider | null = null;
 
 export interface TracingResourceConfig {
   serviceName?: string;
@@ -44,10 +44,12 @@ export function initTracing(
   const resource =
     Object.keys(rawAttrs).length > 0 ? resourceFromAttributes(rawAttrs) : undefined;
 
-  const provider = new BasicTracerProvider({
+  const provider = new TracerProvider({
     resource,
     spanProcessors: [
-      new SimpleSpanProcessor(new SQLiteSpanExporter(queue, persist, onEnqueued)),
+      new SimpleSpanProcessor({
+        exporter: new SQLiteSpanExporter(queue, persist, onEnqueued),
+      }),
     ],
   });
   trace.setGlobalTracerProvider(provider);
