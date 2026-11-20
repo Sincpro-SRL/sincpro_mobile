@@ -15,6 +15,7 @@ import { keepPrinterConnected } from "@sincpro/mobile/infrastructure/print/keep_
 import type { WebViewMessageHandler } from "@sincpro/mobile/infrastructure/webview/message_handlers";
 import type { CronWorker } from "@sincpro/mobile/infrastructure/workers";
 import { commonBoundedContext } from "@sincpro/mobile/services";
+import { CommandResumePrintJobs } from "@sincpro/mobile/services/printer/print_jobs/resume_print_jobs.feature";
 import { CommandRestorePrinterConnection } from "@sincpro/mobile/services/printer/restore_printer_connection.feature";
 
 import { DomainModule } from "./domain_module";
@@ -50,12 +51,14 @@ export class BaseModule extends DomainModule {
   }
 
   /**
-   * A host that prints keeps its chosen printer connected (start, return, lost link): each try
-   * is `CommandRestorePrinterConnection`, a run of its own. The printer is the bounded
-   * context's, so an app's replacement is the one kept connected;
+   * The print jobs a person left waiting come back to them (`CommandResumePrintJobs`; its run
+   * records a failure). A host that prints keeps its chosen printer connected (start, return,
+   * lost link): each try is `CommandRestorePrinterConnection`, a run of its own. The printer is
+   * the bounded context's, so an app's replacement is the one kept connected;
    * `printerAdapter.configure({ autoReconnect: false })` turns it off.
    */
   override onStart(): void {
+    commonBoundedContext.execute(new CommandResumePrintJobs()).catch(() => undefined);
     const printer = commonBoundedContext.deps.printer;
     if (!hasPrinterDriver() || !printer.policy.autoReconnect) return;
     keepPrinterConnected(

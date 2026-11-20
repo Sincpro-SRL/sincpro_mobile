@@ -26,7 +26,11 @@ export interface IPrintRequestMessage {
   metadata: IWebViewMetadata;
 }
 
-/** `jobId` ties the messages of one print together, so the user follows it in one notice. */
+/**
+ * `jobId` ties the messages of one print together, so the user follows it in one notice. A
+ * print of N pages sends one image per page, `page` of `pages`, counted from 1; without them it
+ * is a print of one page.
+ */
 export interface IPrintImageMessage {
   type: EWebViewMessageType.PRINT_IMAGE;
   image: string;
@@ -34,12 +38,16 @@ export interface IPrintImageMessage {
   height: number;
   metadata: IWebViewMetadata;
   jobId?: string;
+  page?: number;
+  pages?: number;
 }
 
 export interface IPrintStartedMessage {
   type: EWebViewMessageType.PRINT_STARTED;
   title: string;
   jobId?: string;
+  /** How many pages the capture will send. */
+  pages?: number;
 }
 
 export interface IPrintFailedMessage {

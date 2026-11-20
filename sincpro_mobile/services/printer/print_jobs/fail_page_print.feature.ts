@@ -18,8 +18,11 @@ export class CommandFailPagePrint extends Command<void> {
 
 /**
  * The page's capture failed before reaching the printer — it said so, or it never answered.
- * Recording it is this run's work, so it ends well; the span and the log line say why the
- * print did not come out, and the person reads it in the job's notice.
+ * Recording it is this run's work; the span and the log line say why the print did not come
+ * out, and the person reads it in the job's notice.
+ * 1. The person is told first.
+ * Final: the pages of a print of N that arrived before the failure are forgotten — nothing of
+ *    it prints, and the person prints it again from the page.
  */
 @commonBoundedContext.feature(CommandFailPagePrint)
 export class FailPagePrint extends Feature<CommandFailPagePrint, void> {
@@ -30,5 +33,6 @@ export class FailPagePrint extends Feature<CommandFailPagePrint, void> {
       reason: command.reason,
     });
     this.notifier.notify(captureFailedNotice(printNoticeKey(command.jobId), command.title));
+    await this.printJobs.remove(command.jobId);
   }
 }

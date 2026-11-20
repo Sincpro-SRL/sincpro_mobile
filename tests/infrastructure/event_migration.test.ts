@@ -151,6 +151,13 @@ test("a new device runs the retired migrations as no-ops and gets only the store
   );
   assert.deepEqual(
     tables.map((one) => one.name),
-    ["settings", "spans_queue", "stored_events", "telemetry_queue"],
+    [
+      "print_job_pages",
+      "print_jobs",
+      "settings",
+      "spans_queue",
+      "stored_events",
+      "telemetry_queue",
+    ],
   );
 });

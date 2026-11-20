@@ -4,6 +4,7 @@ import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/settin
 import { type DevicePermissions, EPermission } from "@sincpro/mobile/domain/permissions";
 import {
   type BluetoothDevice,
+  EPrintPages,
   getPrinterDriver,
   hasPrinterDriver,
   type IPrinterConnection,
@@ -33,6 +34,8 @@ export interface PrinterOptions {
   autoReconnect: boolean;
   /** Waits between reconnection tries, in ms. */
   reconnectDelays: readonly number[];
+  /** How a print of more than one page reaches the printer. Default: the person chooses. */
+  pages: EPrintPages;
 }
 
 /**
@@ -60,6 +63,7 @@ export class PrinterAdapter {
   private options: PrinterOptions = {
     autoReconnect: true,
     reconnectDelays: RECONNECT_DELAYS_MS,
+    pages: EPrintPages.ASK,
   };
 
   /** Tunes the adapter from the app: e.g. no automatic reconnection, or other delays. */
@@ -67,7 +71,7 @@ export class PrinterAdapter {
     this.options = { ...this.options, ...options };
   }
 
-  /** How it reconnects the saved printer while the app runs. */
+  /** How it reconnects the saved printer while the app runs, and how it prints N pages. */
   get policy(): Readonly<PrinterOptions> {
     return this.options;
   }
