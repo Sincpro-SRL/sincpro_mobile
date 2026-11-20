@@ -650,6 +650,9 @@ await commonBoundedContext.execute(new CommandPrintImage(base64Png, "Ticket 7"))
 | `CommandPrintHtml(html, title)`        | Renders HTML at the thermal width (576 px) and prints it                                  |
 | `CommandPrintView(viewRef, title)`     | Captures a mounted view and executes `CommandPrintImage` as its child                     |
 | `CommandQueuePrint(...)`               | Queues the print (`PrintImageRequestedEvent`): it survives a closed app and a printer off |
+| `CommandOpenPrintJob(title, pages)`    | A print of N pages from any source; one page is queued as any image                       |
+| `CommandPrintJobPages(jobId, scope)`   | Queues the next page of a job (`NEXT`) or all that are left (`REST`), each on its own     |
+| `CommandCancelPrintJob(jobId)`         | Stops a job: the pages left are not printed                                               |
 
 Each use case tells the person what happened through the `Notifier` port; the screen only decides its own state. A failure says its kind: no printer chosen is `PrinterNotSelected` (`domain`), a printer off or out of reach `PrinterUnavailable` (`unavailable`), Bluetooth not granted `BluetoothPermissionDenied` (`permission_denied`). The three are the device answering, not a fault: the run ends `refused` and nothing is reported.
 
@@ -657,11 +660,15 @@ Each use case tells the person what happened through the `Notifier` port; the sc
 
 **Grace reconnect:** if a print fails on a stale link, the adapter disconnects, reconnects to the chosen printer and tries once more.
 
+**Prints of N pages.** A print of more than one page — N tickets a page prints at once, the pages an app captured — is a print job: its pages wait on the device (`print_jobs`, `print_job_pages`) and go to the queue one by one, so each is retried alone and a page that failed never prints the others again. By default the person chooses in a sheet the AppShell mounts (`PrintJobSheet`): «Imprimir todo» or «Uno por uno», then «Siguiente», «Imprimir las N restantes» or «Cancelar». The sheet never closes on a swipe, and a job left waiting comes back when the app opens again (`CommandResumePrintJobs`, on start). An app picks another way with `printerAdapter.configure({ pages })`: `EPrintPages.ASK` (default), `EPrintPages.STEP` (the first page at once, each next one when asked) or `EPrintPages.ALL` (every page, nobody asked). Any code opens one with `CommandOpenPrintJob(title, pages)` — a page is `{ image, width, height }`, the image a PNG in base64.
+
 **Kept connected:** while the app runs, the core brings the chosen printer back on start, on return to the foreground and after a lost link, backing off up to 30 s; each try is `CommandRestorePrinterConnection`. `printerAdapter.configure({ autoReconnect: false })` (`@sincpro/mobile/adapters/Printer.adapter`) turns it off. `printerAdapter.driver` reaches the native driver for what the adapter does not wrap. An app replaces the adapter for every use case with `commonBoundedContext.addDependency("printer", myPrinter, { replaces: printerAdapter })`.
 
 ### ✅ WebView Print Interception
 
-The framework ships injectable scripts that intercept `window.print()` calls inside a WebView, capture the document as a PNG via `html2canvas`, and forward it to React Native for Bluetooth printing.
+The framework ships injectable scripts that intercept `window.print()` calls inside a WebView, capture what the page prints as PNGs via `html2canvas` — one per page —, and forward them to React Native for Bluetooth printing.
+
+What prints is the first element the interceptor's `roots` find, else the body: `WebViewAdapter.printInterceptorFor({ roots })` takes a page's own selectors, `[data-print-root]` by default. Its pages are the elements marked `data-print-page`; else the siblings a CSS page break separates (`break-after` / `break-before: page`, `page-break-*: always`), as a browser prints them; else the whole element. A page that already prints well from a browser needs no change.
 
 ```tsx
 import { WebViewAdapter } from "@sincpro/mobile/adapters/webview";
@@ -679,11 +686,11 @@ import { dispatchWebViewMessage } from "@sincpro/mobile/infrastructure/webview/m
 />;
 ```
 
-Each message of the page's print cycle is a Command (`entrypoints/webview/print_cycle.ts`): `PRINT_STARTED` → `CommandStartPagePrint`, `PRINT_FAILED` → `CommandFailPagePrint`, `PRINT_IMAGE` → `CommandQueuePrint`; a capture that never answers ends as `CommandFailPagePrint` after 45 s.
+Each message of the page's print cycle is a Command (`entrypoints/webview/print_cycle.ts`): `PRINT_STARTED` → `CommandStartPagePrint`, `PRINT_FAILED` → `CommandFailPagePrint`, `PRINT_IMAGE` → `CommandQueuePrint` for a print of one page, `CommandReceivePrintPage` for each page of a print of N (`page` of `pages`), which becomes a print job when the last one arrives; a capture — or a page of it — that never answers ends as `CommandFailPagePrint` after 45 s.
 
 `PrintImage` tells the person what happened through the `Notifier` port it holds (`this.notifier`; on a phone, `deviceNotifier`): one notice per print, keyed by the page's print job, else by the message that carried the request — which only the queue's handler knows, so `OnPrintImageRequested` passes it in `CommandPrintImage` (`this.execution.causationId`, the same on every retry) —, else by one of its own.
 
-Available interceptors: `printInterceptor` (default), `ajaxInterceptor` (debug), `contentHeightReporter`.
+Available interceptors: `printInterceptorFor({ roots })` (the default ones use it with `[data-print-root]`), `ajaxInterceptor` (debug), `contentHeightReporter`. `printInterceptor` is deprecated: it looks for Odoo's containers until mobile-odoo passes its own roots.
 
 ### ✅ Activity Monitoring
 

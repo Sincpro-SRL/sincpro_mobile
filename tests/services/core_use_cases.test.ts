@@ -196,6 +196,7 @@ function keptQueue() {
 test("a page's print cycle executes Commands, and a capture that never answers fails on time", async () => {
   const { kept, queue } = keptQueue();
   swap("publisher", new Publisher(queue as never));
+  swap("printJobs", { remove: async () => undefined });
   const watch = new PagePrintWatch(5);
   const handlers = printCycleHandlers(watch);
   const post = (message: object) =>

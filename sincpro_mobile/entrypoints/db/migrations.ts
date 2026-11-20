@@ -6,6 +6,8 @@ export enum DATABASE_TABLES {
   STORED_EVENTS = "stored_events",
   TELEMETRY_QUEUE = "telemetry_queue",
   SPANS_QUEUE = "spans_queue",
+  PRINT_JOBS = "print_jobs",
+  PRINT_JOB_PAGES = "print_job_pages",
 }
 
 /**
@@ -221,6 +223,31 @@ async function addLabelColumns(): Promise<void> {
   );
 }
 
+/**
+ * The print jobs of more than one page waiting on the device (`PrintJobRepository`): one row
+ * per job — how many pages and how many went to the printer — and one per page, its image.
+ */
+async function createPrintJobTables(): Promise<void> {
+  await DBCursor.execAsync(`
+    CREATE TABLE IF NOT EXISTS ${DATABASE_TABLES.PRINT_JOBS} (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      total INTEGER NOT NULL,
+      printed INTEGER NOT NULL DEFAULT 0,
+      state TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS ${DATABASE_TABLES.PRINT_JOB_PAGES} (
+      job_id TEXT NOT NULL,
+      page INTEGER NOT NULL,
+      image TEXT NOT NULL,
+      width INTEGER NOT NULL,
+      height INTEGER NOT NULL,
+      PRIMARY KEY (job_id, page)
+    );
+  `);
+}
+
 function migration(name: string, migrationFn: () => Promise<void>): IMigration {
   return { name, tables: [name], migrationFn };
 }
@@ -240,6 +267,11 @@ const MIGRATIONS: IMigration[] = [
     name: "stored_events_labels",
     tables: [DATABASE_TABLES.STORED_EVENTS],
     migrationFn: addLabelColumns,
+  },
+  {
+    name: DATABASE_TABLES.PRINT_JOBS,
+    tables: [DATABASE_TABLES.PRINT_JOBS, DATABASE_TABLES.PRINT_JOB_PAGES],
+    migrationFn: createPrintJobTables,
   },
 ];
 

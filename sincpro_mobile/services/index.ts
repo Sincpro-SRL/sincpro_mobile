@@ -79,9 +79,21 @@ export {
   DisconnectPrinter,
 } from "@sincpro/mobile/services/printer/disconnect_printer.feature";
 export {
+  CancelPrintJob,
+  CommandCancelPrintJob,
+} from "@sincpro/mobile/services/printer/print_jobs/cancel_print_job.feature";
+export {
   CommandFailPagePrint,
   FailPagePrint,
 } from "@sincpro/mobile/services/printer/print_jobs/fail_page_print.feature";
+export {
+  CommandOfferPrintJob,
+  OfferPrintJob,
+} from "@sincpro/mobile/services/printer/print_jobs/offer_print_job.feature";
+export {
+  CommandOpenPrintJob,
+  OpenPrintJob,
+} from "@sincpro/mobile/services/printer/print_jobs/open_print_job.app_service";
 export {
   CommandPrintHtml,
   PrintHtml,
@@ -91,6 +103,10 @@ export {
   PrintImage,
 } from "@sincpro/mobile/services/printer/print_jobs/print_image.feature";
 export {
+  CommandPrintJobPages,
+  PrintJobPages,
+} from "@sincpro/mobile/services/printer/print_jobs/print_job_pages.feature";
+export {
   CommandPrintView,
   PrintView,
 } from "@sincpro/mobile/services/printer/print_jobs/print_view.app_service";
@@ -99,9 +115,21 @@ export {
   QueuePrint,
 } from "@sincpro/mobile/services/printer/print_jobs/queue_print.feature";
 export {
+  CommandReceivePrintPage,
+  ReceivePrintPage,
+} from "@sincpro/mobile/services/printer/print_jobs/receive_print_page.app_service";
+export {
+  CommandResumePrintJobs,
+  ResumePrintJobs,
+} from "@sincpro/mobile/services/printer/print_jobs/resume_print_jobs.feature";
+export {
   CommandStartPagePrint,
   StartPagePrint,
 } from "@sincpro/mobile/services/printer/print_jobs/start_page_print.feature";
+export {
+  CommandStorePrintPage,
+  StorePrintPage,
+} from "@sincpro/mobile/services/printer/print_jobs/store_print_page.feature";
 export {
   CommandPrintTestPage,
   PrintTestPage,

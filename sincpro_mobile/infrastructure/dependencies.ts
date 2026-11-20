@@ -9,6 +9,7 @@ import {
   printerAdapter,
 } from "@sincpro/mobile/adapters/Printer.adapter";
 import { DatabaseTableRepository } from "@sincpro/mobile/adapters/repositories/database_table.repository";
+import { printJobRepository } from "@sincpro/mobile/adapters/repositories/print_job.repository";
 import { SettingsRepository } from "@sincpro/mobile/adapters/repositories/setting.repository";
 import {
   eventStore,
@@ -16,11 +17,13 @@ import {
 } from "@sincpro/mobile/adapters/repositories/sqlite_event_store";
 import type { Notifier } from "@sincpro/mobile/domain/notifier";
 import type { DevicePermissions, PermissionStates } from "@sincpro/mobile/domain/permissions";
+import type { PrintJobPrompt, PrintJobStore } from "@sincpro/mobile/domain/print/print_job";
 import type { AppSettings } from "@sincpro/mobile/domain/settings";
 import { orchestrator } from "@sincpro/mobile/framework/orchestrator";
 import { appSettings } from "@sincpro/mobile/infrastructure/app_settings";
 import { eventDelivery } from "@sincpro/mobile/infrastructure/events/delivery";
 import { permissionStates } from "@sincpro/mobile/infrastructure/permission_states";
+import { printJobPrompt } from "@sincpro/mobile/infrastructure/print/print_job_prompt";
 import { telemetryDelivery } from "@sincpro/mobile/infrastructure/telemetry/init_telemetry";
 import { deviceNotifier } from "@sincpro/mobile/infrastructure/ui/activity";
 import { UIEventBus } from "@sincpro/mobile/infrastructure/ui/UIEventBus";
@@ -46,6 +49,10 @@ export interface CommonDependencies {
   /** Bound to each run: what a use case queues joins its flow and its trace. */
   publisher: Publisher;
   printer: PrinterAdapter;
+  /** The prints of more than one page waiting on the device, page by page. */
+  printJobs: PrintJobStore;
+  /** Where a print job waits for the person: on a phone, the AppShell's sheet. */
+  printJobPrompt: PrintJobPrompt;
   /** The phone's permissions: only `CommandRequestPermission` shows the system's dialog. */
   permissions: DevicePermissions;
   /** Each permission's last known status, for the screens (`usePermission`). */
@@ -72,6 +79,8 @@ export function registerDependencies(
   boundedContext.addDependency("notifier", deviceNotifier);
   boundedContext.addDependency("publisher", new Publisher(eventDelivery));
   boundedContext.addDependency("printer", printerAdapter);
+  boundedContext.addDependency("printJobs", printJobRepository);
+  boundedContext.addDependency("printJobPrompt", printJobPrompt);
   boundedContext.addDependency("permissions", devicePermissions);
   boundedContext.addDependency("permissionStates", permissionStates);
   boundedContext.addDependency("network", networkAdapter);

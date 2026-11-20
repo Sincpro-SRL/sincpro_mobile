@@ -8,6 +8,7 @@ import { PagePrintWatch } from "@sincpro/mobile/infrastructure/webview/page_prin
 import { UNTRACKED_PAGE_JOB } from "@sincpro/mobile/services/printer/print_jobs/common";
 import { CommandFailPagePrint } from "@sincpro/mobile/services/printer/print_jobs/fail_page_print.feature";
 import { CommandQueuePrint } from "@sincpro/mobile/services/printer/print_jobs/queue_print.feature";
+import { CommandReceivePrintPage } from "@sincpro/mobile/services/printer/print_jobs/receive_print_page.app_service";
 import { CommandStartPagePrint } from "@sincpro/mobile/services/printer/print_jobs/start_page_print.feature";
 
 export interface PrintCycleHandlers {
@@ -19,13 +20,16 @@ export interface PrintCycleHandlers {
     height: number;
     title: string;
     jobId?: string;
+    /** Its place in a print of N pages, counted from 1; absent in a print of one. */
+    page?: number;
+    pages?: number;
   }): Promise<void>;
 }
 
 /**
  * Routes one message of the print interceptor:
  * 1. PRINT_STARTED: the capture is running.
- * 2. PRINT_IMAGE with an image: it goes to the printer.
+ * 2. PRINT_IMAGE with an image: it goes to the printer — one per page in a print of N.
  * 3. PRINT_FAILED: the capture failed before reaching the printer.
  * Final: resolves `false` for anything that is not part of the print cycle. Every step carries
  * the page's `jobId`, so the three of them update the same notice.
@@ -50,6 +54,8 @@ export async function routePrintMessage(
     height: msg.height,
     title: msg.metadata?.title ?? "",
     jobId: msg.jobId,
+    page: msg.page,
+    pages: msg.pages,
   });
   return true;
 }
@@ -60,33 +66,52 @@ export async function routePrintMessage(
  * its log lines and, when unexpected, its report.
  * 1. PRINT_STARTED: `CommandStartPagePrint`, and the capture is watched.
  * 2. PRINT_FAILED: the watch settles; `CommandFailPagePrint`.
- * 3. PRINT_IMAGE: the watch settles; `CommandQueuePrint` — the queue prints it.
- * Final: a capture that never answers executes `CommandFailPagePrint` on time out. A page that
- *    sends no job id is followed under one (`UNTRACKED_PAGE_JOB`), so its image settles its
- *    watch.
+ * 3. PRINT_IMAGE of a print of one page: the watch settles; `CommandQueuePrint` — the queue
+ *    prints it.
+ * 4. PRINT_IMAGE of a print of N pages: `CommandReceivePrintPage`; the watch waits for the next
+ *    page, and settles with the last.
+ * Final: a capture that never answers executes `CommandFailPagePrint` on time out — a page that
+ *    takes too long, too. A page that sends no job id is followed under one
+ *    (`UNTRACKED_PAGE_JOB`), so its image settles its watch.
  */
 export function printCycleHandlers(
   watch: PagePrintWatch = new PagePrintWatch(),
 ): Record<string, WebViewMessageHandler> {
+  const watchCapture = (title: string, jobId: string) =>
+    watch.start(jobId, () => {
+      // The failure is recorded by its run; nobody waits for this one.
+      commonBoundedContext
+        .execute(new CommandFailPagePrint(title, "the capture did not answer", jobId))
+        .catch(() => undefined);
+    });
   const printCycle = (message: WebViewMessage) =>
     routePrintMessage(message as unknown as TWebViewMessage, {
       started: async (title, jobId = UNTRACKED_PAGE_JOB) => {
-        watch.start(jobId, () => {
-          // The failure is recorded by its run; nobody waits for this one.
-          commonBoundedContext
-            .execute(new CommandFailPagePrint(title, "the capture did not answer", jobId))
-            .catch(() => undefined);
-        });
+        watchCapture(title, jobId);
         await commonBoundedContext.execute(new CommandStartPagePrint(title, jobId));
       },
       failed: async (title, reason, jobId = UNTRACKED_PAGE_JOB) => {
         watch.settle(jobId);
         await commonBoundedContext.execute(new CommandFailPagePrint(title, reason, jobId));
       },
-      image: async ({ imageBase64, width, height, title, jobId = UNTRACKED_PAGE_JOB }) => {
-        watch.settle(jobId);
+      image: async (input) => {
+        const { imageBase64, width, height, title, jobId = UNTRACKED_PAGE_JOB } = input;
+        const { page = 1, pages = 1 } = input;
+        if (pages <= 1) {
+          watch.settle(jobId);
+          await commonBoundedContext.execute(
+            new CommandQueuePrint(imageBase64, width, height, title, jobId),
+          );
+          return;
+        }
+        if (page < pages) watchCapture(title, jobId);
+        else watch.settle(jobId);
         await commonBoundedContext.execute(
-          new CommandQueuePrint(imageBase64, width, height, title, jobId),
+          new CommandReceivePrintPage(jobId, title, page, pages, {
+            image: imageBase64,
+            width,
+            height,
+          }),
         );
       },
     }).then(() => undefined);

@@ -1,5 +1,10 @@
 import type { Notice } from "@sincpro/mobile/domain/notifier";
 import {
+  EPrintJobScope,
+  EPrintPages,
+  type PrintJob,
+} from "@sincpro/mobile/domain/print/print_job";
+import {
   PRINT_FAILURE_ACTIONS,
   PRINT_NOTICE_ACTIONS,
   whyNotPrinted,
@@ -66,5 +71,55 @@ export function captureFailedNotice(key: string, title: string): Notice {
       : "Vuelve a intentarlo desde la página.",
     variant: "danger",
     actions: [PRINT_NOTICE_ACTIONS.printer],
+  };
+}
+
+/**
+ * What prints at once when every page of a job arrived, by how the app prints N pages: all of
+ * them, the first one, or nothing — `null`, the person chooses.
+ */
+export function firstScopeOf(mode: EPrintPages): EPrintJobScope | null {
+  if (mode === EPrintPages.ALL) return EPrintJobScope.REST;
+  if (mode === EPrintPages.STEP) return EPrintJobScope.NEXT;
+  return null;
+}
+
+/**
+ * The pages a scope takes from where the job is, counted from 1 and both included: the next
+ * one, or from the next one to the last.
+ */
+export function pagesInScope(
+  job: PrintJob,
+  scope: EPrintJobScope,
+): { from: number; to: number } {
+  const from = job.printed + 1;
+  return { from, to: scope === EPrintJobScope.NEXT ? from : job.total };
+}
+
+/** How a page of a job is named in its notice and among the failed prints: «Tickets · 3 de 10». */
+export function pageTitleOf(title: string, page: number, total: number): string {
+  const place = `${page} de ${total}`;
+  return title ? `${title} · ${place}` : `Página ${place}`;
+}
+
+/** The job's notice once every page arrived and the person chooses how to print them. */
+export function jobReadyNotice(key: string, job: PrintJob): Notice {
+  return {
+    key,
+    name: "printer.job_ready",
+    title: "Listo para imprimir",
+    message: `${job.title || "Impresión"}: ${job.total} páginas`,
+    variant: "info",
+  };
+}
+
+/** The job's notice when the person stopped it: how many pages came out. */
+export function jobCancelledNotice(key: string, job: PrintJob): Notice {
+  return {
+    key,
+    name: "printer.job_cancelled",
+    title: "Impresión cancelada",
+    message: `${job.title || "Impresión"}: ${job.printed} de ${job.total} páginas impresas`,
+    variant: "warning",
   };
 }

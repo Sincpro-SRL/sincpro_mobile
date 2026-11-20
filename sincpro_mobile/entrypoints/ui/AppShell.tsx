@@ -12,6 +12,7 @@ import { installGlobalErrorHandler } from "@sincpro/mobile/infrastructure/ui/err
 import { onceUntilFailure } from "@sincpro/mobile/tools/utils/once";
 import { DeviceNotices } from "@sincpro/mobile/ui/activity";
 import { CrashRecovery } from "@sincpro/mobile/ui/components/organisms/CrashRecovery";
+import { PrintJobSheet } from "@sincpro/mobile/ui/printer";
 import { type BrandingConfig, setBranding } from "@sincpro/mobile-ui/branding";
 import { OverlayHost } from "@sincpro/mobile-ui/Dialog";
 import { ICON_FONTS } from "@sincpro/mobile-ui/Display";
@@ -367,6 +368,9 @@ export function AppShell({
                           {children}
                         </DomainSwitcherProvider>,
                       )}
+                      {/* The one sheet of the prints of N pages: over any screen, the
+                          portal's included. */}
+                      <PrintJobSheet />
                     </ErrorBoundary>
                   </OverlayHost>
                   <DeviceNotices onAction={config.onNoticeAction} />
