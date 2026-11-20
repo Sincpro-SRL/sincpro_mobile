@@ -16,6 +16,7 @@ import {
   plain,
   type Value,
 } from "@sincpro/criteria";
+import { fold } from "@sincpro/criteria/engine";
 import { type CriteriaSqlTarget } from "@sincpro/mobile/domain/database/criteria_sql";
 import { type SqlParam } from "@sincpro/mobile/domain/database/sql";
 import { type EventRecord, labelOf, textOf } from "@sincpro/mobile/domain/events";
@@ -89,13 +90,9 @@ const EVENTS_TARGET: CriteriaSqlTarget = {
 
 type ViewRow = EventRow & Record<string, SqlParam>;
 
-/** Text as a person searches it: lower case, without accents. */
+/** Text as a person searches it: folded as the engine and the backend fold it (`fold`). */
 function searchable(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
+  return fold(text).trim();
 }
 
 function searchableValue(value: Value): Value {

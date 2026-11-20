@@ -81,10 +81,7 @@ export abstract class SearchQuery<T extends Entity> extends Command<Page<T>> {
 }
 
 export type ReadQuery<T extends Entity = Entity> =
-  | GetQuery<T>
-  | GetManyQuery<T>
-  | LiteralSearchQuery<T>
-  | SearchQuery<T>;
+  GetQuery<T> | GetManyQuery<T> | LiteralSearchQuery<T> | SearchQuery<T>;
 
 /** The entity a read Command was declared for (`Get(Ticket)`). */
 export type ReadsEntity<T extends Entity> = { readonly entity: AnyClass<T> };

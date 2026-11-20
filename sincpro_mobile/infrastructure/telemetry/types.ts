@@ -1,6 +1,5 @@
 export type LokiAuth =
-  | { type: "basic"; username: string; password: string }
-  | { type: "bearer"; token: string };
+  { type: "basic"; username: string; password: string } | { type: "bearer"; token: string };
 
 export interface LokiConfig {
   /** Base URL of the Loki instance, e.g. "https://loki.myserver.com" */

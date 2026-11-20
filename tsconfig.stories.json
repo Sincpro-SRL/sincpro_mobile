@@ -1,5 +1,8 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "expo/types"]
+  },
   "include": [
     "App.tsx",
     "sincpro_mobile/**/*.ts",
